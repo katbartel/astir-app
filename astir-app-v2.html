@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astir</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F3EB;
+    --rail:#F0EAE0;
+    --card:#FFFDF8;
+    --ink:#2E2A23;
+    --ink2:#57503F;
+    --muted:#8C8371;
+    --line:rgba(70,60,40,.10);
+    --line2:rgba(70,60,40,.16);
+    --star:#DFA83F;
+    --star-deep:#C08F2B;
+    --star-soft:rgba(223,168,63,.16);
+    --rest:#8CA48A;
+    --rest-soft:rgba(140,164,138,.18);
+    --prep:#8496AB;
+    --prep-soft:rgba(132,150,171,.18);
+    --rose-soft:rgba(196,132,132,.16);
+    --radius:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{
+    font-family:'Instrument Sans',system-ui,sans-serif;
+    background:var(--paper);color:var(--ink);min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  .app{display:flex;min-height:100vh;max-width:1100px;margin:0 auto}
+
+  /* ---------- rail ---------- */
+  .rail{
+    width:200px;flex:0 0 200px;background:var(--rail);
+    display:flex;flex-direction:column;padding:26px 18px;
+    border-right:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 8px;margin-bottom:34px}
+  .brand .name{font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:600;letter-spacing:.01em}
+
+  .star-wrap{position:relative;width:26px;height:26px;flex:0 0 26px}
+  .star-glow{
+    position:absolute;inset:-9px;border-radius:50%;
+    background:radial-gradient(circle,var(--star-soft) 0%,rgba(223,168,63,.05) 55%,transparent 72%);
+    animation:breathe 5.5s ease-in-out infinite;
+  }
+  .star{position:relative;width:26px;height:26px;display:block}
+  .star path{fill:var(--star);transition:filter .4s}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:.8}50%{transform:scale(1.22);opacity:1}}
+  .star-wrap.pulse .star-glow{animation:flare 1.4s ease-out}
+  .star-wrap.pulse .star path{filter:drop-shadow(0 0 7px rgba(223,168,63,.85))}
+  @keyframes flare{0%{transform:scale(1);opacity:.85}30%{transform:scale(2.1);opacity:1}100%{transform:scale(1);opacity:.85}}
+  @media (prefers-reduced-motion:reduce){.star-glow,.star-wrap.pulse .star-glow{animation:none}}
+
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav a{
+    display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;
+    font-size:13.5px;color:var(--ink2);text-decoration:none;cursor:pointer;
+  }
+  .nav a svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.75}
+  .nav a:hover{background:rgba(70,60,40,.05)}
+  .nav a.active{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(60,50,30,.05);font-weight:500}
+  .rail .user{margin-top:auto;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2);padding:8px 10px}
+  .rail .av{width:22px;height:22px;border-radius:50%;background:#D8CDBB}
+
+  /* ---------- main ---------- */
+  .main{flex:1;padding:48px 56px 64px;max-width:680px}
+  .screen{display:none}
+  .screen.on{display:block}
+  .date{font-size:12.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  h1{
+    font-family:'Bricolage Grotesque',sans-serif;font-weight:600;
+    font-size:27px;letter-spacing:-.01em;margin-bottom:30px;
+  }
+  .h-row{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:30px}
+  .h-row h1{margin-bottom:0}
+  .kebab{
+    width:30px;height:30px;border-radius:9px;border:none;background:transparent;cursor:pointer;
+    color:var(--muted);font-size:17px;letter-spacing:1px;line-height:1;
+  }
+  .kebab:hover{background:rgba(70,60,40,.06)}
+
+  /* buttons */
+  .btn{
+    font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer;border-radius:999px;
+    padding:9px 18px;transition:background .2s,border-color .2s;
+  }
+  .btn:focus-visible{outline:2px solid var(--star);outline-offset:2px}
+  .btn.solid{background:var(--star);border:1px solid var(--star);color:#3A2E10}
+  .btn.solid:hover{background:#D69C31}
+  .btn.ghost{background:transparent;border:1px solid var(--line2);color:var(--ink2)}
+  .btn.ghost:hover{background:rgba(70,60,40,.05)}
+
+  /* today */
+  .today-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:24px 26px;margin-bottom:22px;box-shadow:0 1px 3px rgba(60,50,30,.04);
+  }
+  .today-card .q{font-size:14.5px;color:var(--ink2);margin-bottom:16px;line-height:1.55}
+  .act-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .chip{
+    font-family:inherit;font-size:13.5px;font-weight:500;padding:9px 16px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--line2);background:transparent;color:var(--ink2);
+    transition:background .2s,border-color .2s,color .2s;
+  }
+  .chip:hover{background:rgba(70,60,40,.05)}
+  .chip:focus-visible{outline:2px solid var(--star);outline-offset:2px}
+  .chip.prep.on{background:var(--prep-soft);border-color:transparent;color:#4E637C}
+  .chip.rest.on{background:var(--rest-soft);border-color:transparent;color:#586E56}
+  .sep-dot{color:var(--line2);font-size:12px;padding:0 2px}
+  .today-card .note{font-size:13px;color:var(--muted);margin-top:14px;min-height:18px}
+
+  .week{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:22px 26px;margin-bottom:22px}
+  .label{font-size:12.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px}
+  .days{display:flex;justify-content:space-between;max-width:420px}
+  .day{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .day .d{font-size:11.5px;color:var(--muted)}
+  .dot{
+    width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+    border:1.5px solid var(--line2);background:transparent;transition:background .3s,border-color .3s;
+  }
+  .dot svg{width:13px;height:13px}
+  .dot.applied{background:var(--star-soft);border-color:transparent}
+  .dot.applied svg path{fill:var(--star-deep)}
+  .dot.rest{background:var(--rest-soft);border-color:transparent}
+  .dot.rest svg path{fill:none;stroke:#6E8A6C;stroke-width:1.8;stroke-linecap:round}
+  .dot.prep{background:var(--prep-soft);border-color:transparent}
+  .dot.prep svg path{fill:none;stroke:#5F7896;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .day.now .dot{border-color:var(--star)}
+  .day.now .d{color:var(--ink2);font-weight:500}
+  .gentle{
+    margin-top:18px;font-size:13.5px;color:var(--ink2);line-height:1.6;
+    padding-top:16px;border-top:1px solid var(--line);
+  }
+  .gentle em{font-style:italic;color:var(--ink)}
+
+  .glance .row-lite{
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:8px;
+  }
+  .co{font-size:14px;font-weight:500}
+  .role{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .pill{font-size:11.5px;font-weight:500;padding:4px 11px;border-radius:999px;background:var(--prep-soft);color:#4E637C}
+  .pill.warm{background:var(--star-soft);color:#8A6416}
+  .pill.sage{background:var(--rest-soft);color:#586E56}
+
+  /* watchlist */
+  .wl-group{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
+  .wl-head{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--line)}
+  .wl-head .meta{font-size:12px;color:var(--muted);margin-top:2px}
+  .wl-role{display:flex;align-items:center;justify-content:space-between;padding:13px 20px;border-bottom:1px solid var(--line)}
+  .wl-role:last-child{border-bottom:none}
+  .wl-role .r-name{font-size:13.5px}
+  .wl-role .r-loc{font-size:12px;color:var(--muted);margin-top:2px}
+  .wl-role .r-new{font-size:11px;font-weight:600;color:var(--star-deep);background:var(--star-soft);border-radius:999px;padding:2px 8px;margin-left:8px}
+  .wl-role .apply-link{
+    font-size:12.5px;font-weight:500;color:var(--ink2);background:none;border:none;cursor:pointer;
+    padding:6px 10px;border-radius:8px;font-family:inherit;
+  }
+  .wl-role .apply-link:hover{background:rgba(70,60,40,.06);color:var(--ink)}
+
+  /* pipeline */
+  .p-card{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    padding:18px 22px;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between;
+  }
+  .p-card .next{font-size:12.5px;color:var(--muted);margin-top:5px}
+  .p-empty-hint{font-size:13px;color:var(--muted);margin-top:18px;line-height:1.6;font-style:italic}
+
+  /* menu */
+  .menu{
+    position:absolute;background:var(--card);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 6px 24px rgba(60,50,30,.12);padding:6px;min-width:230px;display:none;z-index:30;
+  }
+  .menu.on{display:block}
+  .menu button{
+    display:block;width:100%;text-align:left;font-family:inherit;font-size:13px;color:var(--ink2);
+    background:none;border:none;padding:9px 11px;border-radius:8px;cursor:pointer;
+  }
+  .menu button:hover{background:rgba(70,60,40,.05)}
+  .menu .hint{font-size:11.5px;color:var(--muted);padding:4px 11px 8px;line-height:1.5}
+
+  /* modal */
+  .overlay{
+    position:fixed;inset:0;background:rgba(46,42,35,.32);display:none;
+    align-items:center;justify-content:center;z-index:50;
+  }
+  .overlay.on{display:flex}
+  .modal{
+    background:var(--card);border-radius:18px;width:420px;max-width:92vw;
+    padding:28px 28px 24px;box-shadow:0 18px 50px rgba(46,42,35,.22);
+  }
+  .modal h2{font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:19px;margin-bottom:4px}
+  .modal .sub{font-size:13px;color:var(--muted);margin-bottom:20px;line-height:1.5}
+  .f{margin-bottom:14px}
+  .f label{display:block;font-size:12.5px;font-weight:500;color:var(--ink2);margin-bottom:6px}
+  .f input,.f select{
+    width:100%;font-family:inherit;font-size:13.5px;color:var(--ink);
+    background:var(--paper);border:1px solid var(--line2);border-radius:10px;padding:10px 12px;
+  }
+  .f input:focus,.f select:focus{outline:2px solid var(--star);outline-offset:1px;border-color:transparent}
+  .f-row{display:flex;gap:10px}
+  .f-row .f{flex:1}
+  .m-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:20px}
+
+  /* snackbar */
+  .snack{
+    position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(8px);
+    background:#3A342A;color:#F3EDE1;font-size:13px;border-radius:11px;padding:11px 18px;
+    opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;z-index:60;
+  }
+  .snack.on{opacity:1;transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <aside class="rail">
+    <div class="brand">
+      <span class="star-wrap" id="starWrap">
+        <span class="star-glow"></span>
+        <svg class="star" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/>
+        </svg>
+      </span>
+      <span class="name">Astir</span>
+    </div>
+    <nav class="nav">
+      <a class="active" data-s="today"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>Today</a>
+      <a data-s="watchlist"><svg viewBox="0 0 24 24"><path d="M10 12a2 2 0 1 0 4 0 2 2 0 0 0-4 0"/><path d="M21 12c-2.4 4-5.4 6-9 6s-6.6-2-9-6c2.4-4 5.4-6 9-6s6.6 2 9 6"/></svg>Watchlist</a>
+      <a data-s="pipeline"><svg viewBox="0 0 24 24"><path d="M4 6h11M4 12h11M4 18h11"/><path d="M18 6l1.5 1.5L22 5M18 12l1.5 1.5L22 11"/></svg>Pipeline</a>
+    </nav>
+    <div class="user"><span class="av"></span>Kate</div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ================= TODAY ================= -->
+    <section class="screen on" id="s-today">
+      <div class="date">Sunday, July 5</div>
+      <h1>Good morning, Kate</h1>
+
+      <div class="today-card">
+        <div class="q">One good application, then let it go. Prep and rest count the same.</div>
+        <div class="act-row">
+          <button class="btn solid" id="addJobBtn">Add a job</button>
+          <span class="sep-dot">·</span>
+          <button class="chip prep" data-k="prep">Prep day</button>
+          <button class="chip rest" data-k="rest">Rest day</button>
+        </div>
+        <div class="note" id="note"></div>
+      </div>
+
+      <div class="week">
+        <div class="label">This week</div>
+        <div class="days">
+          <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Mon</span></div>
+          <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Tue</span></div>
+          <div class="day"><span class="dot rest"><svg viewBox="0 0 24 24"><path d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13"/></svg></span><span class="d">Wed</span></div>
+          <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Thu</span></div>
+          <div class="day"><span class="dot prep"><svg viewBox="0 0 24 24"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v14H6.5a2.5 2.5 0 0 0 0 5H19"/></svg></span><span class="d">Fri</span></div>
+          <div class="day"><span class="dot"></span><span class="d">Sat</span></div>
+          <div class="day now"><span class="dot" id="todayDot"></span><span class="d">Sun</span></div>
+        </div>
+        <div class="gentle" id="gentle">
+          A steady week: three days of applying, one of prep, one of real rest.
+          <em>If today feels heavy, resting counts too.</em>
+        </div>
+      </div>
+
+      <div class="glance">
+        <div class="label">In motion</div>
+        <div class="row-lite">
+          <div><div class="co">Enpal</div><div class="role">Senior Product Manager, Energy Platform</div></div>
+          <span class="pill">2nd interview, Thu</span>
+        </div>
+        <div class="row-lite">
+          <div><div class="co">Aiven</div><div class="role">Senior PM, Data Governance</div></div>
+          <span class="pill sage">Take-home in review</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= WATCHLIST ================= -->
+    <section class="screen" id="s-watchlist">
+      <div class="h-row">
+        <h1>Watchlist</h1>
+        <button class="btn ghost" id="addCoBtn">Add company</button>
+      </div>
+
+      <div class="wl-group">
+        <div class="wl-head">
+          <div><div class="co">1Password</div><div class="meta">Careers page · security, access · Remote EU</div></div>
+        </div>
+        <div class="wl-role">
+          <div><div class="r-name">Senior Product Manager, Access Governance<span class="r-new">New</span></div><div class="r-loc">Remote, EMEA</div></div>
+          <button class="apply-link" data-co="1Password" data-role="Senior Product Manager, Access Governance">I applied</button>
+        </div>
+        <div class="wl-role">
+          <div><div class="r-name">Product Manager, Developer Tools</div><div class="r-loc">Remote, EU</div></div>
+          <button class="apply-link" data-co="1Password" data-role="Product Manager, Developer Tools">I applied</button>
+        </div>
+      </div>
+
+      <div class="wl-group">
+        <div class="wl-head">
+          <div><div class="co">Vanta</div><div class="meta">Careers page · compliance, DLP · Remote or Berlin</div></div>
+        </div>
+        <div class="wl-role">
+          <div><div class="r-name">Senior PM, Trust Platform</div><div class="r-loc">Hybrid, Berlin</div></div>
+          <button class="apply-link" data-co="Vanta" data-role="Senior PM, Trust Platform">I applied</button>
+        </div>
+      </div>
+
+      <div class="wl-group">
+        <div class="wl-head">
+          <div><div class="co">Tresorit</div><div class="meta">Careers page · secure collaboration · EU</div></div>
+        </div>
+        <div class="wl-role">
+          <div><div class="r-name">No open matches right now</div><div class="r-loc">You will hear from us when one appears</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= PIPELINE ================= -->
+    <section class="screen" id="s-pipeline">
+      <div class="h-row">
+        <div style="display:flex;align-items:center;gap:6px;position:relative">
+          <h1>Pipeline</h1>
+          <button class="kebab" id="pipeKebab" aria-label="Pipeline menu">⋯</button>
+          <div class="menu" id="pipeMenu">
+            <div class="hint">Everything you applied to is kept here, out of view, so you can forget it in peace.</div>
+            <button>View all applications</button>
+          </div>
+        </div>
+        <button class="btn solid" id="heardBack">✦&nbsp; I heard back!</button>
+      </div>
+
+      <div class="p-card">
+        <div><div class="co">Enpal</div><div class="role">Senior Product Manager, Energy Platform</div><div class="next">Next: 2nd interview, Thursday 11:00 with Lena (Head of Product)</div></div>
+        <span class="pill">2nd interview</span>
+      </div>
+      <div class="p-card">
+        <div><div class="co">Aiven</div><div class="role">Senior PM, Data Governance</div><div class="next">Take-home submitted Tuesday, response promised within a week</div></div>
+        <span class="pill sage">Take-home</span>
+      </div>
+      <div class="p-card">
+        <div><div class="co">Cint</div><div class="role">Product Manager, Platform</div><div class="next">Recruiter screen booked, Monday 14:30</div></div>
+        <span class="pill warm">Recruiter screen</span>
+      </div>
+
+      <div class="p-empty-hint">Only what is alive lives here. Everything else is safe where you left it.</div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ============ ADD JOB MODAL ============ -->
+<div class="overlay" id="overlay">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="mTitle">
+    <h2 id="mTitle">Add a job</h2>
+    <div class="sub">Log it, then let it go. It will rest quietly unless it comes back to you.</div>
+    <div class="f"><label>Link (optional)</label><input id="fLink" placeholder="Paste the job posting link"></div>
+    <div class="f"><label>Company</label><input id="fCo" placeholder="Company name"></div>
+    <div class="f"><label>Role</label><input id="fRole" placeholder="Role title"></div>
+    <div class="f-row">
+      <div class="f"><label>Applied</label><input value="Today" readonly></div>
+      <div class="f"><label>Status</label>
+        <select><option>Applied</option><option>Saved</option><option>Recruiter screen</option></select>
+      </div>
+    </div>
+    <div class="m-actions">
+      <button class="btn ghost" id="mCancel">Cancel</button>
+      <button class="btn solid" id="mSave">Add application</button>
+    </div>
+  </div>
+</div>
+
+<div class="snack" id="snack">Application added. Today is done.</div>
+
+<script>
+  /* tabs */
+  const links=document.querySelectorAll('.nav a');
+  links.forEach(l=>l.addEventListener('click',()=>{
+    links.forEach(x=>x.classList.remove('active'));
+    l.classList.add('active');
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+    document.getElementById('s-'+l.dataset.s).classList.add('on');
+  }));
+
+  /* star + today state */
+  const starWrap=document.getElementById('starWrap');
+  const todayDot=document.getElementById('todayDot');
+  const note=document.getElementById('note');
+  const gentle=document.getElementById('gentle');
+  const chips=document.querySelectorAll('.chip');
+  const starIcon='<svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg>';
+  const leafIcon='<svg viewBox="0 0 24 24"><path d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13"/></svg>';
+  const bookIcon='<svg viewBox="0 0 24 24"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v14H6.5a2.5 2.5 0 0 0 0 5H19"/></svg>';
+
+  function flare(){
+    starWrap.classList.remove('pulse');void starWrap.offsetWidth;starWrap.classList.add('pulse');
+  }
+  function setToday(kind){
+    if(kind==='applied'){
+      chips.forEach(x=>x.classList.remove('on'));
+      todayDot.className='dot applied';todayDot.innerHTML=starIcon;
+      note.textContent='Logged. That is today done, whatever else happens.';
+      gentle.innerHTML='Four days of applying this week. <em>Tomorrow might be a good one to rest. It counts.</em>';
+      flare();
+    }else if(kind==='prep'){
+      todayDot.className='dot prep';todayDot.innerHTML=bookIcon;
+      note.textContent='Prep day noted. Showing up for the interview is the work today.';
+      gentle.innerHTML='A steady week, and today you prepare. <em>Nothing else is asked of you.</em>';
+    }else{
+      todayDot.className='dot rest';todayDot.innerHTML=leafIcon;
+      note.textContent='Rest logged. Rest is fuel, not a gap.';
+      gentle.innerHTML='Applying, prep, and now rest. <em>This is what a sustainable week looks like.</em>';
+    }
+  }
+  chips.forEach(c=>c.addEventListener('click',()=>{
+    chips.forEach(x=>x.classList.remove('on'));c.classList.add('on');setToday(c.dataset.k);
+  }));
+
+  /* modal */
+  const overlay=document.getElementById('overlay');
+  const fCo=document.getElementById('fCo'),fRole=document.getElementById('fRole'),fLink=document.getElementById('fLink');
+  function openModal(co,role){
+    fCo.value=co||'';fRole.value=role||'';fLink.value='';
+    overlay.classList.add('on');
+    (co?document.getElementById('mSave'):fLink).focus();
+  }
+  function closeModal(){overlay.classList.remove('on')}
+  document.getElementById('addJobBtn').addEventListener('click',()=>openModal());
+  document.querySelectorAll('.apply-link').forEach(b=>b.addEventListener('click',()=>openModal(b.dataset.co,b.dataset.role)));
+  document.getElementById('mCancel').addEventListener('click',closeModal);
+  overlay.addEventListener('click',e=>{if(e.target===overlay)closeModal()});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'){closeModal();pipeMenu.classList.remove('on')}});
+
+  const snack=document.getElementById('snack');
+  document.getElementById('mSave').addEventListener('click',()=>{
+    closeModal();setToday('applied');
+    snack.classList.add('on');setTimeout(()=>snack.classList.remove('on'),3500);
+  });
+
+  /* pipeline kebab + heard back */
+  const pipeMenu=document.getElementById('pipeMenu');
+  const pipeKebab=document.getElementById('pipeKebab');
+  pipeKebab.addEventListener('click',e=>{e.stopPropagation();pipeMenu.classList.toggle('on');
+    pipeMenu.style.top='38px';pipeMenu.style.left='0';});
+  document.addEventListener('click',()=>pipeMenu.classList.remove('on'));
+  document.getElementById('heardBack').addEventListener('click',flare);
+</script>
+</body>
+</html>

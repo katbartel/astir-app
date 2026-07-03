@@ -1,0 +1,162 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 1150" font-family="Instrument Sans, system-ui, sans-serif">
+  <rect width="860" height="1150" fill="#F7F3EB"/>
+  <text x="40" y="52" fill="#2E2A23" font-size="24" font-weight="600" font-family="Bricolage Grotesque, sans-serif">Astir, design components</text>
+  <text x="40" y="74" fill="#8C8371" font-size="12">Warm direction, July 2026. Display: Bricolage Grotesque. Body: Instrument Sans.</text>
+
+  <!-- ===== palette ===== -->
+  <text x="40" y="116" fill="#8C8371" font-size="11" letter-spacing="1.5">PALETTE</text>
+  <g>
+    <rect x="40" y="128" width="64" height="44" rx="8" fill="#F7F3EB" stroke="#E2DACB"/>
+    <text x="40" y="188" fill="#57503F" font-size="10">paper</text>
+    <text x="40" y="200" fill="#8C8371" font-size="9">#F7F3EB</text>
+
+    <rect x="120" y="128" width="64" height="44" rx="8" fill="#F0EAE0"/>
+    <text x="120" y="188" fill="#57503F" font-size="10">rail</text>
+    <text x="120" y="200" fill="#8C8371" font-size="9">#F0EAE0</text>
+
+    <rect x="200" y="128" width="64" height="44" rx="8" fill="#FFFDF8" stroke="#E2DACB"/>
+    <text x="200" y="188" fill="#57503F" font-size="10">card</text>
+    <text x="200" y="200" fill="#8C8371" font-size="9">#FFFDF8</text>
+
+    <rect x="280" y="128" width="64" height="44" rx="8" fill="#2E2A23"/>
+    <text x="280" y="188" fill="#57503F" font-size="10">ink</text>
+    <text x="280" y="200" fill="#8C8371" font-size="9">#2E2A23</text>
+
+    <rect x="360" y="128" width="64" height="44" rx="8" fill="#57503F"/>
+    <text x="360" y="188" fill="#57503F" font-size="10">ink2</text>
+    <text x="360" y="200" fill="#8C8371" font-size="9">#57503F</text>
+
+    <rect x="440" y="128" width="64" height="44" rx="8" fill="#8C8371"/>
+    <text x="440" y="188" fill="#57503F" font-size="10">muted</text>
+    <text x="440" y="200" fill="#8C8371" font-size="9">#8C8371</text>
+
+    <rect x="520" y="128" width="64" height="44" rx="8" fill="#DFA83F"/>
+    <text x="520" y="188" fill="#57503F" font-size="10">star</text>
+    <text x="520" y="200" fill="#8C8371" font-size="9">#DFA83F</text>
+
+    <rect x="600" y="128" width="64" height="44" rx="8" fill="#8CA48A"/>
+    <text x="600" y="188" fill="#57503F" font-size="10">rest</text>
+    <text x="600" y="200" fill="#8C8371" font-size="9">#8CA48A</text>
+
+    <rect x="680" y="128" width="64" height="44" rx="8" fill="#8496AB"/>
+    <text x="680" y="188" fill="#57503F" font-size="10">prep</text>
+    <text x="680" y="200" fill="#8C8371" font-size="9">#8496AB</text>
+  </g>
+
+  <!-- ===== the star ===== -->
+  <text x="40" y="248" fill="#8C8371" font-size="11" letter-spacing="1.5">THE STAR (idle / flare)</text>
+  <g id="star-idle">
+    <circle cx="70" cy="292" r="20" fill="#DFA83F" opacity="0.14"/>
+    <path transform="translate(58,280) scale(1)" d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z" fill="#DFA83F"/>
+  </g>
+  <g id="star-flare">
+    <circle cx="150" cy="292" r="30" fill="#DFA83F" opacity="0.22"/>
+    <circle cx="150" cy="292" r="18" fill="#DFA83F" opacity="0.28"/>
+    <path transform="translate(138,280)" d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z" fill="#E8B54A"/>
+  </g>
+  <text x="200" y="296" fill="#8C8371" font-size="11">Idle breathes at 5.5s. Flare on apply and on "I heard back!".</text>
+
+  <!-- ===== buttons ===== -->
+  <text x="40" y="360" fill="#8C8371" font-size="11" letter-spacing="1.5">BUTTONS</text>
+  <g id="btn-solid">
+    <rect x="40" y="376" width="104" height="36" rx="18" fill="#DFA83F"/>
+    <text x="92" y="399" fill="#3A2E10" font-size="13" font-weight="500" text-anchor="middle">Add a job</text>
+  </g>
+  <g id="btn-solid-hover">
+    <rect x="160" y="376" width="104" height="36" rx="18" fill="#D69C31"/>
+    <text x="212" y="399" fill="#3A2E10" font-size="13" font-weight="500" text-anchor="middle">Add a job</text>
+    <text x="212" y="428" fill="#8C8371" font-size="9" text-anchor="middle">hover</text>
+  </g>
+  <g id="btn-ghost">
+    <rect x="280" y="376" width="118" height="36" rx="18" fill="none" stroke="#CDC3B0"/>
+    <text x="339" y="399" fill="#57503F" font-size="13" font-weight="500" text-anchor="middle">Add company</text>
+  </g>
+  <g id="btn-hero">
+    <rect x="420" y="376" width="132" height="36" rx="18" fill="#DFA83F"/>
+    <text x="486" y="399" fill="#3A2E10" font-size="13" font-weight="600" text-anchor="middle">✦  I heard back!</text>
+    <text x="486" y="428" fill="#8C8371" font-size="9" text-anchor="middle">the only loud button</text>
+  </g>
+
+  <!-- ===== chips ===== -->
+  <text x="40" y="472" fill="#8C8371" font-size="11" letter-spacing="1.5">CHECK-IN CHIPS (default / selected)</text>
+  <g id="chip-prep">
+    <rect x="40" y="488" width="86" height="34" rx="17" fill="none" stroke="#CDC3B0"/>
+    <text x="83" y="510" fill="#57503F" font-size="13" font-weight="500" text-anchor="middle">Prep day</text>
+  </g>
+  <g id="chip-prep-on">
+    <rect x="140" y="488" width="86" height="34" rx="17" fill="#8496AB" opacity="0.18"/>
+    <text x="183" y="510" fill="#4E637C" font-size="13" font-weight="500" text-anchor="middle">Prep day</text>
+  </g>
+  <g id="chip-rest">
+    <rect x="252" y="488" width="86" height="34" rx="17" fill="none" stroke="#CDC3B0"/>
+    <text x="295" y="510" fill="#57503F" font-size="13" font-weight="500" text-anchor="middle">Rest day</text>
+  </g>
+  <g id="chip-rest-on">
+    <rect x="352" y="488" width="86" height="34" rx="17" fill="#8CA48A" opacity="0.18"/>
+    <text x="395" y="510" fill="#586E56" font-size="13" font-weight="500" text-anchor="middle">Rest day</text>
+  </g>
+
+  <!-- ===== day dots ===== -->
+  <text x="40" y="576" fill="#8C8371" font-size="11" letter-spacing="1.5">WEEK DOTS (applied / rest / prep / quiet / today)</text>
+  <g id="dot-applied">
+    <circle cx="56" cy="608" r="15" fill="#DFA83F" opacity="0.16"/>
+    <path transform="translate(49,601) scale(0.6)" d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z" fill="#C08F2B"/>
+  </g>
+  <g id="dot-rest">
+    <circle cx="106" cy="608" r="15" fill="#8CA48A" opacity="0.18"/>
+    <path transform="translate(99,601) scale(0.6)" d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13" fill="none" stroke="#6E8A6C" stroke-width="1.8" stroke-linecap="round"/>
+  </g>
+  <g id="dot-prep">
+    <circle cx="156" cy="608" r="15" fill="#8496AB" opacity="0.18"/>
+    <path transform="translate(149,601) scale(0.6)" d="M4 19.5V6a2 2 0 0 1 2-2h13v14H6.5a2.5 2.5 0 0 0 0 5H19" fill="none" stroke="#5F7896" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <g id="dot-quiet">
+    <circle cx="206" cy="608" r="14" fill="none" stroke="#CDC3B0" stroke-width="1.5"/>
+  </g>
+  <g id="dot-today">
+    <circle cx="256" cy="608" r="14" fill="none" stroke="#DFA83F" stroke-width="1.5"/>
+  </g>
+  <text x="296" y="612" fill="#8C8371" font-size="11">Never numbers. A quiet day is an empty ring, not a zero.</text>
+
+  <!-- ===== pills ===== -->
+  <text x="40" y="672" fill="#8C8371" font-size="11" letter-spacing="1.5">STAGE PILLS</text>
+  <g id="pill-interview">
+    <rect x="40" y="686" width="94" height="24" rx="12" fill="#8496AB" opacity="0.18"/>
+    <text x="87" y="702" fill="#4E637C" font-size="11" font-weight="500" text-anchor="middle">2nd interview</text>
+  </g>
+  <g id="pill-takehome">
+    <rect x="148" y="686" width="82" height="24" rx="12" fill="#8CA48A" opacity="0.18"/>
+    <text x="189" y="702" fill="#586E56" font-size="11" font-weight="500" text-anchor="middle">Take-home</text>
+  </g>
+  <g id="pill-screen">
+    <rect x="244" y="686" width="112" height="24" rx="12" fill="#DFA83F" opacity="0.16"/>
+    <text x="300" y="702" fill="#8A6416" font-size="11" font-weight="500" text-anchor="middle">Recruiter screen</text>
+  </g>
+  <g id="pill-new">
+    <rect x="370" y="686" width="44" height="20" rx="10" fill="#DFA83F" opacity="0.16"/>
+    <text x="392" y="700" fill="#C08F2B" font-size="10" font-weight="600" text-anchor="middle">New</text>
+  </g>
+
+  <!-- ===== type ===== -->
+  <text x="40" y="770" fill="#8C8371" font-size="11" letter-spacing="1.5">TYPE</text>
+  <text x="40" y="806" fill="#2E2A23" font-size="27" font-weight="600" font-family="Bricolage Grotesque, sans-serif">Good morning, Kate</text>
+  <text x="40" y="826" fill="#8C8371" font-size="10">display, Bricolage Grotesque 600, 27px</text>
+  <text x="40" y="856" fill="#57503F" font-size="14">One good application, then let it go.</text>
+  <text x="40" y="876" fill="#8C8371" font-size="10">body, Instrument Sans 400, 14px, ink2</text>
+  <text x="40" y="906" fill="#2E2A23" font-size="13" font-style="italic">If today feels heavy, resting counts too.</text>
+  <text x="40" y="926" fill="#8C8371" font-size="10">gentle line, Instrument Sans italic, 13.5px</text>
+  <text x="40" y="956" fill="#8C8371" font-size="12" letter-spacing="1.5">THIS WEEK</text>
+  <text x="40" y="976" fill="#8C8371" font-size="10">section label, uppercase, muted, 12.5px, letter-spacing .05em</text>
+
+  <!-- ===== cards ===== -->
+  <text x="40" y="1024" fill="#8C8371" font-size="11" letter-spacing="1.5">CARD + ROW</text>
+  <g id="card">
+    <rect x="40" y="1038" width="360" height="72" rx="14" fill="#FFFDF8" stroke="#E7E0D2"/>
+    <text x="60" y="1068" fill="#2E2A23" font-size="14" font-weight="500">Enpal</text>
+    <text x="60" y="1086" fill="#8C8371" font-size="12">Senior Product Manager, Energy Platform</text>
+    <rect x="288" y="1058" width="94" height="24" rx="12" fill="#8496AB" opacity="0.18"/>
+    <text x="335" y="1074" fill="#4E637C" font-size="11" font-weight="500" text-anchor="middle">2nd interview</text>
+  </g>
+  <text x="430" y="1068" fill="#8C8371" font-size="11">radius 14, border rgba(70,60,40,.10),</text>
+  <text x="430" y="1084" fill="#8C8371" font-size="11">shadow 0 1px 3px rgba(60,50,30,.04)</text>
+</svg>

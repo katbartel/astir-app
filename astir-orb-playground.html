@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astir, the orb</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F3EB;--rail:#F0EAE0;--card:#FFFDF8;
+    --ink:#2E2A23;--ink2:#57503F;--muted:#8C8371;
+    --line:rgba(70,60,40,.10);--line2:rgba(70,60,40,.16);
+    --gold:#DFA83F;--rose:#D98A6B;--peach:#EEC98F;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Instrument Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink);padding:48px 56px;-webkit-font-smoothing:antialiased}
+  h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:24px;margin-bottom:6px}
+  .sub{font-size:13.5px;color:var(--muted);margin-bottom:28px;max-width:560px;line-height:1.6}
+
+  .states{display:flex;gap:8px;margin-bottom:36px;align-items:center}
+  .states .lbl{font-size:12px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-right:6px}
+  .st{
+    font-family:inherit;font-size:13px;font-weight:500;padding:8px 15px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--line2);background:transparent;color:var(--ink2);
+  }
+  .st:hover{background:rgba(70,60,40,.05)}
+  .st.on{background:var(--card);border-color:var(--line);box-shadow:0 1px 2px rgba(60,50,30,.06);color:var(--ink)}
+  .flarebtn{margin-left:auto;background:var(--gold);border:1px solid var(--gold);color:#3A2E10;font-weight:600}
+
+  .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:980px}
+  .cell{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:26px;display:flex;flex-direction:column;align-items:center}
+  .cell h2{font-family:'Bricolage Grotesque',sans-serif;font-size:15px;font-weight:600;margin-bottom:4px;align-self:flex-start}
+  .cell p{font-size:12.5px;color:var(--muted);line-height:1.5;align-self:flex-start;margin-bottom:24px;min-height:56px}
+  .stage{height:130px;display:flex;align-items:center;justify-content:center}
+  .railrow{
+    margin-top:22px;display:flex;align-items:center;gap:10px;background:var(--rail);
+    border-radius:12px;padding:10px 16px;width:100%;
+  }
+  .railrow .name{font-family:'Bricolage Grotesque',sans-serif;font-size:15px;font-weight:600}
+  .cap{font-size:11px;color:var(--muted);margin-top:10px;align-self:flex-start}
+
+  /* ============ shared orb machinery ============ */
+  .orb{display:block;position:relative;border-radius:50%;overflow:hidden;transition:filter 1s, opacity 1s}
+  .orb>span{display:block}
+  .orb.big{width:96px;height:96px}
+  .orb.small{width:24px;height:24px;flex:0 0 24px}
+  .halo{position:absolute;border-radius:50%;pointer-events:none;transition:opacity 1s}
+  .wrap{position:relative;display:inline-block}
+  .wrap.big .halo{inset:-26px;background:radial-gradient(circle,rgba(223,168,63,.28) 0%,rgba(223,168,63,.06) 55%,transparent 72%)}
+  .wrap.small .halo{inset:-8px;background:radial-gradient(circle,rgba(223,168,63,.30) 0%,rgba(223,168,63,.07) 55%,transparent 72%)}
+  .halo{animation:haloB 6s ease-in-out infinite}
+  @keyframes haloB{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.16);opacity:1}}
+
+  /* A. Ember: dense warm core, slow internal swirl */
+  .orb.ember{background:radial-gradient(circle at 35% 32%,#F6DCA6 0%,#E8B054 38%,#C98A2E 72%,#A96F1F 100%)}
+  .orb.ember .swirl{
+    position:absolute;inset:-30%;
+    background:
+      radial-gradient(closest-side at 62% 68%,rgba(255,240,210,.55),transparent 62%),
+      radial-gradient(closest-side at 30% 60%,rgba(217,138,107,.45),transparent 58%);
+    animation:drift 14s ease-in-out infinite alternate;
+  }
+  /* B. Aurora: translucent, two ribbons of light drifting */
+  .orb.aurora{background:radial-gradient(circle at 40% 35%,#FBF3E2 0%,#F2DFB8 55%,#E9C88C 100%)}
+  .orb.aurora .r1,.orb.aurora .r2{position:absolute;inset:-42%;filter:blur(7px)}
+  .orb.aurora .r1{
+    background:radial-gradient(ellipse 60% 34% at 50% 44%,rgba(223,168,63,.75),transparent 68%);
+    animation:drift 11s ease-in-out infinite alternate;
+  }
+  .orb.aurora .r2{
+    background:radial-gradient(ellipse 52% 30% at 46% 62%,rgba(217,138,107,.55),transparent 66%);
+    animation:drift2 17s ease-in-out infinite alternate;
+  }
+  .orb.small.aurora .r1,.orb.small.aurora .r2{filter:blur(3px)}
+  /* C. Veil: airy sphere, luminous rim, faint inner threads */
+  .orb.veil{
+    background:radial-gradient(circle at 38% 34%,rgba(255,250,238,.9) 0%,rgba(244,228,196,.55) 48%,rgba(226,196,140,.35) 100%);
+    box-shadow:inset 0 0 0 1.5px rgba(223,168,63,.55), inset 0 0 14px rgba(223,168,63,.35);
+  }
+  .orb.veil .thread{
+    position:absolute;inset:-36%;filter:blur(5px);
+    background:
+      radial-gradient(ellipse 68% 16% at 50% 38%,rgba(223,168,63,.6),transparent 70%),
+      radial-gradient(ellipse 56% 14% at 52% 66%,rgba(217,138,107,.45),transparent 70%);
+    animation:drift 16s ease-in-out infinite alternate;
+  }
+  .orb.small.veil .thread{filter:blur(2px)}
+  .orb.small.veil{box-shadow:inset 0 0 0 1px rgba(223,168,63,.6), inset 0 0 5px rgba(223,168,63,.4)}
+
+  @keyframes drift{
+    0%{transform:rotate(0deg) translate(0,0)}
+    100%{transform:rotate(24deg) translate(6%,-5%)}
+  }
+  @keyframes drift2{
+    0%{transform:rotate(0deg) translate(0,0)}
+    100%{transform:rotate(-28deg) translate(-6%,6%)}
+  }
+  @media (prefers-reduced-motion:reduce){
+    .halo,.swirl,.r1,.r2,.thread{animation:none !important}
+  }
+
+  /* ---- states ---- */
+  body[data-state="rested"] .orb{filter:saturate(.65) brightness(.96)}
+  body[data-state="rested"] .halo{opacity:.35;animation-duration:9s}
+  body[data-state="steady"] .orb{filter:none}
+  /* flare */
+  .wrap.flaring .halo{animation:flareA 1.6s ease-out}
+  .wrap.flaring .orb{filter:brightness(1.18) saturate(1.15);transition:filter .25s}
+  @keyframes flareA{0%{transform:scale(1);opacity:.8}28%{transform:scale(2.3);opacity:1}100%{transform:scale(1);opacity:.8}}
+</style>
+</head>
+<body data-state="steady">
+
+<h1>The orb</h1>
+<div class="sub">Three abstract readings of the reference, in Astir's warm light. Each shown big (how it could appear on Today or in moments) and at rail size (how it lives every day). Switch states, then tap flare.</div>
+
+<div class="states">
+  <span class="lbl">State</span>
+  <button class="st" data-st="rested">Rested, low glow</button>
+  <button class="st on" data-st="steady">Steady, breathing</button>
+  <button class="st flarebtn" id="flare">✦ Flare (on apply)</button>
+</div>
+
+<div class="grid">
+
+  <div class="cell">
+    <h2>A. Ember</h2>
+    <p>A dense little sun. Solid warm core with light slowly turning inside. The most grounded of the three, closest to a classic "glow".</p>
+    <div class="stage">
+      <span class="wrap big"><span class="halo"></span>
+        <span class="orb big ember"><span class="swirl"></span></span>
+      </span>
+    </div>
+    <div class="railrow">
+      <span class="wrap small"><span class="halo"></span>
+        <span class="orb small ember"><span class="swirl"></span></span>
+      </span>
+      <span class="name">Astir</span>
+    </div>
+    <div class="cap">Rail size: reads as a warm, alive dot.</div>
+  </div>
+
+  <div class="cell">
+    <h2>B. Aurora</h2>
+    <p>Light moving through a pale sphere. Two soft ribbons, gold and rose, drift past each other. Closest to your reference's inner motion.</p>
+    <div class="stage">
+      <span class="wrap big"><span class="halo"></span>
+        <span class="orb big aurora"><span class="r1"></span><span class="r2"></span></span>
+      </span>
+    </div>
+    <div class="railrow">
+      <span class="wrap small"><span class="halo"></span>
+        <span class="orb small aurora"><span class="r1"></span><span class="r2"></span></span>
+      </span>
+      <span class="name">Astir</span>
+    </div>
+    <div class="cap">Rail size: a soft shifting shimmer.</div>
+  </div>
+
+  <div class="cell">
+    <h2>C. Veil</h2>
+    <p>Almost transparent, a sphere of air with a luminous rim and faint threads of light inside. The quietest and most abstract.</p>
+    <div class="stage">
+      <span class="wrap big"><span class="halo"></span>
+        <span class="orb big veil"><span class="thread"></span></span>
+      </span>
+    </div>
+    <div class="railrow">
+      <span class="wrap small"><span class="halo"></span>
+        <span class="orb small veil"><span class="thread"></span></span>
+      </span>
+      <span class="name">Astir</span>
+    </div>
+    <div class="cap">Rail size: a glowing ring, barely there.</div>
+  </div>
+
+</div>
+
+<script>
+  const sts=document.querySelectorAll('.st[data-st]');
+  sts.forEach(b=>b.addEventListener('click',()=>{
+    sts.forEach(x=>x.classList.remove('on'));b.classList.add('on');
+    document.body.dataset.state=b.dataset.st;
+  }));
+  document.getElementById('flare').addEventListener('click',()=>{
+    document.querySelectorAll('.wrap').forEach(w=>{
+      w.classList.remove('flaring');void w.offsetWidth;w.classList.add('flaring');
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Astir, Today</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600&family=Instrument+Sans:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F7F3EB;--rail:#F0EAE0;--card:#FFFDF8;
+    --ink:#2E2A23;--ink2:#57503F;--muted:#8C8371;
+    --line:rgba(70,60,40,.10);--line2:rgba(70,60,40,.16);
+    --gold:#DFA83F;--gold-soft:rgba(223,168,63,.16);
+    --rest:#8CA48A;--rest-soft:rgba(140,164,138,.18);
+    --prep:#9B84BC;--prep-soft:rgba(155,132,188,.18);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Instrument Sans',system-ui,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;-webkit-font-smoothing:antialiased}
+  .app{display:flex;min-height:100vh;max-width:1100px;margin:0 auto}
+
+  .rail{
+    width:200px;flex:0 0 200px;background:var(--rail);
+    display:flex;flex-direction:column;padding:26px 18px;border-right:1px solid var(--line);
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:2px 8px;margin-bottom:34px}
+  .brand .name{font-family:'Bricolage Grotesque',sans-serif;font-size:17px;font-weight:600}
+  .mini{position:relative;width:26px;height:26px;flex:0 0 26px}
+  .mini .halo{position:absolute;inset:-8px;border-radius:50%;
+    background:radial-gradient(circle,rgba(223,168,63,.3) 0%,rgba(223,168,63,.06) 55%,transparent 72%);
+    animation:breathe 6s ease-in-out infinite}
+  .mini .core{position:absolute;inset:1px;border-radius:50%;
+    background:radial-gradient(circle at 36% 32%,#F0CE8B 0%,#DCA246 45%,#B87B1F 100%)}
+  @keyframes breathe{0%,100%{transform:scale(1);opacity:.75}50%{transform:scale(1.15);opacity:1}}
+  .mini.pulse .halo{animation:flareM 1.4s ease-out}
+  @keyframes flareM{0%{transform:scale(1)}30%{transform:scale(2.2);opacity:1}100%{transform:scale(1);opacity:.75}}
+  @media (prefers-reduced-motion:reduce){.mini .halo{animation:none}}
+
+  .nav{display:flex;flex-direction:column;gap:2px}
+  .nav a{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;font-size:13.5px;color:var(--ink2);cursor:pointer}
+  .nav a.active{background:var(--card);color:var(--ink);box-shadow:0 1px 2px rgba(60,50,30,.05);font-weight:500}
+  .nav a:hover:not(.active){background:rgba(70,60,40,.05)}
+  .rail .user{margin-top:auto;display:flex;align-items:center;gap:9px;font-size:13px;color:var(--ink2);padding:8px 10px}
+  .rail .av{width:22px;height:22px;border-radius:50%;background:#D8CDBB}
+
+  .main{flex:1;padding:44px 56px 64px;max-width:680px}
+  .date{font-size:12.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
+  h1{font-family:'Bricolage Grotesque',sans-serif;font-weight:600;font-size:27px;margin-bottom:26px}
+
+  /* hero: the sphere's home */
+  .hero{
+    background:var(--card);border:1px solid var(--line);border-radius:18px;
+    padding:28px 26px 26px;margin-bottom:22px;box-shadow:0 1px 3px rgba(60,50,30,.04);
+    display:flex;flex-direction:column;align-items:center;
+  }
+  canvas{display:block}
+  .whisper{font-size:13.5px;color:var(--ink2);font-style:italic;margin-top:4px;min-height:20px;text-align:center;transition:opacity .4s}
+  .act-row{display:flex;gap:8px;align-items:center;margin-top:18px}
+  .btn{
+    font-family:inherit;font-size:13.5px;font-weight:500;cursor:pointer;border-radius:999px;padding:9px 18px;
+  }
+  .btn.solid{background:var(--gold);border:1px solid var(--gold);color:#3A2E10}
+  .btn.solid:hover{background:#D69C31}
+  .chip{
+    font-family:inherit;font-size:13.5px;font-weight:500;padding:9px 16px;border-radius:999px;cursor:pointer;
+    border:1px solid var(--line2);background:transparent;color:var(--ink2);
+  }
+  .chip:hover{background:rgba(70,60,40,.05)}
+  .chip.prep.on{background:var(--prep-soft);border-color:transparent;color:#6B5590}
+  .chip.rest.on{background:var(--rest-soft);border-color:transparent;color:#586E56}
+  .sep-dot{color:var(--line2);font-size:12px;padding:0 2px}
+
+  .week{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 26px;margin-bottom:22px}
+  .label{font-size:12.5px;color:var(--muted);letter-spacing:.05em;text-transform:uppercase;margin-bottom:14px}
+  .days{display:flex;justify-content:space-between;max-width:420px}
+  .day{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .day .d{font-size:11.5px;color:var(--muted)}
+  .dot{width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:1.5px solid var(--line2);transition:background .3s,border-color .3s}
+  .dot svg{width:13px;height:13px}
+  .dot.applied{background:var(--gold-soft);border-color:transparent}
+  .dot.applied svg path{fill:#C08F2B}
+  .dot.rest{background:var(--rest-soft);border-color:transparent}
+  .dot.rest svg path{fill:none;stroke:#6E8A6C;stroke-width:1.8;stroke-linecap:round}
+  .dot.prep{background:var(--prep-soft);border-color:transparent}
+  .dot.prep svg path{fill:none;stroke:#7D659F;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .day.now .dot{border-color:var(--gold)}
+  .day.now .d{color:var(--ink2);font-weight:500}
+
+  .glance .row-lite{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-bottom:8px}
+  .co{font-size:14px;font-weight:500}
+  .role{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .pill{font-size:11.5px;font-weight:500;padding:4px 11px;border-radius:999px;background:var(--prep-soft);color:#6B5590}
+  .pill.sage{background:var(--rest-soft);color:#586E56}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="rail">
+    <div class="brand">
+      <span class="mini" id="mini"><span class="halo"></span><span class="core"></span></span>
+      <span class="name">Astir</span>
+    </div>
+    <nav class="nav">
+      <a class="active">Today</a><a>Watchlist</a><a>Pipeline</a>
+    </nav>
+    <div class="user"><span class="av"></span>Kate</div>
+  </aside>
+
+  <main class="main">
+    <div class="date">Sunday, July 5</div>
+    <h1>Good morning, Kate</h1>
+
+    <section class="hero">
+      <canvas id="c" width="220" height="220"></canvas>
+      <div class="whisper" id="whisper">Warm and steady. Today is still unwritten.</div>
+      <div class="act-row">
+        <button class="btn solid" id="addJob">Add a job</button>
+        <span class="sep-dot">·</span>
+        <button class="chip prep" data-k="prep">Prep day</button>
+        <button class="chip rest" data-k="rest">Rest day</button>
+      </div>
+    </section>
+
+    <section class="week">
+      <div class="label">This week</div>
+      <div class="days">
+        <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Mon</span></div>
+        <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Tue</span></div>
+        <div class="day"><span class="dot rest"><svg viewBox="0 0 24 24"><path d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13"/></svg></span><span class="d">Wed</span></div>
+        <div class="day"><span class="dot applied"><svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg></span><span class="d">Thu</span></div>
+        <div class="day"><span class="dot prep"><svg viewBox="0 0 24 24"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v14H6.5a2.5 2.5 0 0 0 0 5H19"/></svg></span><span class="d">Fri</span></div>
+        <div class="day"><span class="dot"></span><span class="d">Sat</span></div>
+        <div class="day now"><span class="dot" id="todayDot"></span><span class="d">Sun</span></div>
+      </div>
+    </section>
+
+    <section class="glance">
+      <div class="label">In motion</div>
+      <div class="row-lite">
+        <div><div class="co">Enpal</div><div class="role">Senior Product Manager, Energy Platform</div></div>
+        <span class="pill">2nd interview, Thu</span>
+      </div>
+      <div class="row-lite">
+        <div><div class="co">Aiven</div><div class="role">Senior PM, Data Governance</div></div>
+        <span class="pill sage">Take-home in review</span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ============ the living sphere: flowing currents, today-tint model ============ */
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const DPR=Math.min(2,window.devicePixelRatio||1);
+const SZ=220;
+cv.width=SZ*DPR;cv.height=SZ*DPR;cv.style.width=SZ+'px';cv.style.height=SZ+'px';
+const CX=SZ/2*DPR,CY=SZ/2*DPR,R=74*DPR;
+
+const COLS={gold:'#BA7C1E',rest:'#66855F',prep:'#8E76B4'};
+function sprite(col){
+  const d=16*DPR,s=document.createElement('canvas');s.width=d;s.height=d;
+  const g=s.getContext('2d');
+  const gr=g.createRadialGradient(d/2,d/2,0,d/2,d/2,d/2);
+  gr.addColorStop(0,col);gr.addColorStop(.35,col+'CC');gr.addColorStop(1,col+'00');
+  g.fillStyle=gr;g.fillRect(0,0,d,d);return s;
+}
+const SPR={gold:sprite(COLS.gold),rest:sprite(COLS.rest),prep:sprite(COLS.prep)};
+
+/* particles inside the ball, moved by a flowing field (currents, not rotation) */
+const N=1200,P=[];
+for(let i=0;i<N;i++){
+  P.push({
+    th:Math.random()*Math.PI*2,          // longitude
+    ph:Math.acos(2*Math.random()-1),     // latitude
+    br:.55+Math.random()*.45,            // radius share (inside the ball)
+    o1:Math.random()*6.28,o2:Math.random()*6.28,o3:Math.random()*6.28,
+    sz:.55+Math.random()*.7,
+    kind:'gold',switchAt:0,nextKind:'gold'
+  });
+}
+let pace=1,glow=1,flare=0,flareBig=0,last=0;
+
+/* today-tint: wash a share of particles into a color, staggered so it flows in */
+function wash(kind,share){
+  const now=performance.now();
+  P.forEach(p=>{
+    const target=Math.random()<share?kind:'gold';
+    p.nextKind=target;
+    p.switchAt=now+Math.random()*2600;
+  });
+}
+
+function frame(ts){
+  const dt=Math.min(.05,(ts-last)/1000)||.016;last=ts;
+  if(flare>0)flare=Math.max(0,flare-dt*.85);
+  if(flareBig>0)flareBig=Math.max(0,flareBig-dt*.45);
+  const t=ts*.001;
+  const speed=pace*(1+flare*2+flareBig*1.6);
+
+  ctx.clearRect(0,0,cv.width,cv.height);
+  const g=glow+flare*.5+flareBig*.9;
+  const hg=ctx.createRadialGradient(CX,CY,R*.2,CX,CY,R*2.1);
+  hg.addColorStop(0,`rgba(223,168,63,${.14*g})`);
+  hg.addColorStop(1,'rgba(223,168,63,0)');
+  ctx.fillStyle=hg;ctx.fillRect(0,0,cv.width,cv.height);
+
+  const scale=1+flareBig*.1+flare*.04;
+  const arr=[];
+  for(const p of P){
+    if(p.switchAt&&ts>p.switchAt){p.kind=p.nextKind;p.switchAt=0}
+    /* currents: layered sine flow over the sphere, each particle rides them */
+    const dth=(Math.sin(p.ph*2.1+t*.5+p.o1)*.5+Math.sin(p.ph*3.7-t*.31+p.o2)*.3+.25)*dt*.55*speed;
+    const dph=(Math.sin(p.th*1.8+t*.37+p.o3)*.5+Math.cos(p.th*2.6-t*.22+p.o1)*.3)*dt*.34*speed;
+    p.th+=dth;p.ph+=dph;
+    if(p.ph<.05)p.ph=.05;if(p.ph>3.09)p.ph=3.09;
+    const wob=1+Math.sin(t*.7+p.o2)*.05;
+    const rad=R*p.br*wob*scale;
+    const sph=Math.sin(p.ph);
+    const x=Math.cos(p.th)*sph, z=Math.sin(p.th)*sph, y=Math.cos(p.ph);
+    arr.push({px:CX+x*rad,py:CY+y*rad,z:z*p.br,p});
+  }
+  arr.sort((a,b)=>a.z-b.z);
+  for(const it of arr){
+    const depth=(it.z+1)/2;
+    ctx.globalAlpha=Math.min(1,(0.06+depth*.82)*g);
+    const s=it.p.sz*(0.45+depth*.85)*(4.4*DPR)*(1+flareBig*.25);
+    ctx.drawImage(SPR[it.p.kind],it.px-s/2,it.py-s/2,s,s);
+  }
+  ctx.globalAlpha=1;
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ============ wiring to the day ============ */
+const whisper=document.getElementById('whisper');
+const todayDot=document.getElementById('todayDot');
+const mini=document.getElementById('mini');
+const chips=document.querySelectorAll('.chip');
+const starIcon='<svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg>';
+const leafIcon='<svg viewBox="0 0 24 24"><path d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13"/></svg>';
+const bookIcon='<svg viewBox="0 0 24 24"><path d="M4 19.5V6a2 2 0 0 1 2-2h13v14H6.5a2.5 2.5 0 0 0 0 5H19"/></svg>';
+function pulseMini(){mini.classList.remove('pulse');void mini.offsetWidth;mini.classList.add('pulse')}
+
+chips.forEach(c=>c.addEventListener('click',()=>{
+  chips.forEach(x=>x.classList.remove('on'));c.classList.add('on');
+  if(c.dataset.k==='prep'){
+    wash('prep',.45);pace=.8;
+    todayDot.className='dot prep';todayDot.innerHTML=bookIcon;
+    whisper.textContent='A lilac kind of day. The interview is the work.';
+  }else{
+    wash('rest',.45);pace=.55;glow=.85;
+    todayDot.className='dot rest';todayDot.innerHTML=leafIcon;
+    whisper.textContent='Resting. It drifts slower with you.';
+  }
+}));
+document.getElementById('addJob').addEventListener('click',()=>{
+  wash('gold',0);pace=1;glow=1;flare=1;
+  todayDot.className='dot applied';todayDot.innerHTML=starIcon;
+  chips.forEach(x=>x.classList.remove('on'));
+  whisper.textContent='One good application, released. Today is done.';
+  pulseMini();
+});
+</script>
+</body>
+</html>

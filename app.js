@@ -1,7 +1,6 @@
 (function () {
   const storageKey = "astir.v1";
   const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const icon = {
     applied: '<svg viewBox="0 0 24 24"><path d="M12 2.6l1.9 6.1a1.4 1.4 0 0 0 .92.92L21 11.5l-6.18 1.88a1.4 1.4 0 0 0-.92.92L12 20.4l-1.9-6.1a1.4 1.4 0 0 0-.92-.92L3 11.5l6.18-1.88a1.4 1.4 0 0 0 .92-.92z"/></svg>',
     rest: '<svg viewBox="0 0 24 24"><path d="M5 14c2.5-1.5 4-4.5 4-8 3 1 5.5 3.5 5.5 7 0 3.6-2.9 6.5-6.5 6.5S1.5 16.6 1.5 13"/></svg>',
@@ -22,7 +21,6 @@
     greeting: document.getElementById("greeting"),
     mini: document.getElementById("mini"),
     snackbar: document.getElementById("snackbar"),
-    todayDate: document.getElementById("todayDate"),
     weekDays: document.getElementById("weekDays"),
     whisper: document.getElementById("whisper")
   };
@@ -45,10 +43,6 @@
     const month = String(date.getMonth() + 1).padStart(2, "0");
     const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
-  }
-
-  function formatFullDate(date) {
-    return `${dayNames[date.getDay()]}, ${monthNames[date.getMonth()]} ${date.getDate()}`;
   }
 
   function startOfWeek(date) {
@@ -187,7 +181,6 @@
     });
   }
 
-  els.todayDate.textContent = formatFullDate(today);
   wireEvents();
   renderWeek();
 })();

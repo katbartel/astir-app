@@ -162,18 +162,10 @@ button {
 
 .today-head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-6);
   margin-bottom: var(--pad-card);
-}
-
-.date {
-  margin-bottom: var(--space-2);
-  color: var(--muted);
-  font-size: var(--type-secondary);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
 }
 
 h1 {
@@ -477,7 +469,7 @@ select:focus {
   }
 
   .today-head {
-    align-items: flex-start;
+    align-items: center;
   }
 
   .days {

@@ -18,6 +18,8 @@ file:///Users/kate/Documents/Career%20app_July/index.html?agentation=1
 
 3. Add notes in the Agentation toolbar.
 
+The development loader mounts the real Agentation component with `endpoint: "http://localhost:4747"` so notes can be read by Codex through MCP.
+
 ## Turn it off
 
 Refresh `index.html` without the `agentation=1` query string.

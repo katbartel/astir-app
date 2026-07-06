@@ -92,6 +92,7 @@
   --modal-max: 400px;
   --typeahead-max-height: 200px;
   --demo-panel-width: 260px;
+  --table-column-min: 52px;
   --calendar-width: 252px;
   --calendar-day-size: 30px;
   --mobile-cutoff: 760px;

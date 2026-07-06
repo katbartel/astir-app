@@ -23,3 +23,31 @@ The development loader mounts the real Agentation component with `endpoint: "htt
 ## Turn it off
 
 Refresh `index.html` without the `agentation=1` query string.
+
+## Preview-state links
+
+Always provide Kate with a build link that includes the preview-state toggle panel:
+
+```text
+http://localhost:5174/?demo=1
+```
+
+For Agentation notes plus preview states:
+
+```text
+http://localhost:5174/?demo=1&agentation=1
+```
+
+The demo panel must include toggles for important screen states. Current required states:
+
+1. Home: no applications, at least 1 application.
+2. Week: not set up, in progress, done and mixed goal states.
+3. Pipeline: no entries, with entries.
+4. All applications: no entries, with entries.
+
+Deep links can request a specific preview:
+
+```text
+http://localhost:5174/?demo=pipelineEntries#pipeline
+http://localhost:5174/?demo=applicationsEntries#applications
+```

@@ -1,7 +1,9 @@
 (function () {
   const storageKey = "astir.v1";
+  const tableWidthKey = "astir.applicationTableWidths";
   const atsHosts = ["greenhouse", "lever", "ashby", "workday", "smartrecruiters"];
-  const statusOptions = ["Applied", "1st stage", "2nd stage", "3rd stage", "Offer", "Rejected", "Hired"];
+  const statusOptions = ["Applied", "1st stage", "2nd stage", "3rd stage", "Offer", "Hired", "Closed"];
+  const pipelineStages = ["1st stage", "2nd stage", "3rd stage", "Offer", "Hired"];
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
   const activityOrder = ["apply", "net", "rest", "prep", "docs"];
   const numericLimits = {
@@ -126,7 +128,14 @@
   const els = {
     addApplication: document.getElementById("addApplication"),
     addCompany: document.getElementById("addCompany"),
+    allApplicationsLink: document.getElementById("allApplicationsLink"),
+    applicationsCount: document.getElementById("applicationsCount"),
+    applicationsSearch: document.getElementById("applicationsSearch"),
+    applicationsSearchToggle: document.getElementById("applicationsSearchToggle"),
+    applicationsSearchWrap: document.getElementById("applicationsSearchWrap"),
+    applicationsTable: document.getElementById("applicationsTable"),
     backdrop: document.getElementById("jobBackdrop"),
+    cancelDeleteApplication: document.getElementById("cancelDeleteApplication"),
     cancelHeard: document.getElementById("cancelHeard"),
     cancelJob: document.getElementById("cancelJob"),
     cancelCompany: document.getElementById("cancelCompany"),
@@ -136,9 +145,14 @@
     companyForm: document.getElementById("companyForm"),
     companyPrefillNote: document.getElementById("companyPrefillNote"),
     confirmRemoveCompany: document.getElementById("confirmRemoveCompany"),
+    confirmDeleteApplication: document.getElementById("confirmDeleteApplication"),
+    deleteApplicationBackdrop: document.getElementById("deleteApplicationBackdrop"),
+    deleteApplicationCopy: document.getElementById("deleteApplicationCopy"),
     demoActions: document.getElementById("demoActions"),
+    demoApplicationActions: document.getElementById("demoApplicationActions"),
     demoHomeActions: document.getElementById("demoHomeActions"),
     demoPanel: document.getElementById("demoPanel"),
+    demoPipelineActions: document.getElementById("demoPipelineActions"),
     editCompanyBackdrop: document.getElementById("editCompanyBackdrop"),
     editCompanyForm: document.getElementById("editCompanyForm"),
     editGoals: document.getElementById("editGoals"),
@@ -148,12 +162,30 @@
     heardBack: document.getElementById("heardBack"),
     heardBackdrop: document.getElementById("heardBackdrop"),
     heardBackSection: document.getElementById("heardBackSection"),
+    heardPickStep: document.getElementById("heardPickStep"),
     heardQuery: document.getElementById("heardQuery"),
     heardResults: document.getElementById("heardResults"),
+    heardSelection: document.getElementById("heardSelection"),
+    heardStageList: document.getElementById("heardStageList"),
+    heardStageStep: document.getElementById("heardStageStep"),
+    heardTitle: document.getElementById("heardTitle"),
+    hiredBackdrop: document.getElementById("hiredBackdrop"),
+    hiredCleanup: document.getElementById("hiredCleanup"),
+    hiredCopy: document.getElementById("hiredCopy"),
+    finishHired: document.getElementById("finishHired"),
+    confettiCanvas: document.getElementById("confettiCanvas"),
     interactionScrim: document.getElementById("interactionScrim"),
     jobWatchHint: document.getElementById("jobWatchHint"),
+    jobTitle: document.getElementById("jobTitle"),
     mini: document.getElementById("mini"),
     navLinks: document.querySelectorAll("[data-screen-link]"),
+    pipelineActions: document.getElementById("pipelineActions"),
+    pipelineAddApplication: document.getElementById("pipelineAddApplication"),
+    pipelineHeardBack: document.getElementById("pipelineHeardBack"),
+    pipelineList: document.getElementById("pipelineList"),
+    pipelineMenuButton: document.getElementById("pipelineMenuButton"),
+    pipelineMenuHint: document.getElementById("pipelineMenuHint"),
+    pipelineMenuWrap: document.getElementById("pipelineMenuWrap"),
     removeCompanyBackdrop: document.getElementById("removeCompanyBackdrop"),
     removeCompanyTitle: document.getElementById("removeCompanyTitle"),
     screens: document.querySelectorAll("[data-screen]"),
@@ -174,9 +206,18 @@
   let openMenuId = "";
   let openLayer = "";
   let quietOpen = false;
+  let expandedPipelineId = "";
+  let activeDeleteApplicationId = "";
+  let applicationsSearchOpen = false;
   let autoFilledCompany = false;
   let userEditedCompany = false;
   let heardReturnFocus = null;
+  let heardSelectedApplicationId = "";
+  let activeHiredApplicationId = "";
+  let confettiFrame = 0;
+  let applicationSort = { key: "company", dir: "asc" };
+  let applicationTableWidths = loadTableWidths();
+  let resizingColumn = null;
   let calendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
 
   function relativeIso(hours) {
@@ -210,6 +251,57 @@
     };
   }
 
+  function normalizeStatus(status) {
+    if (status === "Rejected") return "Closed";
+    return statusOptions.includes(status) ? status : "Applied";
+  }
+
+  function normalizeNote(note) {
+    const normalizeBlock = (block) => {
+      if (block && block.type === "check") {
+        return { type: "check", checked: Boolean(block.checked), text: String(block.text || "") };
+      }
+      return { type: "text", text: String(block && block.text ? block.text : "") };
+    };
+    if (note && typeof note === "object") {
+      if (Array.isArray(note.blocks)) {
+        return {
+          kind: "blocks",
+          blocks: note.blocks.map(normalizeBlock).filter((block) => block.type === "check" || block.text)
+        };
+      }
+      return {
+        kind: note.kind || "plain",
+        text: String(note.text || ""),
+        blocks: note.text ? [{ type: "text", text: String(note.text || "") }] : []
+      };
+    }
+    const text = String(note || "");
+    return {
+      kind: "blocks",
+      text,
+      blocks: text ? [{ type: "text", text }] : []
+    };
+  }
+
+  function normalizeApplication(application) {
+    const status = normalizeStatus(application.status);
+    const stageChangedAt = application.stageChangedAt || application.updatedAt || application.appliedDate || "";
+    return {
+      ...application,
+      id: application.id || `application-${Date.now()}`,
+      postingId: application.postingId || "",
+      companyId: application.companyId || "",
+      link: application.link || "",
+      company: application.company || "",
+      role: application.role || "",
+      appliedDate: application.appliedDate || "",
+      status,
+      stageChangedAt,
+      note: normalizeNote(application.note)
+    };
+  }
+
   function shouldUseFreshWatchlistSeed(saved) {
     if (!Array.isArray(saved.watchlist)) return true;
     const ids = saved.watchlist.map((company) => company.id).sort().join(",");
@@ -220,7 +312,7 @@
     try {
       const saved = JSON.parse(localStorage.getItem(storageKey)) || {};
       return {
-        applications: Array.isArray(saved.applications) ? saved.applications : [],
+        applications: Array.isArray(saved.applications) ? saved.applications.map(normalizeApplication) : [],
         days: saved.days || {},
         weeks: saved.weeks || {},
         hasVisited: Boolean(saved.hasVisited),
@@ -236,6 +328,18 @@
     if (!demoState) {
       localStorage.setItem(storageKey, JSON.stringify(state));
     }
+  }
+
+  function loadTableWidths() {
+    try {
+      return JSON.parse(localStorage.getItem(tableWidthKey)) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  function saveTableWidths() {
+    localStorage.setItem(tableWidthKey, JSON.stringify(applicationTableWidths));
   }
 
   function activeState() {
@@ -312,6 +416,8 @@
     openLayer = "";
     syncSurfaceState();
     renderSharedControls();
+    renderPipeline();
+    renderApplicationsPage();
   }
 
   function syncSurfaceState() {
@@ -552,7 +658,7 @@
     const goals = ensureWeek().goals;
     const selectedById = new Map(goals.map((goal) => [goal.id, goal]));
     const allMet = goals.length > 0 && goals.every(isGoalMet);
-    const support = allMet ? "You achieved all your week's goals. Congrats!" : "You're doing great, keep it up!";
+    const support = allMet ? "You achieved all your week's goals. Congrats." : "You're doing great, keep it up.";
     els.editGoals.textContent = "Edit";
     els.editGoals.hidden = false;
     els.goalsBody.innerHTML = `
@@ -671,6 +777,8 @@
   function render() {
     renderGoalsCard();
     renderWatchlist();
+    renderPipeline();
+    renderApplicationsPage();
     els.heardBackSection.hidden = activeState().applications.length === 0;
   }
 
@@ -801,6 +909,362 @@
       ${quiet}`;
   }
 
+  function applicationNoteText(application) {
+    const note = normalizeNote(application.note);
+    if (Array.isArray(note.blocks) && note.blocks.length > 0) {
+      return note.blocks.map((block) => block.text || "").join("");
+    }
+    return note.text || "";
+  }
+
+  function noteHtml(application) {
+    const note = normalizeNote(application.note);
+    const blocks = Array.isArray(note.blocks) ? note.blocks : [];
+    if (blocks.length === 0) return "";
+    return blocks.map((block) => {
+      if (block.type === "check") {
+        return `<span class="note-check" contenteditable="false" data-note-check="${block.checked ? "true" : "false"}" role="checkbox" aria-checked="${block.checked ? "true" : "false"}" tabindex="0"><span class="note-box" aria-hidden="true">${block.checked ? icon.check : ""}</span></span>`;
+      }
+      return `<span class="note-text">${escapeText(block.text)}</span>`;
+    }).join("");
+  }
+
+  function noteBlocksFromText(text) {
+    const parts = String(text || "").split("[]");
+    const blocks = [];
+    parts.forEach((part, index) => {
+      if (part) blocks.push({ type: "text", text: part });
+      if (index < parts.length - 1) blocks.push({ type: "check", checked: false, text: "" });
+    });
+    return blocks;
+  }
+
+  function serializeNoteField(field) {
+    const blocks = [];
+    field.childNodes.forEach((node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        if (node.textContent) blocks.push({ type: "text", text: node.textContent });
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      if (node.classList.contains("note-check")) {
+        blocks.push({ type: "check", checked: node.dataset.noteCheck === "true", text: "" });
+        return;
+      }
+      if (node.textContent) {
+        blocks.push({ type: "text", text: node.textContent });
+      }
+    });
+    return {
+      kind: "blocks",
+      blocks: blocks.filter((block) => block.type === "check" || block.text)
+    };
+  }
+
+  function renderNoteField(application) {
+    return `<div class="note-field" contenteditable="true" role="textbox" aria-label="Application note" data-note-application="${escapeText(application.id)}" data-placeholder="Add a note">${noteHtml(application)}</div>`;
+  }
+
+  function isPipelineApplication(application) {
+    return pipelineStages.includes(normalizeStatus(application.status));
+  }
+
+  function stageRank(status) {
+    return statusOptions.indexOf(normalizeStatus(status));
+  }
+
+  function pipelineApplications() {
+    return activeState().applications
+      .filter(isPipelineApplication)
+      .sort((a, b) => {
+        const bTime = new Date(b.stageChangedAt || b.appliedDate || 0).getTime() || 0;
+        const aTime = new Date(a.stageChangedAt || a.appliedDate || 0).getTime() || 0;
+        return bTime - aTime;
+      });
+  }
+
+  function findApplication(applicationId) {
+    return activeState().applications.find((application) => application.id === applicationId) || null;
+  }
+
+  function postingForApplication(application) {
+    if (!application.postingId) return null;
+    for (const company of ensureWatchlist()) {
+      const role = company.roles.find((item) => item.id === application.postingId);
+      if (role) return role;
+    }
+    return null;
+  }
+
+  function plainDate(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return `${date.getDate()} ${monthNames[date.getMonth()]} ${date.getFullYear()}`;
+  }
+
+  function tableValue(value) {
+    return value ? escapeText(value) : "—";
+  }
+
+  function stageSelect(application, context) {
+    const value = normalizeStatus(application.status);
+    const layerId = `stage:${context}:${application.id}`;
+    const open = openLayer === layerId;
+    const selectedIndex = Math.max(0, statusOptions.indexOf(value));
+    return `
+      <div class="select-shell stage-select" data-stage-shell="${escapeText(application.id)}">
+        <button class="select-trigger ${open ? "open" : ""}" type="button" data-toggle-stage="${escapeText(application.id)}" data-stage-context="${context}" aria-haspopup="listbox" aria-expanded="${open}">
+          <span>${escapeText(value)}</span>
+          <span class="select-chev" aria-hidden="true">${icon.chevronDown}</span>
+        </button>
+        <div class="select-menu ${open ? "open" : ""}" role="listbox" style="--selected-index: ${selectedIndex}">
+          ${statusOptions.map((option) => `
+            <button class="select-option ${option === value ? "selected" : ""}" type="button" role="option" aria-selected="${option === value}" data-stage-option="${escapeText(option)}" data-stage-application="${escapeText(application.id)}" data-stage-context="${context}">
+              <span>${escapeText(option)}</span>
+              <span class="select-check" aria-hidden="true">${option === value ? icon.check : ""}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>`;
+  }
+
+  function applicationMeta(application) {
+    const posting = postingForApplication(application);
+    const firstLocation = posting && posting.locations && posting.locations[0] ? posting.locations[0] : null;
+    const parts = [];
+    if (posting && posting.first_seen) parts.push(`Posted: <span>${escapeText(plainDate(posting.first_seen))}</span>`);
+    parts.push(`Applied: <span>${escapeText(plainDate(application.appliedDate) || "Unknown")}</span>`);
+    if (firstLocation) {
+      parts.push(`Location: <span>${escapeText(firstLocation.city || "Unknown")}</span>`);
+      parts.push(`Type: <span>${escapeText(normalizeMode(firstLocation.mode))}</span>`);
+    }
+    return parts.join(" · ");
+  }
+
+  function pipelineCard(application) {
+    const expanded = expandedPipelineId === application.id;
+    const posting = postingForApplication(application);
+    const openUrl = application.link || (posting && posting.url) || "";
+    return `
+      <article class="pipeline-card ${expanded ? "expanded" : ""}" data-pipeline-card="${escapeText(application.id)}">
+        <div class="pipeline-card-row">
+          <div class="pipeline-card-main">
+            <span class="pipeline-company">${escapeText(application.company)}</span>
+            <span class="dot-sep" aria-hidden="true"></span>
+            <span class="pipeline-role" title="${escapeText(application.role)}">${escapeText(application.role)}</span>
+            ${openUrl ? `<button class="round-icon small pipeline-open" type="button" data-open-role="${escapeText(openUrl)}" aria-label="Open posting" data-tooltip="Open posting">${icon.open}</button>` : ""}
+          </div>
+          ${stageSelect(application, "pipeline")}
+        </div>
+        <div class="pipeline-details" ${expanded ? "" : "hidden"}>
+          <div class="pipeline-meta">${applicationMeta(application)}</div>
+          ${renderNoteField(application)}
+        </div>
+      </article>`;
+  }
+
+  function pipelineEmpty() {
+    return `
+      <div class="pipeline-empty">
+        <div class="sleepy-orb" aria-hidden="true">
+          <span class="sleepy-core"></span>
+          <span class="sleepy-z z-one">z</span>
+          <span class="sleepy-z z-two">z</span>
+          <span class="sleepy-z z-three">z</span>
+        </div>
+        <p>Nothing in motion for now. When you hear back, it will show here. In the meantime, add companies to your <a href="#watchlist">Watchlist</a> and log applications as you send them.</p>
+        <div class="pipeline-empty-actions">
+          <button class="btn ghost" type="button" data-empty-add-application>Add application</button>
+          <button class="btn solid" type="button" data-empty-heard-back>I heard back</button>
+        </div>
+      </div>`;
+  }
+
+  function renderPipeline() {
+    const applications = pipelineApplications();
+    const empty = applications.length === 0;
+    els.pipelineActions.hidden = empty;
+    els.pipelineMenuWrap.classList.toggle("open", openMenuId === "pipeline");
+    els.pipelineMenuHint.textContent = empty ? "This is where your applications will live" : "View everything you have applied to.";
+    els.allApplicationsLink.disabled = empty;
+    els.pipelineList.innerHTML = empty ? pipelineEmpty() : applications.map(pipelineCard).join("");
+  }
+
+  function applicationCountText(count) {
+    return count === 1 ? "1 application" : `${count} applications`;
+  }
+
+  function filteredApplications() {
+    const query = (els.applicationsSearch.value || "").trim().toLowerCase();
+    return activeState().applications
+      .filter((application) => {
+        if (!query) return true;
+        return `${application.company || ""} ${application.role || ""}`.toLowerCase().includes(query);
+      })
+      .sort((a, b) => {
+        let result = 0;
+        if (applicationSort.key === "stage") {
+          result = stageRank(a.status) - stageRank(b.status);
+        } else if (applicationSort.key === "role") {
+          result = String(a.role || "").localeCompare(String(b.role || ""));
+        } else {
+          result = String(a.company || "").localeCompare(String(b.company || ""));
+        }
+        if (result === 0) {
+          result = String(a.company || "").localeCompare(String(b.company || "")) || String(a.role || "").localeCompare(String(b.role || ""));
+        }
+        return applicationSort.dir === "desc" ? result * -1 : result;
+      });
+  }
+
+  function applicationColumns() {
+    return [
+      { key: "company", label: "Company", sortable: true },
+      { key: "role", label: "Role", sortable: true },
+      { key: "stage", label: "Stage", sortable: true },
+      { key: "location", label: "Location" },
+      { key: "type", label: "Type" },
+      { key: "posted", label: "Posted" },
+      { key: "applied", label: "Applied" },
+      { key: "menu", label: "" }
+    ];
+  }
+
+  function columnStyle(columnKey) {
+    const width = applicationTableWidths[columnKey];
+    return width ? ` style="width: ${Number(width)}px"` : "";
+  }
+
+  function sortIndicator(column) {
+    if (!column.sortable || applicationSort.key !== column.key) return "";
+    const direction = applicationSort.dir === "desc" ? " desc" : " asc";
+    return `<span class="sort-indicator${direction}" aria-hidden="true">${icon.chevronDown}</span>`;
+  }
+
+  function tableHeader(column, index) {
+    const sortable = column.sortable ? " sortable" : "";
+    const active = applicationSort.key === column.key ? " active-sort" : "";
+    const label = column.label ? `<span>${column.label}</span>${sortIndicator(column)}` : "";
+    const button = column.sortable
+      ? `<button type="button" data-sort-applications="${column.key}">${label}</button>`
+      : `<span>${label}</span>`;
+    const handle = column.key !== "menu" ? `<span class="column-resizer" data-resize-column="${column.key}" data-column-index="${index}" aria-hidden="true"></span>` : "";
+    return `<th class="${sortable}${active}" data-column="${column.key}"${columnStyle(column.key)}>${button}${handle}</th>`;
+  }
+
+  function applicationTableRow(application) {
+    const posting = postingForApplication(application);
+    const firstLocation = posting && posting.locations && posting.locations[0] ? posting.locations[0] : null;
+    const openUrl = application.link || (posting && posting.url) || "";
+    const menuOpen = openMenuId === `application:${application.id}` ? " open" : "";
+    return `
+      <tr>
+        <td>${tableValue(application.company)}</td>
+        <td>
+          <span class="table-role">
+            <span>${tableValue(application.role)}</span>
+            ${openUrl ? `<button class="round-icon small" type="button" data-open-role="${escapeText(openUrl)}" aria-label="Open posting" data-tooltip="Open posting">${icon.open}</button>` : ""}
+          </span>
+        </td>
+        <td>${stageSelect(application, "applications")}</td>
+        <td>${tableValue(firstLocation && firstLocation.city)}</td>
+        <td>${tableValue(firstLocation && normalizeMode(firstLocation.mode))}</td>
+        <td>${tableValue(posting && plainDate(posting.first_seen))}</td>
+        <td>${tableValue(plainDate(application.appliedDate))}</td>
+        <td>
+          <span class="menu-wrap${menuOpen}">
+            <button class="round-icon kebab" type="button" data-application-menu="${escapeText(application.id)}" aria-label="More" data-tooltip="More">${icon.kebab}</button>
+            <span class="watch-menu application-menu">
+              <button type="button" data-edit-application="${escapeText(application.id)}">Edit</button>
+              <button type="button" data-delete-application="${escapeText(application.id)}">Delete</button>
+            </span>
+          </span>
+        </td>
+      </tr>`;
+  }
+
+  function renderApplicationsPage() {
+    const all = activeState().applications;
+    const applications = filteredApplications();
+    const columns = applicationColumns();
+    els.applicationsCount.textContent = applicationCountText(all.length);
+    els.applicationsSearch.hidden = !applicationsSearchOpen;
+    els.applicationsSearchWrap.classList.toggle("open", applicationsSearchOpen);
+    els.applicationsTable.innerHTML = `
+      <table class="applications-table">
+        <colgroup>
+          ${columns.map((column) => `<col data-col="${column.key}"${columnStyle(column.key)}>`).join("")}
+        </colgroup>
+        <thead>
+          <tr>
+            ${columns.map(tableHeader).join("")}
+          </tr>
+        </thead>
+        <tbody>
+          ${applications.length > 0 ? applications.map(applicationTableRow).join("") : '<tr><td colspan="8" class="table-empty">No applications here yet.</td></tr>'}
+        </tbody>
+      </table>`;
+  }
+
+  function toggleApplicationSort(key) {
+    if (!["company", "role", "stage"].includes(key)) return;
+    if (applicationSort.key === key) {
+      applicationSort.dir = applicationSort.dir === "asc" ? "desc" : "asc";
+    } else {
+      applicationSort = { key, dir: "asc" };
+    }
+    renderApplicationsPage();
+  }
+
+  function startColumnResize(handle, pointerX) {
+    const header = handle.closest("th");
+    if (!header) return;
+    resizingColumn = {
+      key: handle.dataset.resizeColumn,
+      startX: pointerX,
+      startWidth: header.getBoundingClientRect().width
+    };
+    document.body.classList.add("resizing-table");
+  }
+
+  function resizeColumn(pointerX) {
+    if (!resizingColumn) return;
+    const minWidth = Number(getComputedStyle(document.documentElement).getPropertyValue("--table-column-min").replace("px", "")) || 0;
+    const nextWidth = Math.max(minWidth, resizingColumn.startWidth + pointerX - resizingColumn.startX);
+    applicationTableWidths[resizingColumn.key] = Math.round(nextWidth);
+    const cells = els.applicationsTable.querySelectorAll(`[data-column="${resizingColumn.key}"], [data-col="${resizingColumn.key}"]`);
+    cells.forEach((cell) => {
+      cell.style.width = `${applicationTableWidths[resizingColumn.key]}px`;
+    });
+  }
+
+  function finishColumnResize() {
+    if (!resizingColumn) return;
+    saveTableWidths();
+    resizingColumn = null;
+    document.body.classList.remove("resizing-table");
+  }
+
+  function placeCaretAtEnd(element) {
+    const range = document.createRange();
+    const selection = window.getSelection();
+    range.selectNodeContents(element);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
+  function rerenderNoteField(field, note) {
+    field.innerHTML = normalizeNote(note).blocks.map((block) => {
+      if (block.type === "check") {
+        return `<span class="note-check" contenteditable="false" data-note-check="${block.checked ? "true" : "false"}" role="checkbox" aria-checked="${block.checked ? "true" : "false"}" tabindex="0"><span class="note-box" aria-hidden="true">${block.checked ? icon.check : ""}</span></span>`;
+      }
+      return `<span class="note-text">${escapeText(block.text)}</span>`;
+    }).join("");
+    placeCaretAtEnd(field);
+  }
+
   function markManualDay(kind, value) {
     const week = ensureWeek();
     week.activityDays[todayKey] = week.activityDays[todayKey] || {};
@@ -859,7 +1323,7 @@
   }
 
   function showScreen(name) {
-    const screenName = name === "watchlist" ? "watchlist" : "today";
+    const screenName = ["watchlist", "pipeline", "applications"].includes(name) ? name : "today";
     els.screens.forEach((screen) => {
       const active = screen.dataset.screen === screenName;
       screen.hidden = !active;
@@ -873,6 +1337,9 @@
       } else {
         link.removeAttribute("aria-current");
       }
+    });
+    document.querySelectorAll("[data-applications-crumb]").forEach((link) => {
+      link.setAttribute("aria-current", screenName === "applications" ? "page" : "false");
     });
     if (screenName !== "today") {
       mode = "view";
@@ -888,8 +1355,9 @@
     modalReturnFocus = returnFocus;
     setModalOrigin(origin);
     els.form.reset();
-    els.form.elements.appliedDate.value = todayKey;
-    els.form.elements.status.value = "Applied";
+    els.form.dataset.editingId = prefill.id || "";
+    els.form.elements.appliedDate.value = prefill.appliedDate || todayKey;
+    els.form.elements.status.value = normalizeStatus(prefill.status || "Applied");
     calendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
     openLayer = "";
     els.form.dataset.companyId = prefill.companyId || "";
@@ -897,6 +1365,9 @@
     els.form.elements.company.value = prefill.company || "";
     els.form.elements.role.value = prefill.role || "";
     els.form.elements.link.value = prefill.link || "";
+    els.form.elements.note.value = prefill.note ? applicationNoteText(prefill) : "";
+    els.jobTitle.textContent = prefill.id ? "Edit application" : "Add application";
+    els.form.querySelector('button[type="submit"]').textContent = prefill.id ? "Save changes" : "Add application";
     renderSharedControls();
     updateApplicationSubmit();
     els.backdrop.hidden = false;
@@ -917,6 +1388,10 @@
 
   function openHeardModal(returnFocus = els.heardBack) {
     heardReturnFocus = returnFocus;
+    heardSelectedApplicationId = "";
+    els.heardTitle.textContent = "Who did you hear from?";
+    els.heardPickStep.hidden = false;
+    els.heardStageStep.hidden = true;
     els.heardQuery.value = "";
     els.heardResults.hidden = true;
     els.heardResults.innerHTML = "";
@@ -928,10 +1403,19 @@
   function closeHeardModal() {
     els.heardBackdrop.hidden = true;
     els.heardResults.hidden = true;
-    if (heardReturnFocus) {
+    heardSelectedApplicationId = "";
+    els.heardPickStep.hidden = false;
+    els.heardStageStep.hidden = true;
+    if (heardReturnFocus && els.hiredBackdrop.hidden) {
       heardReturnFocus.focus();
     }
     heardReturnFocus = null;
+    syncSurfaceState();
+  }
+
+  function closeHiredModal() {
+    els.hiredBackdrop.hidden = true;
+    activeHiredApplicationId = "";
     syncSurfaceState();
   }
 
@@ -984,6 +1468,32 @@
     syncSurfaceState();
   }
 
+  function openDeleteApplication(applicationId) {
+    const application = findApplication(applicationId);
+    if (!application) return;
+    activeDeleteApplicationId = applicationId;
+    els.deleteApplicationCopy.textContent = `This removes ${application.company}, ${application.role} and its notes. There is no undo.`;
+    els.deleteApplicationBackdrop.hidden = false;
+    syncSurfaceState();
+    els.confirmDeleteApplication.focus();
+  }
+
+  function closeDeleteApplication() {
+    els.deleteApplicationBackdrop.hidden = true;
+    activeDeleteApplicationId = "";
+    syncSurfaceState();
+  }
+
+  function deleteActiveApplication() {
+    const application = findApplication(activeDeleteApplicationId);
+    if (!application) return;
+    activeState().applications = activeState().applications.filter((item) => item.id !== activeDeleteApplicationId);
+    saveState();
+    closeDeleteApplication();
+    showSnack("Application deleted.");
+    render();
+  }
+
   function findCompany(companyId) {
     return ensureWatchlist().find((company) => company.id === companyId);
   }
@@ -992,6 +1502,40 @@
     const company = findCompany(companyId);
     if (!company) return null;
     return company.roles.find((role) => role.id === roleId) || null;
+  }
+
+  function updateApplicationStage(applicationId, status, context) {
+    const application = findApplication(applicationId);
+    if (!application) return;
+    const previousPipeline = isPipelineApplication(application);
+    application.status = normalizeStatus(status);
+    application.stageChangedAt = new Date().toISOString();
+    openLayer = "";
+    saveState();
+    if (context === "pipeline" && previousPipeline && application.status === "Applied") {
+      showSnack("Moved back to applied. Kept in all applications.", {
+        linkText: "all applications",
+        href: "#applications",
+        duration: 5000
+      });
+    } else if (context === "pipeline" && previousPipeline && application.status === "Closed") {
+      showSnack("Closed. Kept in all applications.", {
+        linkText: "all applications",
+        href: "#applications",
+        duration: 5000
+      });
+    } else if (application.status === "Hired") {
+      openHiredMoment(application.id);
+    }
+    syncSurfaceState();
+    render();
+  }
+
+  function updateApplicationNote(applicationId, note) {
+    const application = findApplication(applicationId);
+    if (!application) return;
+    application.note = normalizeNote(note);
+    saveState();
   }
 
   function saveCompany(formData) {
@@ -1041,6 +1585,30 @@
   }
 
   function saveApplication(formData) {
+    const editingId = els.form.dataset.editingId;
+    if (editingId) {
+      const application = findApplication(editingId);
+      if (!application) return;
+      application.postingId = els.form.dataset.postingId || application.postingId || "";
+      application.companyId = els.form.dataset.companyId || application.companyId || "";
+      application.link = formData.get("link").trim();
+      application.company = formData.get("company").trim();
+      application.role = formData.get("role").trim();
+      application.appliedDate = formData.get("appliedDate");
+      const nextStatus = normalizeStatus(formData.get("status"));
+      if (nextStatus !== application.status) {
+        application.stageChangedAt = new Date().toISOString();
+      }
+      application.status = nextStatus;
+      application.note = normalizeNote(formData.get("note").trim());
+      activeState().days[application.appliedDate] = "applied";
+      saveState();
+      if (application.status !== "Hired") {
+        showSnack("Application updated.");
+      }
+      render();
+      return application;
+    }
     const application = {
       id: window.crypto && window.crypto.randomUUID ? window.crypto.randomUUID() : String(Date.now()),
       postingId: els.form.dataset.postingId || "",
@@ -1050,15 +1618,19 @@
       role: formData.get("role").trim(),
       appliedDate: formData.get("appliedDate"),
       status: formData.get("status"),
-      note: formData.get("note").trim()
+      stageChangedAt: new Date().toISOString(),
+      note: normalizeNote(formData.get("note").trim())
     };
 
     activeState().applications.push(application);
     activeState().days[application.appliedDate] = "applied";
     saveState();
     pulseMini();
-    showSnack("Application added.");
+    if (application.status !== "Hired") {
+      showSnack("Application added.");
+    }
     render();
+    return application;
   }
 
   function updateApplicationSubmit() {
@@ -1157,18 +1729,133 @@
       </button>`).join("");
   }
 
-  function confirmHeardBack(applicationId) {
+  function renderHeardStageStep(application) {
+    els.heardTitle.textContent = "What happened?";
+    els.heardPickStep.hidden = true;
+    els.heardStageStep.hidden = false;
+    els.heardSelection.textContent = `${application.company} · ${application.role}`;
+    els.heardStageList.innerHTML = statusOptions.map((option) => {
+      const separator = option === "1st stage" || option === "Closed" ? '<div class="stage-separator" aria-hidden="true"></div>' : "";
+      return `
+        ${separator}
+        <button class="stage-choice" type="button" data-heard-stage="${escapeText(option)}">
+          <span>${escapeText(option)}</span>
+          <span class="select-check" aria-hidden="true">${option === normalizeStatus(application.status) ? icon.check : ""}</span>
+        </button>`;
+    }).join("");
+    const firstChoice = els.heardStageList.querySelector("[data-heard-stage]");
+    if (firstChoice) firstChoice.focus();
+  }
+
+  function chooseHeardApplication(applicationId) {
     const application = activeState().applications.find((item) => item.id === applicationId);
     if (!application) return;
-    application.status = "1st stage";
-    saveState();
+    heardSelectedApplicationId = applicationId;
+    renderHeardStageStep(application);
+  }
+
+  function confirmHeardStage(status) {
+    if (!heardSelectedApplicationId) return;
+    const nextStatus = normalizeStatus(status);
+    updateApplicationStage(heardSelectedApplicationId, nextStatus, "heard");
     closeHeardModal();
-    showSnack("In your pipeline now, first stage. Nothing to do yet.", {
-      linkText: "pipeline",
-      href: "#",
-      duration: 5000
-    });
-    render();
+    if (nextStatus !== "Hired") {
+      const inPipeline = pipelineStages.includes(nextStatus);
+      showSnack(inPipeline ? "Updated. You can see it in pipeline." : "Updated. Kept in all applications.", {
+        linkText: inPipeline ? "pipeline" : "all applications",
+        href: inPipeline ? "#pipeline" : "#applications",
+        duration: 5000
+      });
+    }
+  }
+
+  function otherPipelineApplications(applicationId) {
+    return pipelineApplications().filter((application) => application.id !== applicationId);
+  }
+
+  function openHiredMoment(applicationId) {
+    const application = findApplication(applicationId);
+    if (!application) return;
+    activeHiredApplicationId = applicationId;
+    els.hiredCopy.textContent = `You accepted an offer at ${application.company}. This is a big deal, give yourself a pat on the back.`;
+    const others = otherPipelineApplications(applicationId);
+    els.hiredCleanup.hidden = others.length === 0;
+    const selfChoice = els.hiredBackdrop.querySelector('input[name="hiredCleanupChoice"][value="self"]');
+    if (selfChoice) selfChoice.checked = true;
+    els.hiredBackdrop.hidden = false;
+    syncSurfaceState();
+    launchConfetti();
+    els.finishHired.focus();
+  }
+
+  function finishHiredMoment() {
+    const choice = els.hiredBackdrop.querySelector('input[name="hiredCleanupChoice"]:checked');
+    if (choice && choice.value === "all" && activeHiredApplicationId) {
+      otherPipelineApplications(activeHiredApplicationId).forEach((application) => {
+        application.status = "Closed";
+        application.stageChangedAt = new Date().toISOString();
+      });
+      saveState();
+      render();
+    }
+    closeHiredModal();
+  }
+
+  function tokenColor(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  function launchConfetti() {
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const canvas = els.confettiCanvas;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    window.cancelAnimationFrame(confettiFrame);
+    const colors = ["--gold", "--net-deep", "--rest", "--prep", "--ember-light"].map(tokenColor);
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = width * scale;
+    canvas.height = height * scale;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    context.setTransform(scale, 0, 0, scale, 0, 0);
+    canvas.hidden = false;
+    const particles = Array.from({ length: 130 }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * -height * .35,
+      w: 4 + Math.random() * 8,
+      h: 8 + Math.random() * 12,
+      speed: 2 + Math.random() * 4,
+      drift: -1.5 + Math.random() * 3,
+      turn: Math.random() * Math.PI,
+      spin: -0.12 + Math.random() * .24,
+      color: colors[Math.floor(Math.random() * colors.length)]
+    }));
+    const started = performance.now();
+    function draw(now) {
+      const elapsed = now - started;
+      context.clearRect(0, 0, width, height);
+      particles.forEach((particle) => {
+        particle.y += particle.speed;
+        particle.x += particle.drift;
+        particle.turn += particle.spin;
+        context.save();
+        context.translate(particle.x, particle.y);
+        context.rotate(particle.turn);
+        context.fillStyle = particle.color;
+        context.globalAlpha = Math.max(0, 1 - elapsed / 2400);
+        context.fillRect(particle.w / -2, particle.h / -2, particle.w, particle.h);
+        context.restore();
+      });
+      if (elapsed < 2400) {
+        confettiFrame = window.requestAnimationFrame(draw);
+      } else {
+        canvas.hidden = true;
+        context.clearRect(0, 0, width, height);
+      }
+    }
+    confettiFrame = window.requestAnimationFrame(draw);
   }
 
   function presetApplications(count, dates) {
@@ -1181,6 +1868,74 @@
       status: "Applied",
       note: ""
     }));
+  }
+
+  function demoApplication(overrides = {}) {
+    const id = overrides.id || `demo-app-${Math.random().toString(16).slice(2)}`;
+    return normalizeApplication({
+      id,
+      postingId: overrides.postingId || "",
+      companyId: overrides.companyId || "",
+      link: overrides.link || "",
+      company: overrides.company || "Demo company",
+      role: overrides.role || "Product Manager",
+      appliedDate: overrides.appliedDate || todayKey,
+      status: overrides.status || "Applied",
+      stageChangedAt: overrides.stageChangedAt || new Date().toISOString(),
+      note: normalizeNote(overrides.note || "")
+    });
+  }
+
+  function demoPipelineApplications() {
+    return [
+      demoApplication({
+        id: "demo-pipeline-aiven",
+        postingId: "role-aiven-developer-experience",
+        companyId: "company-aiven",
+        link: "https://aiven.io/careers/role",
+        company: "Aiven",
+        role: "Staff Product Manager, Developer Experience",
+        appliedDate: toDateKey(addDays(today, -6)),
+        status: "1st stage",
+        stageChangedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+        note: "Recruiter screen next week."
+      }),
+      demoApplication({
+        id: "demo-pipeline-enpal",
+        postingId: "role-enpal-home-energy",
+        companyId: "company-enpal",
+        link: "https://enpal.com/careers/role",
+        company: "Enpal",
+        role: "Senior Product Manager, Home Energy",
+        appliedDate: toDateKey(addDays(today, -9)),
+        status: "2nd stage",
+        stageChangedAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+        note: "Prep examples around field ops."
+      })
+    ];
+  }
+
+  function demoArchiveApplications() {
+    return [
+      ...demoPipelineApplications(),
+      demoApplication({
+        id: "demo-archive-klarna",
+        postingId: "role-klarna-payments",
+        companyId: "company-klarna",
+        link: "https://klarna.com/careers/role",
+        company: "Klarna",
+        role: "Product Lead, Payments Experience",
+        appliedDate: toDateKey(addDays(today, -15)),
+        status: "Applied"
+      }),
+      demoApplication({
+        id: "demo-archive-closed",
+        company: "Northstar",
+        role: "Senior Product Manager",
+        appliedDate: toDateKey(addDays(today, -22)),
+        status: "Closed"
+      })
+    ];
   }
 
   function makeDemoPreset(name) {
@@ -1208,6 +1963,17 @@
     const week = base.weeks[weekKey];
 
     if (name === "empty" || name === "noApplications") {
+      return base;
+    }
+    if (name === "pipelineEmpty" || name === "applicationsEmpty") {
+      return base;
+    }
+    if (name === "pipelineEntries") {
+      base.applications = demoPipelineApplications();
+      return base;
+    }
+    if (name === "applicationsEntries") {
+      base.applications = demoArchiveApplications();
       return base;
     }
     if (name === "hasApplication") {
@@ -1267,6 +2033,13 @@
     mode = "view";
     renderDemoButtons();
     render();
+    if (name.startsWith("pipeline") && window.location.hash !== "#pipeline") {
+      window.location.hash = "pipeline";
+    } else if (name.startsWith("applications") && window.location.hash !== "#applications") {
+      window.location.hash = "applications";
+    } else if ((name === "noApplications" || name === "hasApplication") && window.location.hash !== "#today") {
+      window.location.hash = "today";
+    }
   }
 
   function renderDemoButtons() {
@@ -1281,30 +2054,42 @@
       ["mixed", "All five goals, mixed"],
       ["done", "All five goals, done"]
     ];
+    const pipelineStates = [
+      ["pipelineEmpty", "No entries"],
+      ["pipelineEntries", "With entries"]
+    ];
+    const applicationStates = [
+      ["applicationsEmpty", "No entries"],
+      ["applicationsEntries", "With entries"]
+    ];
     els.demoHomeActions.innerHTML = homeStates.map(([id, label]) => `<button type="button" class="${demoPreset === id ? "active" : ""}" data-demo="${id}">${label}</button>`).join("");
     els.demoActions.innerHTML = presets.map(([id, label]) => `<button type="button" class="${demoPreset === id ? "active" : ""}" data-demo="${id}">${label}</button>`).join("");
+    els.demoPipelineActions.innerHTML = pipelineStates.map(([id, label]) => `<button type="button" class="${demoPreset === id ? "active" : ""}" data-demo="${id}">${label}</button>`).join("");
+    els.demoApplicationActions.innerHTML = applicationStates.map(([id, label]) => `<button type="button" class="${demoPreset === id ? "active" : ""}" data-demo="${id}">${label}</button>`).join("");
   }
 
   function maybeEnableDemo() {
     const params = new URLSearchParams(window.location.search);
     if (!params.has("demo")) return;
     els.demoPanel.hidden = false;
-    setDemoPreset("empty");
+    const requested = params.get("demo");
+    setDemoPreset(requested && requested !== "1" ? requested : "empty");
   }
 
   function initialScreen() {
-    return window.location.hash === "#watchlist" ? "watchlist" : "today";
+    const hash = window.location.hash.replace("#", "");
+    return ["watchlist", "pipeline", "applications"].includes(hash) ? hash : "today";
   }
 
   function closeMenus() {
     if (!openMenuId) return;
     openMenuId = "";
     syncSurfaceState();
-    renderWatchlist();
+    render();
   }
 
   function activeModal() {
-    return [els.backdrop, els.heardBackdrop, els.companyBackdrop, els.editCompanyBackdrop, els.removeCompanyBackdrop].find((backdrop) => !backdrop.hidden);
+    return [els.backdrop, els.heardBackdrop, els.companyBackdrop, els.editCompanyBackdrop, els.removeCompanyBackdrop, els.deleteApplicationBackdrop, els.hiredBackdrop].find((backdrop) => !backdrop.hidden);
   }
 
   function trapFocus(event) {
@@ -1342,12 +2127,40 @@
     els.addApplication.addEventListener("click", () => openModal({}, els.addApplication, "home"));
     els.heardBack.addEventListener("click", () => openHeardModal(els.heardBack));
     els.addCompany.addEventListener("click", openCompanyModal);
+    els.pipelineAddApplication.addEventListener("click", () => openModal({}, els.pipelineAddApplication, "home"));
+    els.pipelineHeardBack.addEventListener("click", () => openHeardModal(els.pipelineHeardBack));
+    els.pipelineMenuButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openMenuId = openMenuId === "pipeline" ? "" : "pipeline";
+      syncSurfaceState();
+      renderPipeline();
+    });
+    els.allApplicationsLink.addEventListener("click", () => {
+      if (els.allApplicationsLink.disabled) return;
+      openMenuId = "";
+      syncSurfaceState();
+      window.location.hash = "applications";
+    });
+    els.applicationsSearchToggle.addEventListener("click", () => {
+      applicationsSearchOpen = true;
+      renderApplicationsPage();
+      els.applicationsSearch.focus();
+    });
+    els.applicationsSearch.addEventListener("input", renderApplicationsPage);
+    els.applicationsSearch.addEventListener("blur", () => {
+      if (els.applicationsSearch.value.trim()) return;
+      applicationsSearchOpen = false;
+      renderApplicationsPage();
+    });
     els.cancelHeard.addEventListener("click", closeHeardModal);
     els.cancelJob.addEventListener("click", closeModal);
     els.cancelCompany.addEventListener("click", closeCompanyModal);
     els.cancelEditCompany.addEventListener("click", closeEditCompany);
     els.cancelRemoveCompany.addEventListener("click", closeRemoveCompany);
+    els.cancelDeleteApplication.addEventListener("click", closeDeleteApplication);
     els.confirmRemoveCompany.addEventListener("click", removeActiveCompany);
+    els.confirmDeleteApplication.addEventListener("click", deleteActiveApplication);
+    els.finishHired.addEventListener("click", finishHiredMoment);
     els.editGoals.addEventListener("click", startSetup);
     els.interactionScrim.addEventListener("click", closeMenus);
 
@@ -1371,6 +2184,12 @@
     els.removeCompanyBackdrop.addEventListener("click", (event) => {
       if (event.target === els.removeCompanyBackdrop) closeRemoveCompany();
     });
+    els.deleteApplicationBackdrop.addEventListener("click", (event) => {
+      if (event.target === els.deleteApplicationBackdrop) closeDeleteApplication();
+    });
+    els.hiredBackdrop.addEventListener("click", (event) => {
+      if (event.target === els.hiredBackdrop) closeHiredModal();
+    });
 
     document.addEventListener("keydown", (event) => {
       trapFocus(event);
@@ -1383,6 +2202,8 @@
       if (event.key === "Escape" && !els.companyBackdrop.hidden) closeCompanyModal();
       if (event.key === "Escape" && !els.editCompanyBackdrop.hidden) closeEditCompany();
       if (event.key === "Escape" && !els.removeCompanyBackdrop.hidden) closeRemoveCompany();
+      if (event.key === "Escape" && !els.deleteApplicationBackdrop.hidden) closeDeleteApplication();
+      if (event.key === "Escape" && !els.hiredBackdrop.hidden) closeHiredModal();
       if (event.key === "Escape") closeMenus();
     });
 
@@ -1399,8 +2220,11 @@
       event.preventDefault();
       updateApplicationSubmit();
       if (els.form.querySelector('button[type="submit"]').disabled) return;
-      saveApplication(new FormData(els.form));
+      const savedApplication = saveApplication(new FormData(els.form));
       closeModal();
+      if (savedApplication && savedApplication.status === "Hired") {
+        openHiredMoment(savedApplication.id);
+      }
     });
     els.form.elements.link.addEventListener("input", maybeAutoFillApplication);
     els.form.elements.company.addEventListener("input", updateApplicationSubmit);
@@ -1467,8 +2291,150 @@
     els.heardQuery.addEventListener("input", renderHeardResults);
     els.heardResults.addEventListener("click", (event) => {
       const row = event.target.closest("[data-heard-application]");
-      if (row) confirmHeardBack(row.dataset.heardApplication);
+      if (row) chooseHeardApplication(row.dataset.heardApplication);
     });
+    els.heardStageList.addEventListener("click", (event) => {
+      const stage = event.target.closest("[data-heard-stage]");
+      if (stage) confirmHeardStage(stage.dataset.heardStage);
+    });
+
+    els.pipelineList.addEventListener("click", (event) => {
+      const addButton = event.target.closest("[data-empty-add-application]");
+      const heardButton = event.target.closest("[data-empty-heard-back]");
+      const openButton = event.target.closest("[data-open-role]");
+      const stageToggle = event.target.closest("[data-toggle-stage]");
+      const stageOption = event.target.closest("[data-stage-option]");
+      const noteCheck = event.target.closest("[data-note-check]");
+      const card = event.target.closest("[data-pipeline-card]");
+
+      if (addButton) {
+        openModal({}, addButton, "home");
+        return;
+      }
+      if (heardButton) {
+        openHeardModal(heardButton);
+        return;
+      }
+      if (openButton) {
+        window.open(openButton.dataset.openRole, "_blank", "noopener");
+        return;
+      }
+      if (stageToggle) {
+        event.stopPropagation();
+        openLayer = openLayer === `stage:${stageToggle.dataset.stageContext}:${stageToggle.dataset.toggleStage}` ? "" : `stage:${stageToggle.dataset.stageContext}:${stageToggle.dataset.toggleStage}`;
+        syncSurfaceState();
+        renderPipeline();
+        return;
+      }
+      if (stageOption) {
+        event.stopPropagation();
+        updateApplicationStage(stageOption.dataset.stageApplication, stageOption.dataset.stageOption, stageOption.dataset.stageContext);
+        return;
+      }
+      if (noteCheck) {
+        event.stopPropagation();
+        const field = noteCheck.closest("[data-note-application]");
+        noteCheck.dataset.noteCheck = noteCheck.dataset.noteCheck === "true" ? "false" : "true";
+        noteCheck.setAttribute("aria-checked", noteCheck.dataset.noteCheck);
+        noteCheck.querySelector(".note-box").innerHTML = noteCheck.dataset.noteCheck === "true" ? icon.check : "";
+        updateApplicationNote(field.dataset.noteApplication, serializeNoteField(field));
+        return;
+      }
+      if (event.target.closest("[data-note-application]")) return;
+      if (card) {
+        expandedPipelineId = expandedPipelineId === card.dataset.pipelineCard ? "" : card.dataset.pipelineCard;
+        renderPipeline();
+      }
+    });
+
+    els.pipelineList.addEventListener("input", (event) => {
+      const note = event.target.closest("[data-note-application]");
+      if (!note) return;
+      if (note.textContent.includes("[]")) {
+        const nextNote = { kind: "blocks", blocks: noteBlocksFromText(note.textContent) };
+        updateApplicationNote(note.dataset.noteApplication, nextNote);
+        rerenderNoteField(note, nextNote);
+        return;
+      }
+      updateApplicationNote(note.dataset.noteApplication, serializeNoteField(note));
+    });
+
+    els.pipelineList.addEventListener("keydown", (event) => {
+      const noteCheck = event.target.closest("[data-note-check]");
+      if (!noteCheck || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      noteCheck.click();
+    });
+
+    els.applicationsTable.addEventListener("click", (event) => {
+      const openButton = event.target.closest("[data-open-role]");
+      const stageToggle = event.target.closest("[data-toggle-stage]");
+      const stageOption = event.target.closest("[data-stage-option]");
+      const menuButton = event.target.closest("[data-application-menu]");
+      const editButton = event.target.closest("[data-edit-application]");
+      const deleteButton = event.target.closest("[data-delete-application]");
+      const sortButton = event.target.closest("[data-sort-applications]");
+      const resizeHandle = event.target.closest("[data-resize-column]");
+
+      if (openButton) {
+        window.open(openButton.dataset.openRole, "_blank", "noopener");
+        return;
+      }
+      if (resizeHandle) {
+        return;
+      }
+      if (sortButton) {
+        toggleApplicationSort(sortButton.dataset.sortApplications);
+        return;
+      }
+      if (stageToggle) {
+        event.stopPropagation();
+        openLayer = openLayer === `stage:${stageToggle.dataset.stageContext}:${stageToggle.dataset.toggleStage}` ? "" : `stage:${stageToggle.dataset.stageContext}:${stageToggle.dataset.toggleStage}`;
+        syncSurfaceState();
+        renderApplicationsPage();
+        return;
+      }
+      if (stageOption) {
+        event.stopPropagation();
+        updateApplicationStage(stageOption.dataset.stageApplication, stageOption.dataset.stageOption, stageOption.dataset.stageContext);
+        return;
+      }
+      if (menuButton) {
+        event.stopPropagation();
+        openMenuId = openMenuId === `application:${menuButton.dataset.applicationMenu}` ? "" : `application:${menuButton.dataset.applicationMenu}`;
+        syncSurfaceState();
+        renderApplicationsPage();
+        return;
+      }
+      if (editButton) {
+        const application = findApplication(editButton.dataset.editApplication);
+        if (!application) return;
+        openMenuId = "";
+        syncSurfaceState();
+        openModal(application, editButton, "home");
+        renderApplicationsPage();
+        return;
+      }
+      if (deleteButton) {
+        openMenuId = "";
+        syncSurfaceState();
+        openDeleteApplication(deleteButton.dataset.deleteApplication);
+        renderApplicationsPage();
+      }
+    });
+
+    els.applicationsTable.addEventListener("mousedown", (event) => {
+      const resizeHandle = event.target.closest("[data-resize-column]");
+      if (!resizeHandle) return;
+      event.preventDefault();
+      startColumnResize(resizeHandle, event.clientX);
+    });
+
+    document.addEventListener("mousemove", (event) => {
+      resizeColumn(event.clientX);
+    });
+
+    document.addEventListener("mouseup", finishColumnResize);
 
     els.watchlistGroups.addEventListener("click", (event) => {
       const quietToggle = event.target.closest("[data-toggle-quiet]");
@@ -1571,10 +2537,19 @@
       const button = event.target.closest("[data-demo]");
       if (button) setDemoPreset(button.dataset.demo);
     });
+    els.demoPipelineActions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-demo]");
+      if (button) setDemoPreset(button.dataset.demo);
+    });
+    els.demoApplicationActions.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-demo]");
+      if (button) setDemoPreset(button.dataset.demo);
+    });
   }
 
   setGreeting();
   ensureWeek();
+  saveState();
   wireEvents();
   maybeEnableDemo();
   showScreen(initialScreen());

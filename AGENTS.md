@@ -9,9 +9,9 @@ You are building Astir with Kate. Read this fully before any change. It is the s
 A calm job-search companion. Core thesis: "apply and forget." Apply mindfully, log it, let go. The app only surfaces what is alive; everything else rests out of view.
 
 Non-negotiable product rules:
-1. No outcome counts anywhere, ever: no totals of applications sent, no response rates, no rejection tallies, no streaks. Self-set weekly effort goals are the one exception: their count-up progress (numbers and arc gauges) may appear inside the This week's goals card on Home, and nowhere else.
+1. No outcome counts anywhere, ever: no totals of applications sent, no response rates, no rejection tallies, no streaks. Self-set weekly effort goals are the first exception: their count-up progress (numbers and arc gauges) may appear inside the This week's goals card on Home, and nowhere else. All applications has the second and only archive exception: a single count below the title, formatted as "1 application" or "[NUMBER] applications."
 2. Pipeline shows only roles that progressed to interview stages. Applied and closed jobs are stored but hidden.
-3. The archive ("View all applications") is reachable but deliberately not easy (kebab menu on the Pipeline title, with a one-line explainer inside the menu).
+3. The archive ("All applications") is reachable but deliberately not easy (kebab menu on the Pipeline title, with a one-line explainer inside the menu).
 4. "I heard back" is the only loud button in the app. It uses the shared primary button recipe. No icon, prefix, or heavier weight.
 5. Rest is a feature, not a gap. Rest and prep days count the same as applying.
 6. No guilt mechanics: nothing breaks, snaps, or shames. Absence makes things sleepy, never dead.
@@ -20,7 +20,7 @@ Non-negotiable product rules:
 
 1. **Home**: greeting, Applications card, conditional Heard back card, and the This week's goals card. No date line, sphere, whisper line, day check-in chips, week dot strip, or In motion glance. Greeting says "Welcome, [Name]" on first visit and "Welcome back, [Name]" after that, tracked in local storage.
 2. **Watchlist**: companies with matched open roles first, sorted by freshest match. Header has "Watchlist" and an "Add company" ghost button. Company rows include name, bell, and kebab management. Role rows include a flame for postings first seen in the last 48 hours, an open-posting icon, and an Add application icon that opens the shared add-application modal prefilled. Companies with no matches live in the quiet disclosure.
-3. **Pipeline**: response-only. "I heard back" hero button, kebab with archive link, cards for active pursuits (company, role, next step line, stage pill). Quiet closing line, no counts.
+3. **Pipeline**: response-only. "I heard back" hero button, kebab with archive link, cards for active pursuits (company, role, next step line, stage pill). Quiet closing line, no counts. Hired roles remain visible in Pipeline for now.
 4. **Add application modal**: opens from Home and Watchlist. Link, Company, Role, Status, Applied date, and optional Note. Watchlist-origin opens prefilled and includes the one-line hint. Saving logs the day's application activity and shows snackbar "Application added."
 5. **Heard back modal**: opens from Home after at least one application exists. Typeahead searches logged applications by company. Choosing a role moves it to 1st stage and shows a linked snackbar.
 
@@ -120,7 +120,7 @@ Astir no longer has a living sphere or whisper line. Home's middle is made of tw
 
 1. **Applications card**: always visible. Label "Applications", helper copy, and ghost "Add application" button.
 2. **Heard back card**: visible only after at least one application has been logged. Label "Heard back", helper copy, and primary "I heard back" button.
-3. **This week's goals card**: remains below the Home action cards. Empty state shows copy "Set up your goals for this week" directly under the card title, a header ghost "Set up" action, and all goal tiles as disabled arcs without counts. In-progress state shows "You're doing great, keep it up!" under the card title. Completed state shows "You achieved all your week's goals. Congrats!" under the card title. Unselected goals remain visible as disabled placeholder tiles. Do not show a "Same as last week" action. Applications progress comes only from logged applications. Rest progress is automatic for completed past days with no activity, with a user minus override when an automatic rest day should not count. Networking, Prep, and CV and docs are manually tracked by clicking their tiles.
+3. **This week's goals card**: remains below the Home action cards. Empty state shows copy "Set up your goals for this week" directly under the card title, a header ghost "Set up" action, and all goal tiles as disabled arcs without counts. In-progress state shows "You're doing great, keep it up." under the card title. Completed state shows "You achieved all your week's goals. Congrats." under the card title. Unselected goals remain visible as disabled placeholder tiles. Do not show a "Same as last week" action. Applications progress comes only from logged applications. Rest progress is automatic for completed past days with no activity, with a user minus override when an automatic rest day should not count. Networking, Prep, and CV and docs are manually tracked by clicking their tiles.
 4. **Rail mini-orb**: static gradient ember (CSS), soft halo breathing at ~6s, echoes application saves only. No other reactions.
 
 ## 6. Copy rules (apply to ALL strings, UI and code comments)
@@ -129,9 +129,10 @@ Astir no longer has a living sphere or whisper line. Home's middle is made of tw
 2. Never use the word "land" except for physical ground.
 3. Never use the word "signal" except for the Signal app.
 4. Never use "resting" as a label for stored/applied jobs. (As a verb for rest days it is fine.)
-5. No outcome counts in copy: no "X applied," "X in progress" for hidden items, no streak numbers. Weekly effort goal progress may use numbers only inside the This week's goals card on Home.
-6. Sentence case. Plain verbs. Buttons say what happens: "Add application," not "Submit." Do not use exclamation marks in buttons.
+5. No outcome counts in copy: no "X applied," "X in progress" for hidden items, no streak numbers. Weekly effort goal progress may use numbers only inside the This week's goals card on Home. All applications may show a single title-area count: "1 application" or "[NUMBER] applications."
+6. Sentence case. Plain verbs. Buttons say what happens: "Add application," not "Submit." Do not use exclamation marks in buttons. The hired modal title "Congratulations! 🎉" is the only product exclamation-mark exception.
 7. Empty states are invitations, not apologies. Errors say what happened and what to do.
+8. Missing table values may use an em dash only in table cells. Prose still follows the em dash ban.
 
 ## 7. How to make changes (system discipline)
 
@@ -149,6 +150,7 @@ Astir no longer has a living sphere or whisper line. Home's middle is made of tw
 2. Short, direct answers. No filler.
 3. If a request is ambiguous, ask one precise question rather than guessing.
 4. Speed over polish, within the system. Ship the change, keep the tokens clean.
+5. When sharing a local build, include the normal app link and the preview-state link with `?demo=1`. Keep the demo panel updated with toggles for each screen's important states, especially empty and populated states.
 
 ---
 
@@ -159,7 +161,7 @@ Replace all stack references in this file with the following. Where older sectio
 ### Stack (actual)
 
 1. Plain HTML, CSS, and JavaScript. No framework, no build step, no package.json.
-2. Files: `index.html` (shell), `app.js` (logic and screens), `styles.css` (components), `tokens.css` (all values). Screens are hash routes (`#today`, `#watchlist`).
+2. Files: `index.html` (shell), `app.js` (logic and screens), `styles.css` (components), `tokens.css` (all values). Screens are hash routes (`#today`, `#watchlist`, `#pipeline`, `#applications`).
 3. State persists in localStorage under the key `astir.v1`. No backend exists. Sample data lives in `app.js` (`defaultWatchlist`, `sampleRolesForCompany()`, `makeDemoPreset()`, `presetApplications()`).
 4. The rule "use shadcn components, never hand-roll" is retired. Components are hand-rolled on tokens. In exchange, every interactive component must meet this bar: full keyboard operation, visible focus states, Escape closes overlays, focus returns to the trigger on close, aria labels match tooltips.
 5. Prototype files (`astir-*.html`, `astir-components.svg`) are design reference only. They define look and behavior, never implementation. Do not copy their raw values into the app.
@@ -168,8 +170,8 @@ Replace all stack references in this file with the following. Where older sectio
 
 1. Home: built and working (applications card, conditional heard back card, weekly goals).
 2. Watchlist: built and working.
-3. Pipeline: fully designed, not built. Nav item exists but is disabled.
-4. All applications (archive): designed, not built.
+3. Pipeline: built and working.
+4. All applications (archive): built and working. Final polish remains planned in `Pipeline_All_applications.md`.
 5. Settings: not built.
 6. Naming: the add-job modal is called "Add application" everywhere, including code. "Add job" is retired vocabulary.
 
@@ -177,4 +179,5 @@ Replace all stack references in this file with the following. Where older sectio
 
 1. Breakpoint: the app has exactly one breakpoint, 760px. CSS media queries cannot read custom properties, so the value stays raw, but it is documented at the top of tokens.css as `/* breakpoint: narrow = 760px (raw in media queries by necessity) */`. Any change to the breakpoint updates that comment and every media query together. No second breakpoint without a decision.
 2. SVG geometry (viewBox, path coordinates, arc gauge angles) in `app.js` is geometry, not styling, and is exempt from the tokens rule. Colors inside SVG are NOT exempt: they reference tokens.
-3. Anything else outside the scales still requires a named token before use.
+3. Archive table column minimum width is the named token `--table-column-min`.
+4. Anything else outside the scales still requires a named token before use.

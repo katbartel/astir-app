@@ -1,12 +1,16 @@
 # Astir
 
 A job search app built on one belief: focus only on what you control, and make everything else disappear.
+
 <img width="994" height="501" alt="image" src="https://github.com/user-attachments/assets/27e5491c-fa1e-4945-bb86-162f15ef9721" />
 
 
 ## The idea
 
 It started with a simple frustration. I wanted to be intentional about where I apply: a specific set of companies whose values fit mine. But job boards are noisy and full of nonsense, and some of the best companies never post there at all, they just quietly put openings on their own site. So the seed of Astir was a watchlist: your own curated list of companies that matter to you, watched for relevant openings, instead of drowning in a feed.
+
+<img width="1105" height="599" alt="image" src="https://github.com/user-attachments/assets/f72d0a90-359f-4604-8421-1b51d0f2b999" />
+
 
 Then it grew into something bigger, because the noise problem is everywhere. Open LinkedIn during a job search and it's fear on a loop: layoffs, AI taking every job, everyone panicking. None of it helps you get hired. Astir is built as the opposite of that feed.
 
@@ -39,7 +43,9 @@ Early stage, front-end only, no backend yet. Data lives in localStorage. Current
 - Watchlist: the curated list of companies and roles that matter, with alerts, role matching, and one-tap application logging from a role
 - The design system: a warm parchment palette with a single gold accent, everything driven by a token file (raw values inside components are treated as bugs)
 
-Pipeline is fully designed and next to be built: interview-stage pursuits with notes, stage history, and the hidden archive behind it.
+Pipeline: first working version. Interview-stage pursuits with notes and stage tracking. The full design (stage history, the hidden archive behind it) is done and being built toward.
+
+<img width="1028" height="554" alt="image" src="https://github.com/user-attachments/assets/21e12e13-cf41-4d92-a44b-8ec391f46b99" />
 
 The full product rules and design system live in AGENTS.md.
 

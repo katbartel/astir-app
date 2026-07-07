@@ -5,7 +5,7 @@
   const statusOptions = ["Applied", "1st stage", "2nd stage", "3rd stage", "Offer", "Hired", "Closed"];
   const pipelineStages = ["1st stage", "2nd stage", "3rd stage", "Offer", "Hired"];
   const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-  const activityOrder = ["apply", "net", "rest", "prep", "docs"];
+  const activityOrder = ["apply", "net", "prep", "docs", "rest"];
   const numericLimits = {
     apply: { min: 1, max: 15, defaultValue: 5 },
     net: { min: 1, max: 10, defaultValue: 3 },
@@ -113,7 +113,7 @@
       deep: "--prep-deep"
     },
     docs: {
-      name: "CV and docs",
+      name: "Paperwork",
       type: "binary",
       deep: "--docs-deep"
     }
@@ -222,6 +222,10 @@
   let resizingColumn = null;
   let selectClampFrame = 0;
   let calendarMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  let activeTooltipTarget = null;
+  let tooltipLayer = null;
+  let tooltipBubble = null;
+  let tooltipArrow = null;
 
   function relativeIso(hours) {
     return new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
@@ -430,6 +434,101 @@
     document.body.classList.toggle("surface-open", modalOpen || menuOpen || floatingOpen);
     document.body.classList.toggle("menu-open", menuOpen);
     els.interactionScrim.hidden = !menuOpen;
+    if (modalOpen || menuOpen || floatingOpen) {
+      hideTooltip();
+    }
+  }
+
+  function tooltipCopy(target) {
+    return target ? target.dataset.infoTooltip || target.dataset.tooltip || "" : "";
+  }
+
+  function tooltipCandidate(target) {
+    return target && target.closest("[data-info-tooltip], [data-tooltip]");
+  }
+
+  function tooltipNumber(token, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(token);
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }
+
+  function tooltipMinLeft() {
+    const rail = document.querySelector(".rail");
+    const narrow = window.matchMedia("(max-width: 760px)").matches;
+    const inset = tooltipNumber("--space-2", 8);
+    if (!rail || narrow) return inset;
+    return rail.getBoundingClientRect().right + inset;
+  }
+
+  function positionTooltip() {
+    if (!activeTooltipTarget || !tooltipLayer || tooltipLayer.hidden) return;
+    const targetRect = activeTooltipTarget.getBoundingClientRect();
+    const inset = tooltipNumber("--space-2", 8);
+    const shift = tooltipNumber("--tooltip-shift", 3);
+    const minLeft = tooltipMinLeft();
+    const maxAvailableWidth = Math.max(160, window.innerWidth - minLeft - inset);
+    const maxLineWidth = tooltipNumber("--type-tooltip", 12) * 40;
+    tooltipBubble.style.maxWidth = `${Math.min(maxLineWidth, maxAvailableWidth)}px`;
+
+    const bubbleRect = tooltipBubble.getBoundingClientRect();
+    const anchorCenter = targetRect.left + targetRect.width / 2;
+    const maxLeft = Math.max(minLeft, window.innerWidth - bubbleRect.width - inset);
+    const left = Math.min(Math.max(anchorCenter - bubbleRect.width / 2, minLeft), maxLeft);
+    const belowTop = targetRect.bottom + shift + inset;
+    const aboveTop = targetRect.top - bubbleRect.height - shift - inset;
+    const useAbove = belowTop + bubbleRect.height > window.innerHeight - inset && aboveTop >= inset;
+
+    tooltipLayer.style.left = `${left}px`;
+    tooltipLayer.style.top = `${useAbove ? aboveTop : belowTop}px`;
+    tooltipLayer.classList.toggle("above", useAbove);
+    tooltipArrow.style.left = `${anchorCenter - left}px`;
+  }
+
+  function showTooltip(target) {
+    if (document.body.classList.contains("surface-open")) return;
+    const copy = tooltipCopy(target);
+    if (!copy) return;
+    activeTooltipTarget = target;
+    tooltipBubble.textContent = copy;
+    tooltipLayer.hidden = false;
+    positionTooltip();
+  }
+
+  function hideTooltip() {
+    activeTooltipTarget = null;
+    if (tooltipLayer) {
+      tooltipLayer.hidden = true;
+    }
+  }
+
+  function setupTooltips() {
+    tooltipLayer = document.createElement("div");
+    tooltipLayer.className = "tooltip-layer";
+    tooltipLayer.hidden = true;
+    tooltipLayer.innerHTML = '<span class="tooltip-arrow" aria-hidden="true"></span><span class="tooltip-bubble"></span>';
+    document.body.appendChild(tooltipLayer);
+    tooltipArrow = tooltipLayer.querySelector(".tooltip-arrow");
+    tooltipBubble = tooltipLayer.querySelector(".tooltip-bubble");
+
+    document.addEventListener("pointerover", (event) => {
+      const target = tooltipCandidate(event.target);
+      if (target) showTooltip(target);
+    });
+    document.addEventListener("pointerout", (event) => {
+      if (!activeTooltipTarget || activeTooltipTarget.contains(event.relatedTarget)) return;
+      hideTooltip();
+    });
+    document.addEventListener("focusin", (event) => {
+      const target = tooltipCandidate(event.target);
+      if (target) showTooltip(target);
+    });
+    document.addEventListener("focusout", (event) => {
+      if (!activeTooltipTarget || activeTooltipTarget.contains(event.relatedTarget)) return;
+      hideTooltip();
+    });
+    window.addEventListener("resize", positionTooltip);
+    window.addEventListener("scroll", positionTooltip, true);
   }
 
   function renderSharedControls() {
@@ -691,10 +790,17 @@
       </article>`;
   }
 
-  function infoButton(id) {
-    const copy = id === "apply"
-      ? "We automatically update your weekly application count whenever you log an application with us."
-      : "Lorem ipsum";
+  function infoButton(id, disabled = false) {
+    if (disabled) {
+      return `<span class="goal-info disabled-info">${icon.info}</span>`;
+    }
+    const copyById = {
+      apply: "We automatically update your weekly application count whenever you log an application with us.",
+      net: "One conversation, one count. Log it when it happens.",
+      rest: "When you don't show up here, we will just automatically add it as a rest day."
+    };
+    const copy = copyById[id] || "";
+    if (!copy) return `<span class="goal-info disabled-info">${icon.info}</span>`;
     return `<span class="goal-info" data-info-tooltip="${copy}">${icon.info}</span>`;
   }
 
@@ -715,7 +821,7 @@
         </svg>
         <div class="goal-title-row">
           <div class="goal-title">${activity[id].name}</div>
-          ${infoButton(id)}
+          ${infoButton(id, true)}
         </div>
       </article>`;
   }
@@ -733,7 +839,7 @@
     const goals = ensureWeek().goals;
     const selectedById = new Map(goals.map((goal) => [goal.id, goal]));
     const allMet = goals.length > 0 && goals.every(isGoalMet);
-    const support = allMet ? "You achieved all your week's goals. Congrats." : "You're doing great, keep it up.";
+    const support = allMet ? "You did it. Take a moment to savor it." : "You're doing great, keep it up.";
     els.editGoals.textContent = "Edit";
     els.editGoals.hidden = false;
     els.goalsBody.innerHTML = `
@@ -2653,6 +2759,7 @@
   setGreeting();
   ensureWeek();
   saveState();
+  setupTooltips();
   wireEvents();
   maybeEnableDemo();
   showScreen(initialScreen());

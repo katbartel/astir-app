@@ -9,7 +9,7 @@ Implements the redesigned Home screen: sphere with whisper, one Log application 
 Date line: "Week of {start} to {end}" (12.5px uppercase muted, letter-spacing .05em). Week runs Monday to Sunday. Same-month example: "Week of June 29 to July 5".
 Greeting h1: "Good morning/afternoon/evening, {name}".
 The living sphere, floating directly on the paper background. No card, no border, no container.
-Whisper line under the sphere (13.5px italic, ink2, centered).
+Whisper line under the sphere (normal Instrument Sans, ink2, centered).
 One ghost button, centered: "Log application". Opens the existing log-application modal.
 Card "This week's goals" (card recipe: card bg, line border, r-lg 14, card shadow, 22px x 26px padding). Section label 12.5px uppercase muted with an "Edit" text action right-aligned (12px, muted, hover ink2).
 
@@ -18,7 +18,7 @@ Removed from Home, do not re-add: the In motion glance, the prep/rest/activity c
 
 2. Activities (fixed vocabulary, v1)
 
-idNameCounted howUnitapplyApplicationsAutomatic: each application saved through the log-application modal counts oneapplicationsnetNetworkingManual, on the goal tile (minus and plus)people reached out toprepPrep for interviewsManual, binary: Mark donedone or notdocsFinish CV and profileManual, binary: Mark donedone or notrestRest daysInferred: a fully passed day (Mon-Sun, local time) with zero logged activity and zero applications counts as one rest daydays
+idNameCounted howUnitapplyApplicationsAutomatic: each application saved through the log-application modal counts oneapplicationsnetNetworkingManual, on the goal tile (minus and plus)people reached out toprepPrep for interviewsManual, binary: Mark donedone or notdocsPaperworkManual, binary: Mark donedone or notrestRest daysInferred: a fully passed day (Mon-Sun, local time) with zero logged activity and zero applications counts as one rest daydays
 
 Rules:
 
@@ -41,7 +41,7 @@ Progress counts up from what is logged. Once a goal's target is reached it is "m
 4. Goals card states
 
 
-Unwritten (no goals set, includes first run): line "This week is unwritten. Pick a few things to aim for, or let it stay open." (13px italic muted), then three ghost tiles at 45% opacity (empty tracks, labels Applications, Networking, Rest, no numbers), then a ghost button "Shape the week" and a text action "Same as last week" (hidden on true first run when no previous week exists). No Edit action in the label while unwritten.
+Unwritten (no goals set, includes first run): line "Set up your goals for this week" (normal muted helper copy), then disabled goal tiles at 45% opacity with empty tracks, stable labels, and no numbers. Disabled tiles show info icons without hover tooltips. No Edit action in the label while unwritten.
 Active: grid of goal tiles (section 5). Edit action visible.
 Setup/edit (section 6).
 
@@ -55,7 +55,7 @@ Gauge: 96x56 SVG semicircle, radius 40, stroke width 8, round caps. Track stroke
 Gauge center, in progress: count (19px, 600, ink) over "of {target}" (11px muted). Binary goals in progress show "not yet" (11px muted) and no number.
 Label under the gauge: the goal phrase (12.5px, 500, ink2), e.g. "Apply to 5 jobs", "Reach out to 3 people", "Two rest days", "Prep for interviews", "Finish CV and profile".
 Met state: tile bg --gold-soft, border transparent, label color --gold-text, sweep full, center replaced by a check glyph stroked in the activity deep color. Numbers do not return.
-Note line (11px italic muted, may be empty): apply "counted as you apply", rest "counts by itself".
+Note lines are retired. Goal tiles use labels, gauges, and info icons only.
 Controls row (min-height reserved so tiles align):
 
 net: two 24px round ghost icon buttons, minus and plus. Plus increments and triggers a small sphere flare; minus decrements to a floor of 0. Both remain available after the goal is met.
@@ -72,7 +72,7 @@ Grid: 3 columns, gap 12. 1 goal = 1 column, 2 = 2 columns, 4 = 2x2, 5 = three on
 
 Entry: "Shape the week" (unwritten state) or "Edit" (active state). Replaces the card body in place; no modal.
 Hint: "Pick what this week is for. Numbers are yours to set, and only you see them." (12.5px muted)
-One row per activity (all five, fixed order: apply, net, rest, prep, docs): row border line, r-md, 10px 14px, tap toggles selection. Selected: --gold-soft bg, label --gold-text. Numeric rows show a stepper (minus, value, plus, 22px round buttons) only while selected; the row label re-renders live with the number ("Apply to 6 jobs").
+One row per activity (all five, fixed order: apply, net, prep, docs, rest): row border line, r-md, 10px 14px, tap toggles selection. Selected: --gold-soft bg, label --gold-text. Numeric rows show a stepper (minus, value, plus, 22px round buttons) only while selected; the row label re-renders live with the number ("Apply to 6 jobs").
 Footer: ghost button "Done", text action "Same as last week" (restores previous week's goal set and targets), and a right-aligned note "That is the whole list" shown only when all five are selected.
 Editing mid-week keeps existing logged counts; changing a target re-evaluates met state from the same counts. Removing a goal does not delete its logs.
 Leaving setup with nothing selected returns to the unwritten state. Legal, quiet, never questioned.

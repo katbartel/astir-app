@@ -171,7 +171,7 @@ Replace all stack references in this file with the following. Where older sectio
 1. Home: built and working (applications card, conditional Screenings card, weekly goals).
 2. Watchlist: built and working.
 3. Pipeline: built and working.
-4. All applications (archive): built and working. Final polish remains planned in `Pipeline_All_applications.md`.
+4. All applications (archive): built and working. Final polish remains planned in `docs/pipeline-all-applications.md`.
 5. Settings: not built.
 6. Naming: the add-job modal is called "Log application" everywhere. "Add job" and "Add application" are retired vocabulary.
 

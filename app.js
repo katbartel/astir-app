@@ -26,24 +26,24 @@
   };
   const defaultWatchlist = [
     {
-      id: "company-acme",
-      company: "Acme Corp",
-      link: "https://example.com/acme-careers",
+      id: "company-google",
+      company: "Google",
+      link: "https://careers.google.com",
       alerts_on: true,
       roles: [
         {
-          id: "role-acme-workflow",
+          id: "role-google-workflow",
           title: "Senior Product Manager, Workflow Systems and Customer Lifecycle Growth",
-          url: "https://example.com/acme-careers/product-manager",
-          first_seen: relativeIso(-8),
+          url: "https://careers.google.com/jobs/results",
+          first_seen: relativeIso(-24 * 12),
           is_live: true,
           locations: [{ city: "Berlin", mode: "Hybrid" }]
         },
         {
-          id: "role-acme-field-tools",
+          id: "role-google-field-tools",
           title: "Product Manager, Field Tools and Operations Enablement",
-          url: "https://example.com/acme-careers/field-tools",
-          first_seen: relativeIso(-90),
+          url: "https://careers.google.com/jobs/results",
+          first_seen: relativeIso(-8),
           is_live: true,
           locations: [{ city: "Berlin", mode: "On-site" }]
         }
@@ -59,7 +59,7 @@
           id: "role-brightbyte-developer-experience",
           title: "Staff Product Manager, Developer Experience",
           url: "https://example.com/brightbyte-careers/developer-experience",
-          first_seen: relativeIso(-10),
+          first_seen: relativeIso(-24 * 8),
           is_live: true,
           locations: [
             { city: "Berlin", mode: "Remote" },
@@ -83,7 +83,7 @@
           id: "role-meadowworks-member-experience",
           title: "Product Lead, Member Experience",
           url: "https://example.com/meadowworks-careers/member-experience",
-          first_seen: relativeIso(-12),
+          first_seen: relativeIso(-24 * 20),
           is_live: true,
           locations: [{ city: "Stockholm", mode: "Hybrid" }]
         }
@@ -316,7 +316,7 @@
   function shouldUseFreshWatchlistSeed(saved) {
     if (!Array.isArray(saved.watchlist)) return true;
     const ids = saved.watchlist.map((company) => company.id).sort().join(",");
-    return ids === "company-acme,company-brightbyte,company-meadowworks";
+    return ids === "company-acme,company-brightbyte,company-meadowworks" || ids === "company-brightbyte,company-google,company-meadowworks";
   }
 
   function loadState() {
@@ -1222,7 +1222,7 @@
     const posting = postingForApplication(application);
     const openUrl = application.link || (posting && posting.url) || "";
     return `
-      <article class="pipeline-card ${expanded ? "expanded" : ""}" data-pipeline-card="${escapeText(application.id)}">
+      <article class="pipeline-card ${expanded ? "expanded" : ""}" data-pipeline-card="${escapeText(application.id)}" tabindex="0" aria-expanded="${expanded ? "true" : "false"}" aria-label="${escapeText(application.company)}, ${escapeText(application.role)}">
         <div class="pipeline-card-row">
           <div class="pipeline-card-main">
             <span class="pipeline-company">${escapeText(application.company)}</span>
@@ -1265,6 +1265,15 @@
     els.allApplicationsLink.disabled = empty;
     els.pipelineList.innerHTML = empty ? pipelineEmpty() : applications.map(pipelineCard).join("");
     scheduleSelectClamp();
+  }
+
+  function togglePipelineCard(card, restoreFocus = false) {
+    const cardId = card.dataset.pipelineCard;
+    expandedPipelineId = expandedPipelineId === cardId ? "" : cardId;
+    renderPipeline();
+    if (!restoreFocus) return;
+    const nextCard = Array.from(els.pipelineList.querySelectorAll("[data-pipeline-card]")).find((item) => item.dataset.pipelineCard === cardId);
+    focusSafely(nextCard);
   }
 
   function applicationCountText(count) {
@@ -1506,6 +1515,9 @@
 
   function showScreen(name) {
     const screenName = ["watchlist", "pipeline", "applications"].includes(name) ? name : "today";
+    if (screenName === "pipeline") {
+      expandedPipelineId = "";
+    }
     els.screens.forEach((screen) => {
       const active = screen.dataset.screen === screenName;
       screen.hidden = !active;
@@ -2059,7 +2071,7 @@
     return Array.from({ length: count }, (_, index) => ({
       id: `demo-app-${index}`,
       link: "",
-      company: "Demo company",
+      company: "Google",
       role: "Demo role",
       appliedDate: dates[index % dates.length],
       status: "Applied",
@@ -2074,7 +2086,7 @@
       postingId: overrides.postingId || "",
       companyId: overrides.companyId || "",
       link: overrides.link || "",
-      company: overrides.company || "Demo company",
+      company: overrides.company || "Google",
       role: overrides.role || "Product Manager",
       appliedDate: overrides.appliedDate || todayKey,
       status: overrides.status || "Applied",
@@ -2098,11 +2110,11 @@
         note: "Prepare examples for the first conversation."
       }),
       demoApplication({
-        id: "demo-pipeline-acme",
-        postingId: "role-acme-workflow",
-        companyId: "company-acme",
-        link: "https://example.com/acme-careers/product-manager",
-        company: "Acme Corp",
+        id: "demo-pipeline-google",
+        postingId: "role-google-workflow",
+        companyId: "company-google",
+        link: "https://careers.google.com/jobs/results",
+        company: "Google",
         role: "Senior Product Manager, Workflow Systems and Customer Lifecycle Growth",
         appliedDate: toDateKey(addDays(today, -9)),
         status: "2nd stage",
@@ -2227,6 +2239,9 @@
   function setDemoPreset(name) {
     demoPreset = name;
     demoState = makeDemoPreset(name);
+    if (name.startsWith("pipeline")) {
+      expandedPipelineId = "";
+    }
     renderDemoButtons();
     render();
     if (name.startsWith("pipeline") && window.location.hash !== "#pipeline") {
@@ -2282,6 +2297,10 @@
     openMenuId = "";
     syncSurfaceState();
     render();
+  }
+
+  function shouldIgnorePipelineToggle(event) {
+    return Boolean(event.target.closest("button, a, input, textarea, select, [contenteditable], .select-shell, [data-note-application]"));
   }
 
   function activeModal() {
@@ -2542,10 +2561,9 @@
         updateApplicationNote(field.dataset.noteApplication, serializeNoteField(field));
         return;
       }
-      if (event.target.closest("[data-note-application]")) return;
+      if (shouldIgnorePipelineToggle(event)) return;
       if (card) {
-        expandedPipelineId = expandedPipelineId === card.dataset.pipelineCard ? "" : card.dataset.pipelineCard;
-        renderPipeline();
+        togglePipelineCard(card);
       }
     });
 
@@ -2563,9 +2581,16 @@
 
     els.pipelineList.addEventListener("keydown", (event) => {
       const noteCheck = event.target.closest("[data-note-check]");
-      if (!noteCheck || (event.key !== "Enter" && event.key !== " ")) return;
-      event.preventDefault();
-      noteCheck.click();
+      const card = event.target.closest("[data-pipeline-card]");
+      if (noteCheck && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        noteCheck.click();
+        return;
+      }
+      if (card && event.target === card && (event.key === "Enter" || event.key === " ")) {
+        event.preventDefault();
+        togglePipelineCard(card, true);
+      }
     });
 
     els.applicationsTable.addEventListener("click", (event) => {

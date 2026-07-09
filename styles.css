@@ -1214,7 +1214,23 @@ h1 {
 .pipeline-card:hover,
 .pipeline-card.expanded {
   border-color: var(--line2);
+}
+
+.pipeline-card:hover {
+  background: linear-gradient(var(--hover-soft), var(--hover-soft)), var(--card);
+}
+
+.pipeline-card:focus-visible {
+  border-color: var(--gold);
+  outline: none;
+}
+
+.menu-open .pipeline-card:hover {
   background: var(--card);
+}
+
+.menu-open .pipeline-card:not(.expanded):hover {
+  border-color: var(--line);
 }
 
 .pipeline-card-row,
@@ -1268,6 +1284,10 @@ h1 {
   gap: var(--space-3);
   margin-top: var(--space-4);
   cursor: default;
+}
+
+.pipeline-details[hidden] {
+  display: none;
 }
 
 .pipeline-meta {

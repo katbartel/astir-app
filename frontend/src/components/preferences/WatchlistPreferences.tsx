@@ -4,6 +4,7 @@ import { useEffect, useState, type KeyboardEvent } from 'react'
 
 type Preferences = {
   keywords: string[]
+  excludedKeywords: string[]
   workModes: string[]
   contractTypes: string[]
   terms: string[]
@@ -65,6 +66,133 @@ function TagListInput({
         id={id}
         value={draft}
         placeholder={values.length ? 'Add more…' : placeholder}
+        onChange={(event) => setDraft(event.target.value)}
+        onKeyDown={onKeyDown}
+        onBlur={commitDraft}
+      />
+    </div>
+  )
+}
+
+type KeywordMode = 'is' | 'isNot'
+
+// Keyword chips carry an "is / is not" toggle: "is" terms must appear in a
+// title to match, "is not" terms filter a title out even if it also hits an
+// "is" term. Stored as two arrays (keywords / excludedKeywords) but edited as
+// one ordered list of chips.
+function KeywordListInput({
+  keywords,
+  excludedKeywords,
+  onChange,
+}: {
+  keywords: string[]
+  excludedKeywords: string[]
+  onChange: (keywords: string[], excludedKeywords: string[]) => void
+}) {
+  const [draft, setDraft] = useState('')
+  const [openIndex, setOpenIndex] = useState<number | null>(null)
+
+  const items: { term: string; mode: KeywordMode }[] = [
+    ...keywords.map((term) => ({ term, mode: 'is' as KeywordMode })),
+    ...excludedKeywords.map((term) => ({ term, mode: 'isNot' as KeywordMode })),
+  ]
+
+  function emit(next: { term: string; mode: KeywordMode }[]) {
+    onChange(
+      next.filter((item) => item.mode === 'is').map((item) => item.term),
+      next.filter((item) => item.mode === 'isNot').map((item) => item.term),
+    )
+  }
+
+  function commitDraft() {
+    const value = draft.trim()
+    setDraft('')
+    if (!value || items.some((item) => item.term.toLowerCase() === value.toLowerCase())) {
+      return
+    }
+    emit([...items, { term: value, mode: 'is' }])
+  }
+
+  function setMode(index: number, mode: KeywordMode) {
+    emit(items.map((item, idx) => (idx === index ? { ...item, mode } : item)))
+    setOpenIndex(null)
+  }
+
+  function removeAt(index: number) {
+    emit(items.filter((_, idx) => idx !== index))
+    setOpenIndex(null)
+  }
+
+  function onKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === 'Enter' || event.key === ',') {
+      event.preventDefault()
+      commitDraft()
+    } else if (event.key === 'Backspace' && !draft && items.length) {
+      removeAt(items.length - 1)
+    }
+  }
+
+  return (
+    <div className="tag-input">
+      {items.map((item, index) => (
+        <span className={`kw-chip${item.mode === 'isNot' ? ' exclude' : ''}`} key={item.term}>
+          <span className="kw-chip-term">{item.term}</span>
+          <span className="kw-chip-toggle-wrap">
+            <button
+              type="button"
+              className="kw-chip-toggle"
+              aria-haspopup="listbox"
+              aria-expanded={openIndex === index}
+              onClick={() => setOpenIndex(openIndex === index ? null : index)}
+            >
+              {item.mode === 'isNot' ? 'is not' : 'is'}
+            </button>
+            {openIndex === index ? (
+              <>
+                <button
+                  type="button"
+                  className="kw-popover-backdrop"
+                  aria-hidden="true"
+                  tabIndex={-1}
+                  onClick={() => setOpenIndex(null)}
+                />
+                <span className="kw-popover" role="listbox">
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={item.mode === 'is'}
+                    className={`kw-popover-opt${item.mode === 'is' ? ' sel' : ''}`}
+                    onClick={() => setMode(index, 'is')}
+                  >
+                    is
+                  </button>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={item.mode === 'isNot'}
+                    className={`kw-popover-opt${item.mode === 'isNot' ? ' sel' : ''}`}
+                    onClick={() => setMode(index, 'isNot')}
+                  >
+                    is not
+                  </button>
+                </span>
+              </>
+            ) : null}
+          </span>
+          <button
+            type="button"
+            className="kw-chip-x"
+            aria-label={`Remove ${item.term}`}
+            onClick={() => removeAt(index)}
+          >
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        id="pref-keywords"
+        value={draft}
+        placeholder={items.length ? 'Add more…' : 'e.g. Product Manager'}
         onChange={(event) => setDraft(event.target.value)}
         onKeyDown={onKeyDown}
         onBlur={commitDraft}
@@ -177,13 +305,12 @@ export function WatchlistPreferences() {
         <div className="prefs-card">
           <Field
             label="Keywords"
-            hint="Role titles and phrases that describe the jobs you are looking for."
+            hint="Role titles to match. Toggle a chip to “is not” to exclude it — e.g. keep “Product Manager” but drop “Principal Product Manager.”"
           >
-            <TagListInput
-              id="pref-keywords"
-              values={prefs.keywords}
-              placeholder="e.g. Product Manager"
-              onChange={(keywords) => update({ keywords })}
+            <KeywordListInput
+              keywords={prefs.keywords}
+              excludedKeywords={prefs.excludedKeywords}
+              onChange={(keywords, excludedKeywords) => update({ keywords, excludedKeywords })}
             />
           </Field>
           <Field label="Type" hint="Which working setups you would take.">

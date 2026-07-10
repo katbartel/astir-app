@@ -2712,6 +2712,117 @@ textarea {
   color: var(--ink);
 }
 
+/* Keyword chips: a segmented pill [term | is/is not | ×] with an is/is-not
+   popover. "is not" (exclude) chips use the terracotta (--net) family. */
+.kw-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--r-pill);
+  background: var(--gold-soft);
+  color: var(--gold-text);
+  font-size: var(--type-chip);
+  font-weight: var(--weight-medium);
+  overflow: visible;
+}
+
+.kw-chip.exclude {
+  background: var(--net-soft);
+  color: var(--net-text);
+}
+
+.kw-chip-term {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+}
+
+.kw-chip-toggle-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.kw-chip-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border: 0;
+  border-left: var(--border-thin) solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  opacity: .85;
+  cursor: pointer;
+}
+
+.kw-chip-toggle:hover {
+  opacity: 1;
+}
+
+.kw-chip-x {
+  display: grid;
+  width: var(--avatar-size);
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-left: var(--border-thin) solid currentColor;
+  border-radius: 0 var(--r-pill) var(--r-pill) 0;
+  background: transparent;
+  color: inherit;
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.kw-chip-x:hover {
+  color: var(--ink);
+}
+
+.kw-popover-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.kw-popover {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 21;
+  display: flex;
+  flex-direction: column;
+  min-width: 120px;
+  padding: var(--space-1);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+}
+
+.kw-popover-opt {
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--input-radius);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-control);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kw-popover-opt:hover {
+  background: var(--hover-soft);
+}
+
+.kw-popover-opt.sel {
+  background: var(--hover-soft);
+  font-weight: var(--weight-medium);
+}
+
 .option-toggles {
   display: flex;
   flex-wrap: wrap;

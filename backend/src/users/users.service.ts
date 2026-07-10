@@ -49,6 +49,7 @@ export class UsersService {
     }
     return {
       keywords: saved.keywords,
+      excludedKeywords: saved.excludedKeywords,
       workModes: saved.workModes,
       contractTypes: saved.contractTypes,
       terms: saved.terms,

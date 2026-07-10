@@ -30,6 +30,25 @@ describe('matchesHiringRegions', () => {
   it('treats an unknown region name as a literal token', () => {
     expect(matchesHiringRegions(['Zurich, Switzerland'], ['Switzerland'])).toBe(true)
   })
+
+  it('treats "Europe" the same as "EU"', () => {
+    expect(matchesHiringRegions(['Dublin, Ireland'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['Remote - EMEA'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['Munich, Germany'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['San Francisco'], ['Europe'])).toBe(false)
+  })
+
+  it('matches a bare EU city (no country named) against "Europe"', () => {
+    expect(matchesHiringRegions(['Dublin'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['Berlin Office'], ['Europe'])).toBe(true)
+  })
+
+  it('matches Irish cities when the region is "Ireland"', () => {
+    expect(matchesHiringRegions(['Dublin'], ['Ireland'])).toBe(true)
+    expect(matchesHiringRegions(['Cork, Ireland'], ['Ireland'])).toBe(true)
+    expect(matchesHiringRegions(['Remote - Ireland'], ['Ireland'])).toBe(true)
+    expect(matchesHiringRegions(['Warsaw, Poland'], ['Ireland'])).toBe(false)
+  })
 })
 
 describe('matchesWorkModes', () => {
@@ -45,6 +64,7 @@ describe('JobMatchingService.computeMatches', () => {
   const service = new JobMatchingService(undefined as unknown as PrismaService)
   const preferences = {
     keywords: ['Product Manager'],
+    excludedKeywords: [],
     workModes: ['Remote', 'On-Site'],
     hiringRegions: ['Poland', 'Germany', 'EU'],
   }
@@ -77,6 +97,18 @@ describe('JobMatchingService.computeMatches', () => {
   it('rejects title words that only partially overlap a keyword', () => {
     expect(
       service.computeMatches(preferences, [{ ...listing, title: 'Product Management Intern' }]),
+    ).toEqual([])
+  })
+
+  it('drops a keyword hit that also matches an excluded phrase (exclusion wins)', () => {
+    const excluding = { ...preferences, excludedKeywords: ['Principal Product Manager'] }
+    // Plain "Senior Product Manager, Growth" still matches...
+    expect(service.computeMatches(excluding, [listing])).toEqual([
+      { listingId: 'l1', matchedKeywords: ['Product Manager'] },
+    ])
+    // ...but a Principal role is dropped even though it contains "Product Manager".
+    expect(
+      service.computeMatches(excluding, [{ ...listing, title: 'Principal Product Manager' }]),
     ).toEqual([])
   })
 })

@@ -33,9 +33,11 @@ const EU_COUNTRIES = [
   'sweden',
 ]
 
-// Cities matter because many postings only name a city ("Berlin Office").
-const REGION_TOKENS: Record<string, string[]> = {
-  eu: ['eu', 'european union', 'europe', 'emea', ...EU_COUNTRIES],
+// Cities matter because many postings only name a city ("Berlin Office",
+// "Dublin"). Each country entry lists its own cities so selecting the country
+// alone catches city-only postings.
+const COUNTRY_TOKENS: Record<string, string[]> = {
+  ireland: ['ireland', 'eire', 'dublin', 'cork', 'galway', 'limerick', 'waterford'],
   germany: [
     'germany',
     'deutschland',
@@ -72,6 +74,28 @@ const REGION_TOKENS: Record<string, string[]> = {
     'bialystok',
     'lublin',
   ],
+}
+
+// "EU"/"Europe" accepts the generic bloc phrasings, every member country name,
+// AND every city we know for those countries — so a bare "Dublin" or "Berlin"
+// posting matches "Europe", not just the ones that spell out the country.
+const EU_TOKENS = [
+  'eu',
+  'european union',
+  'europe',
+  'emea',
+  ...EU_COUNTRIES,
+  ...Object.values(COUNTRY_TOKENS).flat(),
+]
+
+const REGION_TOKENS: Record<string, string[]> = {
+  // All the generic ways users and postings spell the bloc resolve to the same
+  // set, so "EU", "Europe", "EMEA" behave identically.
+  eu: EU_TOKENS,
+  europe: EU_TOKENS,
+  emea: EU_TOKENS,
+  'european union': EU_TOKENS,
+  ...COUNTRY_TOKENS,
 }
 
 // A region the map does not know (say the user adds "Spain") still works as

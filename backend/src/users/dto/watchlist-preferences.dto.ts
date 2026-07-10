@@ -21,6 +21,9 @@ export class WatchlistPreferencesDto {
   keywords!: string[]
 
   @StringList()
+  excludedKeywords!: string[]
+
+  @StringList()
   workModes!: string[]
 
   @StringList()

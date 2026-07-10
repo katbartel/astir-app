@@ -22,7 +22,7 @@ type Match = {
 
 type MatchingPreferences = Pick<
   WatchlistPreferencesInput,
-  'keywords' | 'workModes' | 'hiringRegions'
+  'keywords' | 'excludedKeywords' | 'workModes' | 'hiringRegions'
 >
 
 // Ingestion stores every job from every source — the superset across all
@@ -35,17 +35,27 @@ export class JobMatchingService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  // A listing belongs to a user when the title hits one of their keywords AND
-  // the posting is workable for them (work mode + hiring regions).
+  // A listing belongs to a user when the title hits one of their keywords,
+  // hits none of their excluded keywords, AND the posting is workable for them
+  // (work mode + hiring regions).
   computeMatches(preferences: MatchingPreferences, listings: MatchableListing[]): Match[] {
     const keywords = (
       preferences.keywords.length ? preferences.keywords : DEFAULT_WATCHLIST_PREFERENCES.keywords
     )
       .map((keyword) => ({ keyword, normalized: normalizeForIdentity(keyword) }))
       .filter((entry) => entry.normalized.length > 0)
+    // Exclusions are whole-phrase, matched the same way as keywords, and win
+    // over any keyword hit (excluding "principal product manager" drops it even
+    // though it also contains "product manager").
+    const excluded = (preferences.excludedKeywords ?? [])
+      .map((keyword) => normalizeForIdentity(keyword))
+      .filter((normalized) => normalized.length > 0)
     const matches: Match[] = []
     for (const listing of listings) {
       const title = ` ${normalizeForIdentity(listing.title)} `
+      if (excluded.some((normalized) => title.includes(` ${normalized} `))) {
+        continue
+      }
       const matchedKeywords = keywords
         .filter((entry) => title.includes(` ${entry.normalized} `))
         .map((entry) => entry.keyword)

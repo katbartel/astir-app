@@ -28,6 +28,7 @@ model WatchlistPreferences {
   id            String   @id @default(cuid())
   userId        String   @unique @map("user_id")
   keywords      String[] @default([])
+  excludedKeywords String[] @default([]) @map("excluded_keywords")
   workModes     String[] @default([]) @map("work_modes")
   contractTypes String[] @default([]) @map("contract_types")
   terms         String[] @default([])

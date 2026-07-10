@@ -22,8 +22,12 @@ export function HeardBackModal({
   const matches = useMemo(() => {
     const needle = query.trim().toLowerCase()
     if (!needle) return []
-    return applications.filter((application) =>
-      application.company.toLowerCase().includes(needle),
+    // Only surface jobs still at "Applied" — anything already in the pipeline
+    // or Closed shouldn't be moved into the pipeline again.
+    return applications.filter(
+      (application) =>
+        normalizeStatus(application.status) === 'Applied' &&
+        application.company.toLowerCase().includes(needle),
     )
   }, [applications, query])
 

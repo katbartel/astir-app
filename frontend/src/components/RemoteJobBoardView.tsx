@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { OpenIcon, PlusIcon } from './icons'
+
+type ListingStatus = 'new' | 'irrelevant'
 
 // Shape of GET /api/remote-job-board/listings (JobBoardListing on the backend).
 type Listing = {
@@ -103,10 +106,13 @@ function sortListings(listings: Listing[], sort: SortKey): Listing[] {
 function ListingRow({
   listing,
   onLog,
+  onSetStatus,
 }: {
   listing: Listing
   onLog: (listing: Listing) => void
+  onSetStatus: (listing: Listing, status: ListingStatus) => void
 }) {
+  const isIrrelevant = listing.status === 'irrelevant'
   return (
     <div className="watch-role">
       <div className="role-main">
@@ -146,6 +152,17 @@ function ListingRow({
       >
         <PlusIcon />
       </button>
+      <KebabMenu menuClassName="board-menu">
+        {isIrrelevant ? (
+          <button type="button" onClick={() => onSetStatus(listing, 'new')}>
+            Back to relevant
+          </button>
+        ) : (
+          <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
+            Mark as irrelevant
+          </button>
+        )}
+      </KebabMenu>
     </div>
   )
 }
@@ -154,6 +171,7 @@ export function RemoteJobBoardView() {
   const [listings, setListings] = useState<Listing[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [sort, setSort] = useState<SortKey>('newest')
+  const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
 
@@ -182,6 +200,40 @@ export function RemoteJobBoardView() {
   }, [])
 
   const sorted = useMemo(() => sortListings(listings ?? [], sort), [listings, sort])
+  const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
+  const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
+
+  // Mark a listing irrelevant (it drops to the quiet section below) or bring it
+  // back to the main feed. Optimistic: flip the local status first, then PATCH;
+  // revert if the request fails. The listing is never deleted either way.
+  async function setListingStatus(listing: Listing, status: ListingStatus) {
+    const previous = listing.status
+    if (previous === status) return
+    setListings((prev) =>
+      prev?.map((item) => (item.id === listing.id ? { ...item, status } : item)) ?? prev,
+    )
+    try {
+      const response = await fetch(`/api/remote-job-board/listings/${listing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+      if (!response.ok) {
+        throw new Error(`Update failed: ${response.status}`)
+      }
+      showSnack(
+        status === 'irrelevant'
+          ? { text: 'Marked irrelevant. Find it below your main list.' }
+          : { text: 'Back in your main list.' },
+        4000,
+      )
+    } catch {
+      setListings((prev) =>
+        prev?.map((item) => (item.id === listing.id ? { ...item, status: previous } : item)) ?? prev,
+      )
+      showSnack({ text: 'Could not update that listing. Try again.' }, 4000)
+    }
+  }
 
   function openLog(listing: Listing) {
     setLogging({
@@ -214,7 +266,7 @@ export function RemoteJobBoardView() {
   return (
     <section className="screen" data-screen="remote-job-board">
       <div className="page-head">
-        <h1>Remote job board</h1>
+        <h1>Job board</h1>
         <div className="option-toggles" role="group" aria-label="Sort listings">
           {SORT_OPTIONS.map((option) => (
             <button
@@ -240,11 +292,50 @@ export function RemoteJobBoardView() {
             companies are checked.
           </p>
         ) : (
-          <article className="watch-group board-feed">
-            {sorted.map((listing) => (
-              <ListingRow listing={listing} key={listing.id} onLog={openLog} />
-            ))}
-          </article>
+          <>
+            {relevant.length > 0 ? (
+              <article className="watch-group board-feed">
+                {relevant.map((listing) => (
+                  <ListingRow
+                    listing={listing}
+                    key={listing.id}
+                    onLog={openLog}
+                    onSetStatus={setListingStatus}
+                  />
+                ))}
+              </article>
+            ) : (
+              <p className="watch-invite">
+                Nothing in your main list right now — everything below is marked irrelevant.
+              </p>
+            )}
+            {irrelevant.length > 0 ? (
+              <div className="quiet-section">
+                <button
+                  type="button"
+                  className="quiet-toggle"
+                  aria-expanded={quietOpen}
+                  onClick={() => setQuietOpen((open) => !open)}
+                >
+                  {irrelevant.length === 1
+                    ? '1 marked irrelevant'
+                    : `${irrelevant.length} marked irrelevant`}
+                </button>
+                {quietOpen ? (
+                  <article className="watch-group board-feed">
+                    {irrelevant.map((listing) => (
+                      <ListingRow
+                        listing={listing}
+                        key={listing.id}
+                        onLog={openLog}
+                        onSetStatus={setListingStatus}
+                      />
+                    ))}
+                  </article>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
       </div>
       {logging ? (

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../database/prisma.service'
+import { UserSettableListingStatus } from '../job-boards/dto/update-listing.dto'
 import { JobMatchingService } from '../job-boards/job-matching.service'
 import { companyKey } from '../job-boards/normalized-job'
 import { FoldableOpening, foldOpenings } from '../job-boards/opening-folding'
@@ -47,18 +48,20 @@ export class RemoteJobBoardService {
     }
 
     const cutoff = new Date(Date.now() - MAX_LISTING_AGE_DAYS * 24 * 60 * 60 * 1000)
-    const [listings, preferences, watchlistKeys, appliedListingIds] = await Promise.all([
-      this.prisma.jobListing.findMany({
-        where: {
-          sources: { some: { jobSourceId: { in: sourceIds } } },
-          OR: [{ postedAt: null }, { postedAt: { gte: cutoff } }],
-        },
-        include: { sources: { select: { provider: true } } },
-      }),
-      this.matchingPreferences(userId),
-      this.watchlistCompanyKeys(userId),
-      this.appliedListingIds(userId),
-    ])
+    const [listings, preferences, watchlistKeys, appliedListingIds, irrelevantIds] =
+      await Promise.all([
+        this.prisma.jobListing.findMany({
+          where: {
+            sources: { some: { jobSourceId: { in: sourceIds } } },
+            OR: [{ postedAt: null }, { postedAt: { gte: cutoff } }],
+          },
+          include: { sources: { select: { provider: true } } },
+        }),
+        this.matchingPreferences(userId),
+        this.watchlistCompanyKeys(userId),
+        this.appliedListingIds(userId),
+        this.irrelevantListingIds(userId),
+      ])
 
     // Keyword + region matching, but pin work mode to remote so the board is
     // genuinely remote even for a user who normally filters to onsite/hybrid.
@@ -106,13 +109,48 @@ export class RemoteJobBoardService {
         firstSeenAt: opening.firstSeenAt,
         providers: opening.providers ?? [],
         matchedKeywords: opening.matchedKeywords,
-        status: 'new',
+        // Folded openings are keyed by a representative posting id; a user who
+        // marked that row irrelevant sees it tucked into the quiet section.
+        status: irrelevantIds.has(opening.id) ? 'irrelevant' : 'new',
       }))
       .sort((a, b) => this.effectiveDate(b) - this.effectiveDate(a))
   }
 
+  // Mark a remote-board listing irrelevant (drops it into the quiet section) or
+  // bring it back ({ status: 'new' }). The Remote Job Board computes its feed on
+  // the fly, so unlike the regular board there is no pre-seeded UserJobListing
+  // row — we upsert one. Remote-company listings never appear on the regular Job
+  // Board (it filters them out), so these rows can't leak across boards. A stale
+  // click on an id that no longer exists is a no-op rather than a 500.
+  async setStatus(
+    userId: string,
+    listingId: string,
+    status: UserSettableListingStatus,
+  ): Promise<void> {
+    const listing = await this.prisma.jobListing.findUnique({
+      where: { id: listingId },
+      select: { id: true },
+    })
+    if (!listing) {
+      return
+    }
+    await this.prisma.userJobListing.upsert({
+      where: { userId_listingId: { userId, listingId } },
+      create: { userId, listingId, status },
+      update: { status },
+    })
+  }
+
   private effectiveDate(listing: RemoteJobBoardListing): number {
     return (listing.postedAt ?? listing.firstSeenAt).getTime()
+  }
+
+  private async irrelevantListingIds(userId: string): Promise<Set<string>> {
+    const rows = await this.prisma.userJobListing.findMany({
+      where: { userId, status: 'irrelevant' },
+      select: { listingId: true },
+    })
+    return new Set(rows.map((row) => row.listingId))
   }
 
   private async remoteCompanySourceIds(): Promise<string[]> {

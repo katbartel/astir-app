@@ -235,7 +235,7 @@ export function JobBoardsView() {
   return (
     <section className="screen" data-screen="job-boards">
       <div className="page-head">
-        <h1>Job board</h1>
+        <h1>Admin - Job board</h1>
         <div className="option-toggles" role="group" aria-label="Sort listings">
           {SORT_OPTIONS.map((option) => (
             <button

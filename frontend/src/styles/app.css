@@ -151,9 +151,8 @@ button {
 }
 
 .nav a.active {
-  background: var(--card);
+  background: var(--nav-active);
   color: var(--ink);
-  box-shadow: var(--shadow-active);
   font-weight: var(--weight-medium);
 }
 
@@ -162,7 +161,7 @@ button {
 }
 
 .nav a:hover:not(.active) {
-  background: var(--hover-soft);
+  background: var(--nav-hover);
 }
 
 .rail .user {
@@ -224,7 +223,11 @@ h1 {
 }
 
 .btn {
-  padding: var(--button-pad-y) var(--r-xl);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--input-height);
+  padding: 0 var(--r-xl);
   border: var(--border-thin) solid transparent;
 }
 
@@ -272,7 +275,7 @@ h1 {
 .goals-card {
   padding: var(--pad-card) var(--space-6);
   margin-bottom: var(--pad-card);
-  border: var(--border-thin) solid var(--line);
+  border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
@@ -632,12 +635,6 @@ h1 {
   text-align: center;
 }
 
-.setup-complete {
-  margin-left: auto;
-  color: var(--muted);
-  font-size: var(--type-meta);
-}
-
 .demo-panel {
   position: fixed;
   left: var(--space-4);
@@ -711,7 +708,7 @@ h1 {
 .watch-group {
   overflow: visible;
   padding: var(--space-2) 0;
-  border: var(--border-thin) solid var(--line);
+  border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
@@ -1174,7 +1171,7 @@ h1 {
   justify-content: space-between;
   width: 100%;
   min-height: var(--input-height);
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--input-radius);
   background: var(--paper);
@@ -1292,6 +1289,92 @@ h1 {
   stroke-linecap: round;
   stroke-linejoin: round;
   stroke-width: 2.1;
+}
+
+/* --- stage colors ---
+   data-stage maps each status to a fill / text / dot triple (tokens in
+   tokens.css). Set on the stage dropdown trigger + options (StageSelect) and
+   the heard-back choices. */
+[data-stage='applied'] {
+  --st-fill: var(--stage-applied-soft);
+  --st-text: var(--stage-applied-text);
+  --st-dot: var(--stage-applied);
+}
+[data-stage='s1'] {
+  --st-fill: var(--stage-1-soft);
+  --st-text: var(--stage-1-text);
+  --st-dot: var(--stage-1);
+}
+[data-stage='s2'] {
+  --st-fill: var(--stage-2-soft);
+  --st-text: var(--stage-2-text);
+  --st-dot: var(--stage-2);
+}
+[data-stage='s3'] {
+  --st-fill: var(--stage-3-soft);
+  --st-text: var(--stage-3-text);
+  --st-dot: var(--stage-3);
+}
+[data-stage='offer'] {
+  --st-fill: var(--stage-offer-soft);
+  --st-text: var(--stage-offer-text);
+  --st-dot: var(--stage-offer);
+}
+[data-stage='hired'] {
+  --st-fill: var(--stage-hired-soft);
+  --st-text: var(--stage-hired-text);
+  --st-dot: var(--stage-hired);
+}
+[data-stage='closed'] {
+  --st-fill: var(--stage-closed-soft);
+  --st-text: var(--stage-closed-text);
+  --st-dot: var(--stage-closed);
+}
+
+.stage-value {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.stage-ring {
+  display: block;
+  flex: 0 0 auto;
+}
+
+/* Stage color reads through the ring + label; no fill behind the control. */
+.select-trigger[data-stage] {
+  color: var(--st-text);
+}
+
+.select-trigger[data-stage] .stage-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* In the open menu, keep rows quiet — colored dot always, colored label only
+   on the current selection. */
+.select-option[data-stage].selected {
+  color: var(--st-text);
+}
+
+/* On a hovered/expanded/open tile, the stage control matches the tile's nav
+   color instead of sitting as a white gap. Border stays for definition. */
+.pipeline-card:hover .stage-select .select-trigger[data-stage],
+.pipeline-card.expanded .stage-select .select-trigger[data-stage],
+.select-trigger[data-stage].open {
+  background: var(--tile);
+}
+
+/* Hovering the control directly deepens it a step. Qualified with the tile
+   context so it outranks the tile-hover/expanded rule above (hovering the
+   control also hovers the tile). */
+.pipeline-card.expanded .stage-select .select-trigger[data-stage]:hover,
+.pipeline-card:hover .stage-select .select-trigger[data-stage]:hover,
+.select-trigger[data-stage]:hover {
+  background: var(--tile-hover);
 }
 
 .calendar-popover {
@@ -1489,7 +1572,7 @@ h1 {
 
 .pipeline-card {
   padding: var(--space-4) var(--space-6);
-  border: var(--border-thin) solid var(--line);
+  border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
@@ -1500,10 +1583,7 @@ h1 {
 .pipeline-card:hover,
 .pipeline-card.expanded {
   border-color: var(--line2);
-}
-
-.pipeline-card:hover {
-  background: linear-gradient(var(--hover-soft), var(--hover-soft)), var(--card);
+  background: var(--tile);
 }
 
 .pipeline-card:focus-visible {
@@ -1593,14 +1673,20 @@ h1 {
   padding: var(--space-3);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--input-radius);
-  background: var(--paper);
+  background: var(--tile);
   color: var(--ink);
   font-size: var(--type-body);
   line-height: 1.5;
 }
 
+/* A step darker on hover, but hold the fill steady while typing — focus is
+   signalled by the stage-colored border alone. */
+.note-field:hover:not(:focus) {
+  background: var(--tile-hover);
+}
+
 .note-field:focus {
-  border-color: var(--gold);
+  border-color: var(--st-dot, var(--gold));
   box-shadow: var(--focus-ring);
   outline: none;
 }
@@ -1631,7 +1717,7 @@ h1 {
   place-items: center;
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--space-1);
-  background: var(--paper);
+  background: var(--tile);
   color: var(--gold-deep);
 }
 
@@ -2268,7 +2354,7 @@ input,
 select {
   width: 100%;
   min-height: var(--input-height);
-  padding: var(--space-2) var(--space-3);
+  padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--input-radius);
   outline: none;
@@ -2668,7 +2754,7 @@ textarea {
   width: 100%;
   max-width: var(--modal-max);
   padding: var(--pad-modal);
-  border: var(--border-thin) solid var(--line);
+  border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
@@ -2794,31 +2880,119 @@ textarea {
   flex-direction: column;
   gap: var(--space-6);
   padding: var(--pad-card) var(--space-6);
-  border: var(--border-thin) solid var(--line);
+  border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-card);
 }
 
-.prefs-avatar-row {
-  display: flex;
+/* Settings rows: label on the left, control flush to the right. Every row is
+   the same height so the vertically-centered labels sit on an even rhythm
+   regardless of how tall each control is. */
+.prefs-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
   gap: var(--space-4);
+  min-height: var(--prefs-avatar-size);
+}
+
+.prefs-row-label {
+  color: var(--ink);
+  font-size: var(--type-body);
+  font-weight: var(--weight-regular);
+}
+
+.prefs-row-input {
+  width: min(60vw, var(--calendar-width));
 }
 
 .prefs-avatar {
-  width: var(--space-16);
-  height: var(--space-16);
-  flex: 0 0 var(--space-16);
+  display: block;
+  width: 100%;
+  height: 100%;
   border-radius: var(--r-pill);
   background: var(--avatar);
   object-fit: cover;
 }
 
-.prefs-avatar-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
+.prefs-avatar-control {
+  justify-self: end;
+}
+
+/* The avatar doubles as its own control: click to upload (no photo) or open
+   the Change / Remove menu (photo set). Hover reveals a milky film + camera. */
+.prefs-avatar-button {
+  position: relative;
+  width: var(--prefs-avatar-size);
+  height: var(--prefs-avatar-size);
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--avatar);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.prefs-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: var(--avatar-overlay);
+  color: var(--ink);
+  opacity: 0;
+  transition: opacity .15s ease;
+}
+
+.prefs-avatar-overlay svg {
+  width: var(--watch-action-icon-size);
+  height: var(--watch-action-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.prefs-avatar-button:hover .prefs-avatar-overlay,
+.prefs-avatar-button:focus-visible .prefs-avatar-overlay,
+.prefs-avatar-control.open .prefs-avatar-overlay {
+  opacity: 1;
+}
+
+.prefs-avatar-menu {
+  min-width: auto;
+  padding: var(--space-1);
+}
+
+/* Light / Dark segmented control. */
+.prefs-mode-toggle {
+  display: inline-flex;
+  padding: var(--space-0-5);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+}
+
+.prefs-mode-option {
+  padding: var(--space-1) var(--space-4);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink2);
+  font-size: var(--type-control);
+  transition: background .2s ease, color .2s ease;
+}
+
+.prefs-mode-option:hover {
+  color: var(--ink);
+}
+
+.prefs-mode-option.on {
+  background: var(--gold-soft);
+  color: var(--gold-text);
+  font-weight: var(--weight-medium);
 }
 
 .prefs-field {
@@ -2852,6 +3026,16 @@ textarea {
 }
 
 .prefs-status.error {
+  color: var(--net-text);
+}
+
+/* Transient autosave feedback under the settings rows. */
+.prefs-autosave {
+  margin-top: calc(var(--space-2) * -1);
+  color: var(--muted);
+}
+
+.prefs-autosave.error {
   color: var(--net-text);
 }
 
@@ -3156,12 +3340,18 @@ textarea {
   font-weight: var(--weight-medium);
 }
 
-/* Avatar cropper */
+/* Avatar cropper — the modal is exactly one image-frame wide (plus the
+   standard modal padding) so the heading, slider and buttons all align to the
+   frame's left/right edges. */
+.avatar-cropper {
+  width: min(100%, calc(var(--crop-viewport) + var(--pad-modal) * 2));
+}
+
 .crop-viewport {
   position: relative;
   width: var(--crop-viewport);
   height: var(--crop-viewport);
-  margin: var(--space-4) auto;
+  margin: 0 0 var(--space-4);
   overflow: hidden;
   border-radius: var(--r-md);
   background: var(--snack-bg);
@@ -3194,25 +3384,89 @@ textarea {
 }
 
 .crop-zoom {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: var(--space-3);
-  margin-bottom: var(--space-2);
   color: var(--muted);
-  font-size: var(--type-secondary);
 }
 
-.crop-zoom input {
+/* Light-grey track with a gold thumb (not the native dark fill). */
+.crop-zoom input[type='range'] {
+  flex: 1;
   min-height: auto;
+  height: var(--range-thumb);
   padding: 0;
   border: 0;
   background: transparent;
-  accent-color: var(--gold);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.crop-zoom input[type='range']::-webkit-slider-runnable-track {
+  height: var(--range-track);
+  border-radius: var(--r-pill);
+  background: var(--line2);
+}
+
+.crop-zoom input[type='range']::-moz-range-track {
+  height: var(--range-track);
+  border-radius: var(--r-pill);
+  background: var(--line2);
+}
+
+.crop-zoom input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--range-thumb);
+  height: var(--range-thumb);
+  margin-top: calc((var(--range-track) - var(--range-thumb)) / 2);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--gold);
+}
+
+.crop-zoom input[type='range']::-moz-range-thumb {
+  width: var(--range-thumb);
+  height: var(--range-thumb);
+  border: 0;
+  border-radius: var(--r-pill);
+  background: var(--gold);
 }
 
 .crop-zoom input:focus {
   border: 0;
   box-shadow: none;
+}
+
+.crop-zoom-step {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.crop-zoom-step:hover:not(:disabled) {
+  color: var(--ink);
+}
+
+.crop-zoom-step:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.crop-zoom-step svg {
+  width: var(--watch-action-icon-size);
+  height: var(--watch-action-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Admin Panel — remote job board curation */
@@ -3250,6 +3504,57 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+}
+
+.admin-list-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+}
+
+.admin-list-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--input-height);
+  padding: var(--space-2) var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--type-control);
+}
+
+.admin-list-search:focus {
+  border-color: var(--gold);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.admin-list-sort {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  color: var(--ink2);
+  font-size: var(--type-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.admin-list-sort select {
+  height: var(--input-height);
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--type-control);
+}
+
+.admin-list-sort select:focus {
+  border-color: var(--gold);
+  box-shadow: var(--focus-ring);
+  outline: none;
 }
 
 .admin-company-list {

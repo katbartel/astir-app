@@ -50,11 +50,26 @@ export function Tooltips() {
       const shift = tooltipNumber('--tooltip-shift', 3)
       const minLeft = tooltipMinLeft()
       const maxAvailableWidth = Math.max(160, window.innerWidth - minLeft - inset)
-      const maxLineWidth = tooltipNumber('--type-tooltip', 12) * 40
+      const maxLineWidth = tooltipNumber('--type-tooltip', 12) * 25
       const noArrowInset = tooltipLayer.classList.contains('no-arrow')
         ? tooltipNumber('--space-1', 4)
         : 0
       tooltipBubble.style.maxWidth = `${Math.min(maxLineWidth, maxAvailableWidth)}px`
+
+      // A block bubble keeps its full max-width even after the text wraps, so a
+      // short final line leaves a ragged gap on the right and the padding reads
+      // lopsided. Measure the widest wrapped line and shrink the bubble to hug
+      // it, so every side gets the same padding. Reset to auto first so the
+      // measurement reflects wrapping at max-width, not a prior narrow width.
+      tooltipBubble.style.width = 'auto'
+      const textRange = document.createRange()
+      textRange.selectNodeContents(tooltipBubble)
+      const textWidth = textRange.getBoundingClientRect().width
+      const bubbleStyle = getComputedStyle(tooltipBubble)
+      const bubblePaddingX =
+        Number.parseFloat(bubbleStyle.paddingLeft) + Number.parseFloat(bubbleStyle.paddingRight)
+      // +1px guards against sub-pixel rounding re-wrapping the last word.
+      tooltipBubble.style.width = `${Math.ceil(textWidth) + bubblePaddingX + 1}px`
 
       const bubbleRect = tooltipBubble.getBoundingClientRect()
       const anchorCenter = targetRect.left + targetRect.width / 2

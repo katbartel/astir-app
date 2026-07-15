@@ -1,9 +1,14 @@
 /* breakpoint: narrow = 760px (raw in media queries by necessity) */
 
 :root {
-  --paper: #F7F3EB;
-  --rail: #F0EAE0;
+  --paper: #FFFDF8;
+  --rail: #F7F3EB;
   --card: #FFFDF8;
+  --nav-hover: #EFE8DB;
+  --nav-active: #E7DECE;
+  /* Pipeline tile surface — brighter than the nav rail; hover sits a touch below it. */
+  --tile: #FBF8F1;
+  --tile-hover: #F4EFE3;
   --ink: #2E2A23;
   --ink2: #57503F;
   --muted: #8C8371;
@@ -39,7 +44,35 @@
   --ember-light: #F0CE8B;
   --ember-mid: #DCA246;
   --ember-deep: #B87B1F;
+  /* Application stage colors — a temperature journey: cool blue at entry,
+     warming mustard through the interview rounds (darkening down the yellow
+     axis, not toward red), cooling into green at Offer → Hired, neutral grey
+     once closed. Muted/subtle: soft fill + colored ring + readable text,
+     matching the -soft / -text convention used above. */
+  --stage-applied: #5B7A99;
+  --stage-applied-soft: rgba(91,122,153,.11);
+  --stage-applied-text: #46617D;
+  --stage-1: #E3C264;
+  --stage-1-soft: rgba(227,194,100,.16);
+  --stage-1-text: #8A6A1E;
+  --stage-2: #CDA438;
+  --stage-2-soft: rgba(205,164,56,.16);
+  --stage-2-text: #7C5D12;
+  --stage-3: #B08D22;
+  --stage-3-soft: rgba(176,141,34,.15);
+  --stage-3-text: #6B520E;
+  /* Offer cools into a light green — a preview of Hired's deeper green. */
+  --stage-offer: #7FA377;
+  --stage-offer-soft: rgba(127,163,119,.16);
+  --stage-offer-text: #4C6B47;
+  --stage-hired: #4F7D5B;
+  --stage-hired-soft: rgba(79,125,91,.14);
+  --stage-hired-text: #3A6046;
+  --stage-closed: #9B9384;
+  --stage-closed-soft: rgba(120,112,96,.10);
+  --stage-closed-text: #6E6656;
   --avatar: #D8CDBB;
+  --avatar-overlay: rgba(255,253,248,.62);
   --hover-soft: rgba(70,60,40,.05);
   --tile-control-tint: rgba(70,60,40,.035);
   --tile-control-hover: rgba(70,60,40,.07);
@@ -78,6 +111,7 @@
   --content-max: 980px;
   --mini-size: 26px;
   --avatar-size: 22px;
+  --prefs-avatar-size: 40px;
   --dot-size: 30px;
   --icon-size: 13px;
   --watch-action-icon-size: 17px;
@@ -98,6 +132,8 @@
   --table-column-min: 52px;
   --calendar-width: 252px;
   --crop-viewport: 280px; /* must match VIEWPORT in AvatarCropper.tsx */
+  --range-track: 4px;
+  --range-thumb: 16px;
   --calendar-day-size: 30px;
   --mobile-cutoff: 760px;
   --border-thin: 1px;
@@ -106,14 +142,14 @@
   --space-hairline: 2px;
   --button-pad-y: 9px;
   --input-radius: 10px;
-  --input-height: 40px;
+  --input-height: 32px;
   --snack-radius: 11px;
   --tooltip-pad-y: 5px;
   --tooltip-pad-x: 10px;
   --tooltip-pad: 8px;
   --tooltip-radius: 8px;
   --tooltip-shift: 3px;
-  --tooltip-max-width: 40ch;
+  --tooltip-max-width: 25ch;
   --font-display: "Bricolage Grotesque", sans-serif;
   --font-body: "Instrument Sans", system-ui, sans-serif;
   --type-h1: 27px;

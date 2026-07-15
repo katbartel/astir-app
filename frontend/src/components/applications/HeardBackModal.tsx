@@ -1,8 +1,15 @@
 'use client'
 
 import { Fragment, useMemo, useState } from 'react'
-import { STATUS_OPTIONS, type Application, type Status, normalizeStatus } from '@/lib/applications'
+import {
+  STATUS_OPTIONS,
+  type Application,
+  type Status,
+  normalizeStatus,
+  stageColorKey,
+} from '@/lib/applications'
 import { CheckIcon } from '../icons'
+import { StageRing } from './StageRing'
 
 // "Move to pipeline" flow: find a logged application by company name, then pick
 // the stage it advanced to. Ported from the heard-back modal in
@@ -58,9 +65,13 @@ export function HeardBackModal({
                   <button
                     className="stage-choice"
                     type="button"
+                    data-stage={stageColorKey(option)}
                     onClick={() => onChoose(selected, option)}
                   >
-                    <span>{option}</span>
+                    <span className="stage-value">
+                      <StageRing status={option} />
+                      {option}
+                    </span>
                     <span className="select-check" aria-hidden="true">
                       {option === normalizeStatus(selected.status) ? <CheckIcon /> : null}
                     </span>

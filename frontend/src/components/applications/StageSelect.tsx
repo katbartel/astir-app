@@ -1,8 +1,9 @@
 'use client'
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { STATUS_OPTIONS, type Status, normalizeStatus } from '@/lib/applications'
+import { STATUS_OPTIONS, type Status, normalizeStatus, stageColorKey } from '@/lib/applications'
 import { CheckIcon, ChevronDownIcon } from '../icons'
+import { StageRing } from './StageRing'
 
 function tokenPixels(name: string): number {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name)
@@ -107,6 +108,7 @@ export function StageSelect({
         className={`select-trigger ${open ? 'open' : ''}`.trim()}
         type="button"
         ref={triggerRef}
+        data-stage={stageColorKey(selected)}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={(event) => {
@@ -114,7 +116,10 @@ export function StageSelect({
           setOpen((value) => !value)
         }}
       >
-        <span>{selected}</span>
+        <span className="stage-value">
+          <StageRing status={selected} />
+          {selected}
+        </span>
         <span className="select-chev" aria-hidden="true">
           <ChevronDownIcon />
         </span>
@@ -134,6 +139,7 @@ export function StageSelect({
               className={`select-option ${option === selected ? 'selected' : ''}`.trim()}
               type="button"
               role="option"
+              data-stage={stageColorKey(option)}
               aria-selected={option === selected}
               onClick={(event) => {
                 event.stopPropagation()
@@ -141,7 +147,10 @@ export function StageSelect({
                 if (option !== selected) onChange(option)
               }}
             >
-              <span>{option}</span>
+              <span className="stage-value">
+                <StageRing status={option} />
+                {option}
+              </span>
               <span className="select-check" aria-hidden="true">
                 {option === selected ? <CheckIcon /> : null}
               </span>

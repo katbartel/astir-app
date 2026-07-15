@@ -38,7 +38,7 @@ export const numericLimits: Record<string, { min: number; max: number; defaultVa
 
 export const activity: Record<ActivityId, ActivityInfo> = {
   apply: { name: 'Applications', type: 'numeric', deep: '--gold-deep' },
-  net: { name: 'Networking', type: 'numeric', deep: '--net-deep' },
+  net: { name: 'Connecting', type: 'numeric', deep: '--net-deep' },
   rest: { name: 'Rest', type: 'numeric', deep: '--rest-deep' },
   prep: { name: 'Prep', type: 'binary', deep: '--prep-deep' },
   docs: { name: 'Paperwork', type: 'binary', deep: '--docs-deep' },

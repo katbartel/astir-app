@@ -8,6 +8,7 @@ import {
   isPipelineStatus,
   normalizeMode,
   plainDate,
+  stageColorKey,
   stageRank,
   updateApplication,
 } from '@/lib/applications'
@@ -58,6 +59,7 @@ function PipelineCard({
   return (
     <article
       className={`pipeline-card ${expanded ? 'expanded' : ''}`.trim()}
+      data-stage={stageColorKey(application.status)}
       tabIndex={0}
       aria-expanded={expanded}
       aria-label={`${application.company}, ${application.role}`}
@@ -121,9 +123,10 @@ export function PipelineView() {
           isPipelineStatus(application.status) && isEnabled(application.status),
       )
       .sort((a, b) => {
-        const byTime =
-          new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
-        return byTime !== 0 ? byTime : stageRank(b.status) - stageRank(a.status)
+        // Most advanced stage first; break ties by most recent stage change.
+        const byStage = stageRank(b.status) - stageRank(a.status)
+        if (byStage !== 0) return byStage
+        return new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
       })
   }, [applications, isEnabled])
 

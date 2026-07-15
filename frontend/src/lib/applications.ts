@@ -70,6 +70,42 @@ export function stageRank(status: string): number {
   return STATUS_OPTIONS.indexOf(normalizeStatus(status))
 }
 
+// Short key for a status, used as the `data-stage` attribute that drives stage
+// colors in the CSS (see the --stage-* tokens). Kept separate from the labels
+// so the stored/display names stay untouched.
+const STAGE_COLOR_KEYS: Record<Status, string> = {
+  Applied: 'applied',
+  '1st stage': 's1',
+  '2nd stage': 's2',
+  '3rd stage': 's3',
+  Offer: 'offer',
+  Hired: 'hired',
+  Closed: 'closed',
+}
+
+export function stageColorKey(status: string): string {
+  return STAGE_COLOR_KEYS[normalizeStatus(status)]
+}
+
+// Progress of a status along the on-track journey (Applied … Hired). Closed
+// sits off-track. Drives how far the stage ring fills. Derived from position
+// in the ordered list, so it still holds if stages are added or disabled.
+export type StageProgress = {
+  fraction: number
+  state: 'start' | 'progress' | 'done' | 'closed'
+}
+
+export function stageProgress(status: string): StageProgress {
+  const current = normalizeStatus(status)
+  if (current === 'Closed') return { fraction: 0, state: 'closed' }
+  const journey = STATUS_OPTIONS.filter((option) => option !== 'Closed')
+  const index = journey.indexOf(current)
+  const fraction = journey.length > 1 ? index / (journey.length - 1) : 0
+  if (index <= 0) return { fraction: 0, state: 'start' }
+  if (index >= journey.length - 1) return { fraction: 1, state: 'done' }
+  return { fraction, state: 'progress' }
+}
+
 // Normalize a free-form work mode to one of the three display labels, matching
 // the prototype's normalizeMode.
 export function normalizeMode(mode: string | null | undefined): string {

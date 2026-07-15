@@ -1,10 +1,12 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { MinusIcon, PlusIcon } from '../icons'
 
 const VIEWPORT = 280 // must match --crop-viewport in tokens.css
 const OUTPUT_EDGE = 128
 const MAX_ZOOM = 4
+const ZOOM_STEP = 0.25 // how far the − / + buttons nudge the zoom
 
 type Offset = { x: number; y: number }
 
@@ -121,6 +123,14 @@ export function AvatarCropper({ imageUrl, onCancel, onError, onConfirm }: Avatar
     )
   }
 
+  // Step the zoom via the − / + buttons, staying within the slider bounds.
+  function nudgeZoom(delta: number) {
+    if (!natural) {
+      return
+    }
+    onZoomChange(Math.min(MAX_ZOOM, Math.max(1, Number((zoom + delta).toFixed(2)))))
+  }
+
   function confirm() {
     const img = imgRef.current
     if (!img || !natural) {
@@ -157,13 +167,10 @@ export function AvatarCropper({ imageUrl, onCancel, onError, onConfirm }: Avatar
         }
       }}
     >
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Position your photo">
+      <div className="modal avatar-cropper" role="dialog" aria-modal="true" aria-label="Edit photo">
         <div className="modal-head">
-          <h2>Position your photo</h2>
+          <h2>Edit</h2>
         </div>
-        <p className="modal-hint">
-          Drag the photo and zoom until the part you want fills the circle.
-        </p>
         <div
           className="crop-viewport"
           onPointerDown={onPointerDown}
@@ -182,10 +189,19 @@ export function AvatarCropper({ imageUrl, onCancel, onError, onConfirm }: Avatar
           />
           <div className="crop-mask" aria-hidden="true" />
         </div>
-        <label className="crop-zoom">
-          Zoom
+        <div className="crop-zoom">
+          <button
+            className="crop-zoom-step"
+            type="button"
+            aria-label="Zoom out"
+            disabled={!natural || zoom <= 1}
+            onClick={() => nudgeZoom(-ZOOM_STEP)}
+          >
+            <MinusIcon />
+          </button>
           <input
             type="range"
+            aria-label="Zoom"
             min={1}
             max={MAX_ZOOM}
             step={0.01}
@@ -193,13 +209,22 @@ export function AvatarCropper({ imageUrl, onCancel, onError, onConfirm }: Avatar
             disabled={!natural}
             onChange={(event) => onZoomChange(Number(event.target.value))}
           />
-        </label>
+          <button
+            className="crop-zoom-step"
+            type="button"
+            aria-label="Zoom in"
+            disabled={!natural || zoom >= MAX_ZOOM}
+            onClick={() => nudgeZoom(ZOOM_STEP)}
+          >
+            <PlusIcon />
+          </button>
+        </div>
         <div className="modal-actions">
           <button className="btn ghost" type="button" onClick={onCancel}>
             Cancel
           </button>
           <button className="btn solid" type="button" disabled={!natural} onClick={confirm}>
-            Use photo
+            Save
           </button>
         </div>
       </div>

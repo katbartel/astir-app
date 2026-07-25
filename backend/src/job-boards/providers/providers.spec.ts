@@ -2,6 +2,7 @@ import { AdzunaProvider } from './adzuna.provider'
 import { ArbeitnowProvider } from './arbeitnow.provider'
 import { AshbyProvider } from './ashby.provider'
 import { BambooHrProvider } from './bamboohr.provider'
+import { BlueskyProvider, jobsFromHtml } from './bluesky.provider'
 import { BreezyProvider } from './breezy.provider'
 import { GreenhouseProvider } from './greenhouse.provider'
 import { JobPostingProvider } from './jobposting.provider'
@@ -941,6 +942,69 @@ describe('BreezyProvider', () => {
     expect(remote?.workMode).toBe('Remote')
     expect(
       provider.normalize({ id: '6', name: 'No url' }, { externalId: 'x', companyName: 'X' }),
+    ).toBeNull()
+  })
+})
+
+describe('BlueskyProvider', () => {
+  const provider = new BlueskyProvider()
+
+  it('canonicalizes any bsky.social careers URL and ignores everything else', () => {
+    expect(provider.handleFromUrl('https://bsky.social/about/join')).toBe(
+      'https://bsky.social/about/join',
+    )
+    expect(provider.handleFromUrl('https://bsky.social/careers')).toBe(
+      'https://bsky.social/about/join',
+    )
+    expect(provider.handleFromUrl('https://jobs.gem.com/bluesky')).toBeNull()
+    expect(provider.handleFromUrl('https://example.com/bsky.social.fake')).toBeNull()
+  })
+
+  it('extracts props.pageProps.jobs from the Next.js data blob and shrugs off bad shapes', () => {
+    const html =
+      '<html><script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({ props: { pageProps: { jobs: [{ id: 'a', title: 'Eng' }] } } }) +
+      '</script></html>'
+    expect(jobsFromHtml(html)).toEqual([{ id: 'a', title: 'Eng' }])
+    expect(jobsFromHtml('<html>no blob</html>')).toEqual([])
+    expect(
+      jobsFromHtml('<script id="__NEXT_DATA__">{not json}</script>'),
+    ).toEqual([])
+  })
+
+  it('maps a posting and infers work mode from location fields', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 'am9icG9zdDphhWUr1pfGGKre7yshW0Dg',
+          title: 'Senior Backend Developer, Platform/Infrastructure',
+          department: 'Engineering',
+          location: 'United States - Remote',
+          locationType: 'Remote (overlap with PST)',
+          employmentType: 'Full-time',
+          applyUrl: 'https://jobs.gem.com/bluesky/am9icG9zdDphhWUr1pfGGKre7yshW0Dg',
+          updatedAt: '2026-07-22T01:03:01.299Z',
+        },
+        { externalId: 'https://bsky.social/about/join', companyName: 'Bluesky' },
+      ),
+    ).toEqual({
+      provider: 'bluesky',
+      externalId: 'am9icG9zdDphhWUr1pfGGKre7yshW0Dg',
+      title: 'Senior Backend Developer, Platform/Infrastructure',
+      companyName: 'Bluesky',
+      location: 'United States - Remote',
+      locations: ['United States - Remote'],
+      workMode: 'Remote',
+      url: 'https://jobs.gem.com/bluesky/am9icG9zdDphhWUr1pfGGKre7yshW0Dg',
+      postedAt: new Date('2026-07-22T01:03:01.299Z'),
+    })
+  })
+
+  it('drops postings missing an id, title, or apply URL', () => {
+    const source = { externalId: 'https://bsky.social/about/join', companyName: 'Bluesky' }
+    expect(provider.normalize({ id: 'x', title: 'No apply' }, source)).toBeNull()
+    expect(
+      provider.normalize({ title: 'No id', applyUrl: 'https://jobs.gem.com/bluesky/x' }, source),
     ).toBeNull()
   })
 })

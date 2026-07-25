@@ -13,8 +13,7 @@ import { RemoteCompaniesService } from '../src/remote-companies/remote-companies
 
 // Exact company name -> the real ATS board URL our providers understand.
 const FIXES: Record<string, string> = {
-  'cal.com': 'https://cal-com.breezy.hr',
-  Whatnot: 'https://jobs.ashbyhq.com/whatnot',
+  Bluesky: 'https://bsky.social/about/join',
 }
 
 async function main() {

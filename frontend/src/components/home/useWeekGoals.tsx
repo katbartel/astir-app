@@ -2,13 +2,21 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { todayKey } from '@/lib/applications'
+import { type Note } from '@/lib/applications'
 import {
-  type ActivityId,
   type Goal,
+  type TaskTileId,
   type Week,
-  applyGoalDelta,
+  addStep,
+  addTask,
+  adjustRest,
   emptyWeek,
-  readWeek,
+  readCurrentWeek,
+  removeStep,
+  removeTask,
+  setTaskNote,
+  toggleStep,
+  toggleTask,
   weekKeyFor,
   writeWeek,
 } from '@/lib/goals'
@@ -23,7 +31,7 @@ export function useWeekGoals() {
   useEffect(() => {
     const currentKey = weekKeyFor()
     setKey(currentKey)
-    setWeek(readWeek(currentKey))
+    setWeek(readCurrentWeek(currentKey))
   }, [])
 
   const mutate = useCallback(
@@ -44,12 +52,44 @@ export function useWeekGoals() {
     [mutate],
   )
 
-  const stepGoal = useCallback(
-    (id: ActivityId, delta: number) => {
-      mutate((current) => applyGoalDelta(current, id, delta, todayKey()))
-    },
-    [mutate],
-  )
+  // Rest keeps its manual +/- (nudges the inferred-days baseline).
+  const stepRest = useCallback((delta: number) => mutate((current) => adjustRest(current, delta)), [mutate])
 
-  return { week, setGoals, stepGoal }
+  // Task-checklist operations for the Connecting / Prep / Paperwork tiles.
+  const tasks = {
+    add: useCallback(
+      (tile: TaskTileId, text: string) => mutate((current) => addTask(current, tile, text)),
+      [mutate],
+    ),
+    remove: useCallback(
+      (tile: TaskTileId, taskId: string) => mutate((current) => removeTask(current, tile, taskId)),
+      [mutate],
+    ),
+    toggle: useCallback(
+      (tile: TaskTileId, taskId: string) => mutate((current) => toggleTask(current, tile, taskId, todayKey())),
+      [mutate],
+    ),
+    setNote: useCallback(
+      (tile: TaskTileId, taskId: string, note: Note | null) =>
+        mutate((current) => setTaskNote(current, tile, taskId, note)),
+      [mutate],
+    ),
+    addStep: useCallback(
+      (tile: TaskTileId, taskId: string, text: string) =>
+        mutate((current) => addStep(current, tile, taskId, text)),
+      [mutate],
+    ),
+    toggleStep: useCallback(
+      (tile: TaskTileId, taskId: string, stepId: string) =>
+        mutate((current) => toggleStep(current, tile, taskId, stepId)),
+      [mutate],
+    ),
+    removeStep: useCallback(
+      (tile: TaskTileId, taskId: string, stepId: string) =>
+        mutate((current) => removeStep(current, tile, taskId, stepId)),
+      [mutate],
+    ),
+  }
+
+  return { week, setGoals, stepRest, tasks }
 }

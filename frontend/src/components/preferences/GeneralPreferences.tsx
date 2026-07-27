@@ -2,26 +2,11 @@
 
 import { useRouter } from 'next/navigation'
 import { useEffect, useRef, useState } from 'react'
+import { applyMode, readMode, writeMode, type Mode } from '@/lib/theme'
 import { CameraIcon } from '../icons'
 import { MenuScrim, useMenuModality } from '../applications/menuModality'
 import { useUser } from '../UserProvider'
 import { AvatarCropper } from './AvatarCropper'
-
-type Mode = 'light' | 'dark'
-const MODE_KEY = 'astir.mode'
-
-// The Mode toggle is presentational for now: it remembers the user's choice in
-// localStorage but does not yet repaint the app (see the theming follow-up).
-function readMode(): Mode {
-  if (typeof window === 'undefined') {
-    return 'light'
-  }
-  try {
-    return window.localStorage.getItem(MODE_KEY) === 'dark' ? 'dark' : 'light'
-  } catch {
-    return 'light'
-  }
-}
 
 export function GeneralPreferences() {
   const user = useUser()
@@ -38,7 +23,9 @@ export function GeneralPreferences() {
 
   // Read the persisted mode on mount to avoid a server/client mismatch.
   useEffect(() => {
-    setMode(readMode())
+    const savedMode = readMode()
+    setMode(savedMode)
+    applyMode(savedMode)
   }, [])
 
   useMenuModality(avatarMenuOpen, avatarMenuRef, setAvatarMenuOpen)
@@ -107,11 +94,7 @@ export function GeneralPreferences() {
 
   function chooseMode(next: Mode) {
     setMode(next)
-    try {
-      window.localStorage.setItem(MODE_KEY, next)
-    } catch {
-      // localStorage unavailable; the choice just won't persist across reloads.
-    }
+    writeMode(next)
   }
 
   return (
@@ -209,7 +192,7 @@ export function GeneralPreferences() {
               className={`prefs-mode-option${mode === 'dark' ? ' on' : ''}`}
               onClick={() => chooseMode('dark')}
             >
-              Dark
+              Dusk
             </button>
           </div>
         </div>

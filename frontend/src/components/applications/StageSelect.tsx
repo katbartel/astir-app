@@ -1,7 +1,8 @@
 'use client'
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { STATUS_OPTIONS, type Status, normalizeStatus, stageColorKey } from '@/lib/applications'
+import { type Status, normalizeStatus } from '@/lib/applications'
+import { STAGE_IDS, type StageRecord, useStageConfig } from '@/lib/stages'
 import { CheckIcon, ChevronDownIcon } from '../icons'
 import { StageRing } from './StageRing'
 
@@ -66,12 +67,14 @@ export function StageSelect({
   onChange: (status: Status) => void
   className?: string
 }) {
+  const { allStages, labelFor, colorFor, visualFor } = useStageConfig()
   const [open, setOpen] = useState(false)
   const shellRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const selected = normalizeStatus(value)
-  const selectedIndex = Math.max(0, STATUS_OPTIONS.indexOf(selected))
+  const selectedStage = allStages.find((stage) => stage.id === selected) ?? allStages[0]
+  const selectedIndex = Math.max(0, allStages.findIndex((stage) => stage.id === selected))
 
   useLayoutEffect(() => {
     if (open && menuRef.current && triggerRef.current) {
@@ -108,7 +111,7 @@ export function StageSelect({
         className={`select-trigger ${open ? 'open' : ''}`.trim()}
         type="button"
         ref={triggerRef}
-        data-stage={stageColorKey(selected)}
+        data-stage={colorFor(selected)}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={(event) => {
@@ -116,9 +119,9 @@ export function StageSelect({
           setOpen((value) => !value)
         }}
       >
-        <span className="stage-value">
-          <StageRing status={selected} />
-          {selected}
+          <span className="stage-value">
+          <StageRing status={selected} {...visualFor(selected)} />
+          {labelFor(selectedStage.id)}
         </span>
         <span className="select-chev" aria-hidden="true">
           <ChevronDownIcon />
@@ -130,29 +133,32 @@ export function StageSelect({
         ref={menuRef}
         style={{ ['--selected-index' as string]: selectedIndex }}
       >
-        {STATUS_OPTIONS.map((option) => (
-          <Fragment key={option}>
-            {option === '1st stage' || option === 'Closed' ? (
+        {allStages.map((option: StageRecord) => (
+          <Fragment key={option.id}>
+            {option.bucket === 'progress' && option.id === allStages.find((stage) => stage.bucket === 'progress')?.id ? (
+              <div className="select-separator" aria-hidden="true" />
+            ) : null}
+            {option.id === STAGE_IDS.closed ? (
               <div className="select-separator" aria-hidden="true" />
             ) : null}
             <button
-              className={`select-option ${option === selected ? 'selected' : ''}`.trim()}
+              className={`select-option ${option.id === selected ? 'selected' : ''}`.trim()}
               type="button"
               role="option"
-              data-stage={stageColorKey(option)}
-              aria-selected={option === selected}
+              data-stage={colorFor(option.id)}
+              aria-selected={option.id === selected}
               onClick={(event) => {
                 event.stopPropagation()
                 setOpen(false)
-                if (option !== selected) onChange(option)
+                if (option.id !== selected) onChange(option.id)
               }}
             >
               <span className="stage-value">
-                <StageRing status={option} />
-                {option}
+                <StageRing status={option.id} {...visualFor(option.id)} />
+                {option.name}
               </span>
               <span className="select-check" aria-hidden="true">
-                {option === selected ? <CheckIcon /> : null}
+                {option.id === selected ? <CheckIcon /> : null}
               </span>
             </button>
           </Fragment>

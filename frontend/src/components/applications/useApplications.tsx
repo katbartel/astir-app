@@ -5,9 +5,9 @@ import {
   type Application,
   type Status,
   fetchApplications,
-  isPipelineStatus,
   updateApplication,
 } from '@/lib/applications'
+import { STAGE_IDS, isPipelineStage, useStageConfig } from '@/lib/stages'
 import { HiredModal } from './HiredModal'
 import { Snackbar, useSnackbar } from './useSnackbar'
 
@@ -18,6 +18,7 @@ type StageContext = 'pipeline' | 'applications' | 'heard'
 // snackbar semantics, and the Hired celebration. Returns an `overlay` node the
 // screen renders once (snackbar + hired modal).
 export function useApplications() {
+  const { catalog } = useStageConfig()
   const [applications, setApplications] = useState<Application[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [hiredFor, setHiredFor] = useState<Application | null>(null)
@@ -37,14 +38,14 @@ export function useApplications() {
 
   const changeStage = useCallback(
     async (application: Application, status: Status, context: StageContext) => {
-      const wasPipeline = isPipelineStatus(application.status)
+      const wasPipeline = isPipelineStage(catalog, application.status)
       const updated = await updateApplication(application.id, { status })
       await reload()
-      if (status === 'Hired') {
+      if (status === STAGE_IDS.hired) {
         setHiredFor(updated)
         return
       }
-      if (context === 'pipeline' && wasPipeline && status === 'Applied') {
+      if (context === 'pipeline' && wasPipeline && status === STAGE_IDS.applied) {
         showSnack(
           {
             text: 'Moved back to applied. Kept in all applications.',
@@ -53,7 +54,7 @@ export function useApplications() {
           },
           5000,
         )
-      } else if (context === 'pipeline' && wasPipeline && status === 'Closed') {
+      } else if (context === 'pipeline' && wasPipeline && status === STAGE_IDS.closed) {
         showSnack(
           {
             text: 'Closed. Kept in all applications.',
@@ -63,7 +64,7 @@ export function useApplications() {
           5000,
         )
       } else if (context === 'heard') {
-        const inPipeline = isPipelineStatus(status)
+        const inPipeline = isPipelineStage(catalog, status)
         showSnack(
           inPipeline
             ? {
@@ -80,7 +81,7 @@ export function useApplications() {
         )
       }
     },
-    [reload, showSnack],
+    [catalog, reload, showSnack],
   )
 
   // Persist a note edit. We update local state optimistically so re-opening a
@@ -100,7 +101,7 @@ export function useApplications() {
   // Bulk-close the other in-progress applications after a hire.
   const closeOthers = useCallback(
     async (ids: string[]) => {
-      await Promise.all(ids.map((id) => updateApplication(id, { status: 'Closed' })))
+      await Promise.all(ids.map((id) => updateApplication(id, { status: STAGE_IDS.closed })))
       await reload()
     },
     [reload],
@@ -108,7 +109,7 @@ export function useApplications() {
 
   const otherPipeline = hiredFor
     ? (applications ?? []).filter(
-        (item) => item.id !== hiredFor.id && isPipelineStatus(item.status),
+        (item) => item.id !== hiredFor.id && isPipelineStage(catalog, item.status),
       )
     : []
 

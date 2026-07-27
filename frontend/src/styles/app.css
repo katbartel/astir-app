@@ -11,6 +11,7 @@ body {
   font-family: var(--font-body);
   font-size: var(--type-body);
   -webkit-font-smoothing: antialiased;
+  transition: background .25s ease, color .25s ease;
 }
 
 button,
@@ -1545,6 +1546,11 @@ h1 {
   color: var(--gold-deep);
 }
 
+.round-icon.theme-toggle {
+  margin-top: auto;
+  margin-bottom: var(--space-2);
+}
+
 .role-title-line .round-icon.small:hover {
   background: var(--hover-soft);
   color: var(--muted);
@@ -1758,6 +1764,11 @@ h1 {
   --st-fill: var(--stage-3-soft);
   --st-text: var(--stage-3-text);
   --st-dot: var(--stage-3);
+}
+[data-stage='progress'] {
+  --st-fill: var(--stage-progress-soft);
+  --st-text: var(--stage-progress-text);
+  --st-dot: var(--stage-progress);
 }
 [data-stage='offer'] {
   --st-fill: var(--stage-offer-soft);
@@ -3419,6 +3430,7 @@ textarea {
 /* Rail user: real account data */
 .rail .user {
   width: 100%;
+  margin-top: 0;
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -3440,7 +3452,7 @@ textarea {
 
 .user-menu-wrap {
   position: relative;
-  margin-top: auto;
+  margin-top: 0;
 }
 
 .rail .user:hover,
@@ -3700,64 +3712,125 @@ textarea {
   border-color: var(--gold);
 }
 
-/* Stages preferences: one row per stage with an on/off switch. */
-.stage-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-hairline);
-  margin: var(--space-2) 0 0;
-  padding: 0;
-  list-style: none;
+.stages-page-head {
+  align-items: flex-start;
 }
 
-.stage-row {
+.stages-page-head p {
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--type-secondary);
+  line-height: 1.5;
+}
+
+.stages-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.stage-bucket {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--pad-card-tight);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.stage-bucket-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: var(--menu-trigger);
   gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
+}
+
+.stage-bucket h2 {
+  color: var(--ink2);
+  font-size: var(--type-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.stage-bucket-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.stage-settings-row {
+  display: grid;
+  grid-template-columns: var(--menu-trigger) var(--watch-title-action-size) minmax(0, 1fr) var(--menu-trigger);
+  align-items: center;
+  gap: var(--space-2);
   border-radius: var(--r-sm);
 }
 
-.stage-row:hover {
-  background: var(--hover-soft);
+.stage-settings-row.dragging {
+  opacity: .6;
 }
 
-.stage-row-name {
-  color: var(--ink);
-  font-size: var(--type-control);
+.stage-grid-cell,
+.stage-settings-icon {
+  display: grid;
+  min-width: 0;
+  place-items: center;
 }
 
-.stage-switch {
-  position: relative;
-  flex: none;
-  width: 40px;
-  height: 22px;
-  padding: 0;
+.stage-settings-icon {
+  color: var(--st-dot, var(--gold-deep));
+}
+
+.stage-settings-row input {
+  min-width: 0;
+}
+
+.stage-drag-handle {
+  display: grid;
+  width: var(--menu-trigger);
+  height: var(--menu-trigger);
+  place-items: center;
   border: 0;
   border-radius: var(--r-pill);
-  background: var(--line2);
-  cursor: pointer;
-  transition: background .2s ease;
+  background: transparent;
+  color: var(--muted);
+  cursor: grab;
 }
 
-.stage-switch.on {
-  background: var(--gold);
+.stage-drag-handle:hover {
+  background: var(--hover-soft);
+  color: var(--ink2);
 }
 
-.stage-switch-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--paper);
-  transition: transform .2s ease;
+.stage-drag-handle:active {
+  cursor: grabbing;
 }
 
-.stage-switch.on .stage-switch-knob {
-  transform: translateX(18px);
+.stage-drag-handle:focus-visible {
+  color: var(--gold-deep);
+  box-shadow: inset 0 0 0 var(--border-thin) var(--gold);
+  outline: none;
+}
+
+.stage-drag-handle svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: currentColor;
+  stroke: none;
+}
+
+.stage-action[aria-disabled='true'],
+.stage-action[aria-disabled='true']:hover {
+  background: transparent;
+  color: var(--muted);
+  cursor: default;
+  opacity: .55;
+}
+
+.stage-action-cell {
+  justify-items: end;
 }
 
 .prefs-empty {

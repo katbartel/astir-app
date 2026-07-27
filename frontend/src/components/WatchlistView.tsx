@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import {
   LogApplicationModal,
@@ -74,6 +75,7 @@ function LocationLine({ role }: { role: Role }) {
   const parts = locationParts(role)
   const primary = parts[0] ?? null
   const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
   const mode = role.workMode
   if (!primary && !mode) return null
   return (
@@ -81,7 +83,11 @@ function LocationLine({ role }: { role: Role }) {
       {primary ? (
         <>
           {primary}
-          {extra > 0 ? <span className="more-cities">+{extra}</span> : null}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
         </>
       ) : null}
       {/* A single known location can show its work mode; when compressed the
@@ -637,7 +643,7 @@ export function WatchlistView() {
       company: company.name,
       role: role.title,
       link: role.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 

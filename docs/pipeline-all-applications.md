@@ -4,7 +4,7 @@ Build to this spec. For anything visual this spec does not name, follow AGENTS.m
 
 ## 1. Product amendments
 
-1. Pipeline is response-only. It shows only applications in `1st stage`, `2nd stage`, `3rd stage`, `Offer`, and `Hired`.
+1. Pipeline is response-only. It shows only applications in configured In progress stages, `Offer`, and `Hired`.
 2. `Rejected` is retired. Any stored `Rejected` stage is migrated to `Closed`.
 3. The archive is a page, not a modal. It is reached through the Pipeline kebab and uses route `#applications`.
 4. The archive menu label is `All applications`.
@@ -23,7 +23,7 @@ Build to this spec. For anything visual this spec does not name, follow AGENTS.m
 
 ## 3. Pipeline cards
 
-1. Show only applications in `1st stage`, `2nd stage`, `3rd stage`, `Offer`, and `Hired`.
+1. Show only applications in configured In progress stages, `Offer`, and `Hired`.
 2. Sort by most recent stage change, newest first. If no stage-change date exists, fall back to applied date.
 3. Collapsed card is a single row: company name, dot separator, role title with truncation, optional open-posting icon, then the stage dropdown pinned right.
 4. Clicking the card, except on the open-posting icon, dropdown, or note field, toggles expansion.
@@ -41,7 +41,7 @@ Build to this spec. For anything visual this spec does not name, follow AGENTS.m
 ## 5. Stage dropdown
 
 1. Same visual recipe as the Status dropdown in Log application.
-2. Item order: `Applied`, separator, `1st stage`, `2nd stage`, `3rd stage`, `Offer`, `Hired`, separator, `Closed`.
+2. Item order: configured Applying, separator, configured In progress stages, `Offer`, `Hired`, separator, configured Closed.
 3. Changing a Pipeline card to `Applied` removes it from Pipeline and shows snackbar `Moved back to applied. Kept in all applications.`
 4. Changing a Pipeline card to `Closed` removes it from Pipeline and shows snackbar `Closed. Kept in all applications.`
 5. Changing a card to `Hired` keeps it visible in Pipeline for now and opens the hired modal.

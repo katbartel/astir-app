@@ -2,6 +2,7 @@
 
 import { type CSSProperties, useState } from 'react'
 import { type Application } from '@/lib/applications'
+import { STAGE_IDS } from '@/lib/stages'
 import {
   type ActivityId,
   type Goal,
@@ -543,11 +544,11 @@ export function HomeView() {
 
       {logging ? (
         <LogApplicationModal
-          initial={{ status: 'Applied' }}
+          initial={{ status: STAGE_IDS.applied }}
           onClose={() => setLogging(false)}
           onSaved={(application, isNew) => {
             void reload()
-            if (isNew && application.status !== 'Hired') {
+            if (isNew && application.status !== STAGE_IDS.hired) {
               showSnack({ text: 'Application logged.' })
             }
           }}

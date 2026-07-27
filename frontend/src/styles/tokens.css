@@ -1,6 +1,7 @@
 /* breakpoint: narrow = 760px (raw in media queries by necessity) */
 
 :root {
+  color-scheme: light;
   --paper: #FFFDF8;
   --rail: #F7F3EB;
   --card: #FFFDF8;
@@ -44,11 +45,8 @@
   --ember-light: #F0CE8B;
   --ember-mid: #DCA246;
   --ember-deep: #B87B1F;
-  /* Application stage colors — a temperature journey: cool blue at entry,
-     warming mustard through the interview rounds (darkening down the yellow
-     axis, not toward red), cooling into green at Offer → Hired, neutral grey
-     once closed. Muted/subtle: soft fill + colored ring + readable text,
-     matching the -soft / -text convention used above. */
+  /* Application stage colors: cool blue at entry, gold through Offer, a warm
+     hired green for the celebration state, neutral grey once closed. */
   --stage-applied: #5B7A99;
   --stage-applied-soft: rgba(91,122,153,.11);
   --stage-applied-text: #46617D;
@@ -61,13 +59,18 @@
   --stage-3: #B08D22;
   --stage-3-soft: rgba(176,141,34,.15);
   --stage-3-text: #6B520E;
-  /* Offer cools into a light green — a preview of Hired's deeper green. */
-  --stage-offer: #7FA377;
-  --stage-offer-soft: rgba(127,163,119,.16);
-  --stage-offer-text: #4C6B47;
-  --stage-hired: #4F7D5B;
-  --stage-hired-soft: rgba(79,125,91,.14);
-  --stage-hired-text: #3A6046;
+  --hired: #4F7D5B;
+  --hired-soft: rgba(79,125,91,.14);
+  --hired-text: #3A6046;
+  --stage-progress: var(--gold-deep);
+  --stage-progress-soft: var(--gold-soft);
+  --stage-progress-text: var(--gold-text);
+  --stage-offer: var(--gold-deep);
+  --stage-offer-soft: var(--gold-soft);
+  --stage-offer-text: var(--gold-text);
+  --stage-hired: var(--hired);
+  --stage-hired-soft: var(--hired-soft);
+  --stage-hired-text: var(--hired-text);
   --stage-closed: #9B9384;
   --stage-closed-soft: rgba(120,112,96,.10);
   --stage-closed-text: #6E6656;
@@ -168,4 +171,89 @@
   --weight-medium: 500;
   --weight-display: 600;
   --tracking-label: .05em;
+}
+
+:root[data-theme="dusk"] {
+  color-scheme: dark;
+  --paper: #202126;
+  --rail: #191B1E;
+  --card: #282A30;
+  --nav-hover: #30333A;
+  --nav-active: #383A42;
+  --tile: #24262C;
+  --tile-hover: #30333A;
+  --ink: #ECE7DC;
+  --ink2: #D4CBBB;
+  --muted: #A7A091;
+  --placeholder: rgba(167,160,145,.72);
+  --line: rgba(236,231,220,.10);
+  --line2: rgba(236,231,220,.17);
+  --gold: #C9953A;
+  --gold-hover: #D2A24B;
+  --gold-deep: #C69A49;
+  --gold-soft: rgba(201,149,58,.16);
+  --gold-text: #E0BF7A;
+  --on-gold: #241D12;
+  --rest: #8CA48A;
+  --rest-soft: rgba(140,164,138,.20);
+  --rest-text: #B7CFB1;
+  --rest-deep: #A9C0A4;
+  --prep: #9B84BC;
+  --prep-soft: rgba(155,132,188,.22);
+  --prep-text: #CCB9EA;
+  --prep-deep: #BFA8DE;
+  --net: #B77A62;
+  --net-soft: rgba(183,122,98,.20);
+  --net-text: #E1AD98;
+  --net-deep: #D4947B;
+  --docs: #7E9C99;
+  --docs-soft: rgba(126,156,153,.20);
+  --docs-text: #B3D0CC;
+  --docs-deep: #A1C0BC;
+  --snack-bg: #ECE7DC;
+  --snack-text: #202126;
+  --snack-text-muted: rgba(32,33,38,.58);
+  --snack-hover: rgba(32,33,38,.10);
+  --ember-light: #E9C77B;
+  --ember-mid: #C9953A;
+  --ember-deep: #9F6E22;
+  --stage-applied: #87A4C1;
+  --stage-applied-soft: rgba(135,164,193,.16);
+  --stage-applied-text: #B8D1EA;
+  --stage-1: #E3C264;
+  --stage-1-soft: rgba(227,194,100,.18);
+  --stage-1-text: #E8CA78;
+  --stage-2: #CDA438;
+  --stage-2-soft: rgba(205,164,56,.18);
+  --stage-2-text: #DDBB5D;
+  --stage-3: #B08D22;
+  --stage-3-soft: rgba(176,141,34,.20);
+  --stage-3-text: #D0AA40;
+  --hired: #77A481;
+  --hired-soft: rgba(119,164,129,.18);
+  --hired-text: #AAD2B3;
+  --stage-progress: var(--gold-deep);
+  --stage-progress-soft: var(--gold-soft);
+  --stage-progress-text: var(--gold-text);
+  --stage-offer: var(--gold-deep);
+  --stage-offer-soft: var(--gold-soft);
+  --stage-offer-text: var(--gold-text);
+  --stage-hired: var(--hired);
+  --stage-hired-soft: var(--hired-soft);
+  --stage-hired-text: var(--hired-text);
+  --stage-closed: #A9A092;
+  --stage-closed-soft: rgba(169,160,146,.14);
+  --stage-closed-text: #C8BEAD;
+  --avatar: #4A4C54;
+  --avatar-overlay: rgba(40,42,48,.70);
+  --hover-soft: rgba(236,231,220,.07);
+  --tile-control-tint: rgba(236,231,220,.04);
+  --tile-control-hover: rgba(236,231,220,.08);
+  --tile-control-active: rgba(236,231,220,.12);
+  --backdrop: rgba(12,13,16,.58);
+  --shadow-card: 0 1px 3px rgba(0,0,0,.16);
+  --shadow-active: 0 1px 2px rgba(0,0,0,.18);
+  --shadow-menu: 0 6px 24px rgba(0,0,0,.34);
+  --shadow-modal: 0 18px 50px rgba(0,0,0,.46);
+  --mini-halo: radial-gradient(circle, rgba(201,149,58,.30) 0%, rgba(201,149,58,.09) 55%, transparent 72%);
 }

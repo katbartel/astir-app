@@ -4,6 +4,8 @@ import { AshbyProvider } from './ashby.provider'
 import { BambooHrProvider } from './bamboohr.provider'
 import { BlueskyProvider, jobsFromHtml } from './bluesky.provider'
 import { BreezyProvider } from './breezy.provider'
+import { CareerPageProvider, jobsFromCareerPageHtml } from './careerpage.provider'
+import { GemProvider } from './gem.provider'
 import { GreenhouseProvider } from './greenhouse.provider'
 import { JobPostingProvider } from './jobposting.provider'
 import { JoinProvider } from './join.provider'
@@ -11,6 +13,7 @@ import { LeverProvider } from './lever.provider'
 import { PersonioProvider } from './personio.provider'
 import { PinpointProvider } from './pinpoint.provider'
 import { RecruiteeProvider } from './recruitee.provider'
+import { RipplingProvider, ripplingJobsFromHtml } from './rippling.provider'
 import { SmartRecruitersProvider } from './smartrecruiters.provider'
 import { TeamtailorProvider } from './teamtailor.provider'
 import { TheMuseProvider } from './themuse.provider'
@@ -1006,5 +1009,140 @@ describe('BlueskyProvider', () => {
     expect(
       provider.normalize({ title: 'No id', applyUrl: 'https://jobs.gem.com/bluesky/x' }, source),
     ).toBeNull()
+  })
+})
+
+describe('GemProvider', () => {
+  const provider = new GemProvider()
+
+  it('extracts the board path from Gem careers URLs', () => {
+    expect(provider.handleFromUrl('https://jobs.gem.com/roamless')).toBe('roamless')
+    expect(provider.handleFromUrl('https://jobs.gem.com/roamless/job-id')).toBe('roamless')
+    expect(provider.handleFromUrl('https://example.com/roamless')).toBeNull()
+  })
+
+  it('maps a Gem posting', () => {
+    expect(
+      provider.normalize(
+        {
+          extId: 'am9icG9zdDqSNoY4eCddmgZ09M8pDXR7',
+          title: 'Influencer Marketing Manager',
+          locations: [
+            { name: 'Turkey', city: '', isoCountry: 'TUR', isRemote: true },
+            { name: 'Istanbul ', city: 'Istanbul', isoCountry: 'TUR', isRemote: true },
+          ],
+          job: { locationType: 'REMOTE', employmentType: 'FULL_TIME' },
+        },
+        { externalId: 'roamless', companyName: 'Roamless' },
+      ),
+    ).toEqual({
+      provider: 'gem',
+      externalId: 'am9icG9zdDqSNoY4eCddmgZ09M8pDXR7',
+      title: 'Influencer Marketing Manager',
+      companyName: 'Roamless',
+      location: 'Turkey',
+      locations: ['Turkey', 'Istanbul'],
+      workMode: 'Remote',
+      url: 'https://jobs.gem.com/roamless/am9icG9zdDqSNoY4eCddmgZ09M8pDXR7',
+      postedAt: null,
+    })
+  })
+})
+
+describe('CareerPageProvider', () => {
+  const provider = new CareerPageProvider()
+
+  it('only claims known static career pages', () => {
+    expect(provider.handleFromUrl('https://www.cerbos.dev/join-us')).toBe('https://www.cerbos.dev/join-us')
+    expect(provider.handleFromUrl('https://tuple.app/jobs')).toBeNull()
+  })
+
+  it('extracts the Cerbos open role from the rendered careers page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        'Current Open Roles Senior Front End Engineer (Remote) At Cerbos, we are seeking an experienced engineer.',
+        { externalId: 'https://www.cerbos.dev/join-us', companyName: 'Cerbos' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'cerbos:senior-front-end-engineer-remote',
+        title: 'Senior Front End Engineer (Remote)',
+        companyName: 'Cerbos',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://www.cerbos.dev/join-us',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+})
+
+describe('RipplingProvider', () => {
+  const provider = new RipplingProvider()
+
+  it('extracts the board slug from localized Rippling careers URLs', () => {
+    expect(provider.handleFromUrl('https://ats.rippling.com/en-GB/chess/jobs')).toBe('chess')
+    expect(provider.handleFromUrl('https://ats.rippling.com/chess/jobs')).toBe('chess')
+    expect(provider.handleFromUrl('https://example.com/chess/jobs')).toBeNull()
+  })
+
+  it('extracts job-post queries from the Next.js data blob', () => {
+    const html =
+      '<script id="__NEXT_DATA__" type="application/json">' +
+      JSON.stringify({
+        props: {
+          pageProps: {
+            dehydratedState: {
+              queries: [
+                { queryKey: ['board', 'chess', 'locations'], state: { data: { items: [] } } },
+                {
+                  queryKey: ['board', 'chess', 'job-posts'],
+                  state: { data: { items: [{ id: 'a', name: 'Eng' }] } },
+                },
+              ],
+            },
+          },
+        },
+      }) +
+      '</script>'
+    expect(ripplingJobsFromHtml(html)).toEqual([{ id: 'a', name: 'Eng' }])
+    expect(ripplingJobsFromHtml('<html>no data</html>')).toEqual([])
+  })
+
+  it('maps a Rippling posting', () => {
+    expect(
+      provider.normalize(
+        {
+          id: '6066415d-520c-46a3-9946-cab468730543',
+          name: 'All-Stack Engineer',
+          url: 'https://ats.rippling.com/chess/jobs/6066415d-520c-46a3-9946-cab468730543',
+          locations: [
+            {
+              name: 'Remote',
+              country: 'United States',
+              state: 'Utah',
+              city: 'Orem',
+              workplaceType: 'REMOTE',
+            },
+          ],
+          language: 'en-US',
+        },
+        { externalId: 'chess', companyName: 'Chess.com' },
+      ),
+    ).toEqual({
+      provider: 'rippling',
+      externalId: '6066415d-520c-46a3-9946-cab468730543',
+      title: 'All-Stack Engineer',
+      companyName: 'Chess.com',
+      location: 'Remote, Orem, Utah, United States',
+      locations: ['Remote, Orem, Utah, United States'],
+      workMode: 'Remote',
+      url: 'https://ats.rippling.com/chess/jobs/6066415d-520c-46a3-9946-cab468730543',
+      postedAt: null,
+      contentLanguage: 'en',
+    })
   })
 })

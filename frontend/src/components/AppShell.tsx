@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { AppNav, type ActiveRoute } from './AppNav'
 import { RailUser } from './RailUser'
+import { ThemeToggle } from './ThemeToggle'
 
 type AppShellProps = {
   active: ActiveRoute
@@ -19,6 +20,7 @@ export function AppShell({ active, children }: AppShellProps) {
           <span className="name">Astir</span>
         </div>
         <AppNav active={active} />
+        <ThemeToggle />
         <RailUser />
       </aside>
       <main className="main">{children}</main>

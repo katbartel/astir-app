@@ -6,7 +6,6 @@
 import {
   type Application,
   type ApplicationInput,
-  STATUS_OPTIONS,
   type Status,
   normalizeMode,
   normalizeStatus,
@@ -16,6 +15,7 @@ import {
   toDateKey,
   todayKey,
 } from './applications'
+import { DEFAULT_STAGE_CATALOG, STAGE_IDS, flattenStages, stageLabel } from './stages'
 
 const EXPORT_COLUMNS = [
   'Company',
@@ -53,7 +53,7 @@ export function applicationsToCsv(applications: Application[]): string {
     const cells = [
       application.company,
       application.role,
-      normalizeStatus(application.status),
+      stageLabel(DEFAULT_STAGE_CATALOG, normalizeStatus(application.status)),
       application.link ?? application.posting?.url ?? '',
       application.posting?.location ?? '',
       application.posting?.workMode ? normalizeMode(application.posting.workMode) : '',
@@ -121,10 +121,10 @@ export function parseCsv(input: string): string[][] {
 // normalizeStatus (which defaults to "Applied").
 function csvStatus(raw: string): Status {
   const value = raw.trim().toLowerCase()
-  if (!value) return 'Applied'
-  const exact = STATUS_OPTIONS.find((option) => option.toLowerCase() === value)
-  if (exact) return exact
-  if (['rejected', 'declined', 'withdrawn', 'archived'].includes(value)) return 'Closed'
+  if (!value) return STAGE_IDS.applied
+  const exact = flattenStages(DEFAULT_STAGE_CATALOG).find((option) => option.name.toLowerCase() === value)
+  if (exact) return exact.id
+  if (['rejected', 'declined', 'withdrawn', 'archived'].includes(value)) return STAGE_IDS.closed
   return normalizeStatus(raw)
 }
 

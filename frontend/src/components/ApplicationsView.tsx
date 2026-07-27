@@ -10,9 +10,9 @@ import {
   normalizeMode,
   normalizeStatus,
   plainDate,
-  stageRank,
   todayKey,
 } from '@/lib/applications'
+import { STAGE_IDS, useStageConfig } from '@/lib/stages'
 import { applicationsToCsv, parseApplicationsCsv } from '@/lib/applications-csv'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
@@ -70,6 +70,7 @@ function locationCell(location: string | null | undefined) {
 
 export function ApplicationsView() {
   const { applications, changeStage, reload, showSnack, overlay } = useApplications()
+  const { rankOf } = useStageConfig()
   const importInput = useRef<HTMLInputElement>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -104,7 +105,7 @@ export function ApplicationsView() {
       )
       .sort((a, b) => {
         let result = 0
-        if (sort.key === 'stage') result = stageRank(a.status) - stageRank(b.status)
+        if (sort.key === 'stage') result = rankOf(a.status) - rankOf(b.status)
         else if (sort.key === 'role') result = a.role.localeCompare(b.role)
         else result = a.company.localeCompare(b.company)
         if (result === 0) {
@@ -112,7 +113,7 @@ export function ApplicationsView() {
         }
         return sort.dir === 'desc' ? -result : result
       })
-  }, [all, query, stageFilter, sort])
+  }, [all, query, rankOf, stageFilter, sort])
 
   function toggleSort(key: SortKey) {
     setSort((current) =>
@@ -417,7 +418,7 @@ export function ApplicationsView() {
 
       {logging ? (
         <LogApplicationModal
-          initial={{ status: 'Applied' }}
+          initial={{ status: STAGE_IDS.applied }}
           onClose={() => setLogging(false)}
           onSaved={(_application, isNew) => {
             void reload()

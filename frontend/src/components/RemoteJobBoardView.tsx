@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
@@ -69,6 +70,7 @@ function MetaLine({ listing }: { listing: Listing }) {
   const parts = locationParts(listing)
   const primary = parts[0] ?? null
   const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
   return (
     <div className="role-loc">
       {listing.companyName}
@@ -76,7 +78,11 @@ function MetaLine({ listing }: { listing: Listing }) {
         <>
           {' · '}
           {primary}
-          {extra > 0 ? <span className="more-cities">+{extra}</span> : null}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
         </>
       ) : null}
       {/* A single-location row can show its work mode; when several regions are
@@ -241,7 +247,7 @@ export function RemoteJobBoardView() {
       company: listing.companyName,
       role: listing.title,
       link: listing.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 

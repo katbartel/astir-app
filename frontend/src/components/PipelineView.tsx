@@ -5,11 +5,8 @@ import { useMemo, useState } from 'react'
 import {
   type Application,
   type Status,
-  isPipelineStatus,
   normalizeMode,
   plainDate,
-  stageColorKey,
-  stageRank,
 } from '@/lib/applications'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { KebabMenu } from './applications/KebabMenu'
@@ -40,12 +37,14 @@ function PipelineCard({
   onToggle,
   onStage,
   onNote,
+  stageColor,
 }: {
   application: Application
   expanded: boolean
   onToggle: () => void
   onStage: (status: Status) => void
   onNote: (note: NonNullable<Application['note']>) => void
+  stageColor: (status: Status) => string
 }) {
   const openUrl = application.link || application.posting?.url || ''
 
@@ -58,7 +57,7 @@ function PipelineCard({
   return (
     <article
       className={`pipeline-card ${expanded ? 'expanded' : ''}`.trim()}
-      data-stage={stageColorKey(application.status)}
+      data-stage={stageColor(application.status)}
       tabIndex={0}
       aria-expanded={expanded}
       aria-label={`${application.company}, ${application.role}`}
@@ -110,24 +109,21 @@ function PipelineCard({
 
 export function PipelineView() {
   const { applications, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
-  const { isEnabled } = useStageConfig()
+  const { isPipeline, rankOf, colorFor } = useStageConfig()
   const [expandedId, setExpandedId] = useState('')
   const [logging, setLogging] = useState(false)
   const [heardOpen, setHeardOpen] = useState(false)
 
   const pipeline = useMemo(() => {
     return (applications ?? [])
-      .filter(
-        (application) =>
-          isPipelineStatus(application.status) && isEnabled(application.status),
-      )
+      .filter((application) => isPipeline(application.status))
       .sort((a, b) => {
         // Most advanced stage first; break ties by most recent stage change.
-        const byStage = stageRank(b.status) - stageRank(a.status)
+        const byStage = rankOf(b.status) - rankOf(a.status)
         if (byStage !== 0) return byStage
         return new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
       })
-  }, [applications, isEnabled])
+  }, [applications, isPipeline, rankOf])
 
   const empty = pipeline.length === 0
 
@@ -194,6 +190,7 @@ export function PipelineView() {
               }
               onStage={(status) => void changeStage(application, status, 'pipeline')}
               onNote={(note) => saveNote(application, note)}
+              stageColor={colorFor}
             />
           ))
         )}
@@ -201,11 +198,11 @@ export function PipelineView() {
 
       {logging ? (
         <LogApplicationModal
-          initial={{ status: 'Applied' }}
+          initial={{ status: 'applied' }}
           onClose={() => setLogging(false)}
           onSaved={(application, isNew) => {
             void reload()
-            if (isNew && application.status !== 'Hired') {
+            if (isNew && application.status !== 'hired') {
               showSnack({ text: 'Application logged.' })
             }
           }}

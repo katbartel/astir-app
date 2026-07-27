@@ -10,6 +10,8 @@ import { AshbyProvider } from './providers/ashby.provider'
 import { BambooHrProvider } from './providers/bamboohr.provider'
 import { BlueskyProvider } from './providers/bluesky.provider'
 import { BreezyProvider } from './providers/breezy.provider'
+import { CareerPageProvider } from './providers/careerpage.provider'
+import { GemProvider } from './providers/gem.provider'
 import { GreenhouseProvider } from './providers/greenhouse.provider'
 import { JOB_BOARD_PROVIDERS } from './providers/job-board-provider'
 import { JoinProvider } from './providers/join.provider'
@@ -18,6 +20,7 @@ import { LeverProvider } from './providers/lever.provider'
 import { PersonioProvider } from './providers/personio.provider'
 import { PinpointProvider } from './providers/pinpoint.provider'
 import { RecruiteeProvider } from './providers/recruitee.provider'
+import { RipplingProvider } from './providers/rippling.provider'
 import { SmartRecruitersProvider } from './providers/smartrecruiters.provider'
 import { TeamtailorProvider } from './providers/teamtailor.provider'
 import { TheMuseProvider } from './providers/themuse.provider'
@@ -46,6 +49,9 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
     BambooHrProvider,
     PinpointProvider,
     BreezyProvider,
+    CareerPageProvider,
+    GemProvider,
+    RipplingProvider,
     BlueskyProvider,
     JobPostingProvider,
     ArbeitnowProvider,
@@ -68,6 +74,9 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         bamboohr: BambooHrProvider,
         pinpoint: PinpointProvider,
         breezy: BreezyProvider,
+        careerPage: CareerPageProvider,
+        gem: GemProvider,
+        rippling: RipplingProvider,
         bluesky: BlueskyProvider,
         // Generic schema.org reader last: it only runs as a resolution fallback.
         jobPosting: JobPostingProvider,
@@ -89,6 +98,9 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         bamboohr,
         pinpoint,
         breezy,
+        careerPage,
+        gem,
+        rippling,
         bluesky,
         jobPosting,
         arbeitnow,
@@ -110,6 +122,9 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         BambooHrProvider,
         PinpointProvider,
         BreezyProvider,
+        CareerPageProvider,
+        GemProvider,
+        RipplingProvider,
         BlueskyProvider,
         JobPostingProvider,
         ArbeitnowProvider,

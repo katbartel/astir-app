@@ -23,6 +23,16 @@ export const STATUS_OPTIONS = [
   'Closed',
 ] as const
 
+export const STAGE_IDS = [
+  'applied',
+  'progress-1',
+  'progress-2',
+  'progress-3',
+  'offer',
+  'hired',
+  'closed',
+] as const
+
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
 // One block of the rich-text note: a run of text, a checkbox, or a container
@@ -118,7 +128,13 @@ export class CreateApplicationDto {
   link?: string
 
   @IsOptional()
-  @IsIn(STATUS_OPTIONS)
+  @IsString()
+  @MaxLength(120)
+  stageId?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   status?: string
 
   @Matches(DATE_KEY, { message: 'appliedDate must be a YYYY-MM-DD date key' })
@@ -149,7 +165,13 @@ export class UpdateApplicationDto {
   link?: string
 
   @IsOptional()
-  @IsIn(STATUS_OPTIONS)
+  @IsString()
+  @MaxLength(120)
+  stageId?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
   status?: string
 
   @IsOptional()

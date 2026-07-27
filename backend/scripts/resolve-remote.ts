@@ -14,6 +14,9 @@ import { RemoteCompaniesService } from '../src/remote-companies/remote-companies
 // Exact company name -> the real ATS board URL our providers understand.
 const FIXES: Record<string, string> = {
   Bluesky: 'https://bsky.social/about/join',
+  Chess: 'https://ats.rippling.com/en-GB/chess/jobs',
+  Mews: 'https://boards.greenhouse.io/mewssystems',
+  Roamless: 'https://jobs.gem.com/roamless',
 }
 
 async function main() {
@@ -23,12 +26,10 @@ async function main() {
 
   for (const [name, url] of Object.entries(FIXES)) {
     const company = await prisma.remoteCompany.findFirst({ where: { name } })
-    if (!company) {
-      console.log(`? not found: "${name}"`)
-      continue
-    }
-    const view = await service.update(company.id, { careersUrl: url })
-    const fresh = await prisma.remoteCompany.findUnique({ where: { id: company.id } })
+    const view = company
+      ? await service.update(company.id, { careersUrl: url })
+      : await service.add({ name, careersUrl: url }, 'bartel.katarzyna@gmail.com')
+    const fresh = await prisma.remoteCompany.findUnique({ where: { id: view.id } })
     const listings = fresh?.jobSourceId
       ? await prisma.jobListingSource.count({ where: { jobSourceId: fresh.jobSourceId } })
       : 0

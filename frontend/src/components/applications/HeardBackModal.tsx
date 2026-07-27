@@ -2,12 +2,11 @@
 
 import { Fragment, useMemo, useState } from 'react'
 import {
-  STATUS_OPTIONS,
   type Application,
   type Status,
   normalizeStatus,
-  stageColorKey,
 } from '@/lib/applications'
+import { STAGE_IDS, useStageConfig } from '@/lib/stages'
 import { CheckIcon } from '../icons'
 import { StageRing } from './StageRing'
 
@@ -23,6 +22,7 @@ export function HeardBackModal({
   onClose: () => void
   onChoose: (application: Application, status: Status) => void
 }) {
+  const { allStages, colorFor, visualFor } = useStageConfig()
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Application | null>(null)
 
@@ -33,7 +33,7 @@ export function HeardBackModal({
     // or Closed shouldn't be moved into the pipeline again.
     return applications.filter(
       (application) =>
-        normalizeStatus(application.status) === 'Applied' &&
+        normalizeStatus(application.status) === STAGE_IDS.applied &&
         application.company.toLowerCase().includes(needle),
     )
   }, [applications, query])
@@ -57,23 +57,26 @@ export function HeardBackModal({
               {selected.company} · {selected.role}
             </div>
             <div className="heard-stage-list">
-              {STATUS_OPTIONS.map((option) => (
-                <Fragment key={option}>
-                  {option === '1st stage' || option === 'Closed' ? (
+              {allStages.map((option) => (
+                <Fragment key={option.id}>
+                  {option.bucket === 'progress' && option.id === allStages.find((stage) => stage.bucket === 'progress')?.id ? (
+                    <div className="stage-separator" aria-hidden="true" />
+                  ) : null}
+                  {option.id === STAGE_IDS.closed ? (
                     <div className="stage-separator" aria-hidden="true" />
                   ) : null}
                   <button
                     className="stage-choice"
                     type="button"
-                    data-stage={stageColorKey(option)}
-                    onClick={() => onChoose(selected, option)}
+                    data-stage={colorFor(option.id)}
+                    onClick={() => onChoose(selected, option.id)}
                   >
                     <span className="stage-value">
-                      <StageRing status={option} />
-                      {option}
+                      <StageRing status={option.id} {...visualFor(option.id)} />
+                      {option.name}
                     </span>
                     <span className="select-check" aria-hidden="true">
-                      {option === normalizeStatus(selected.status) ? <CheckIcon /> : null}
+                      {option.id === normalizeStatus(selected.status) ? <CheckIcon /> : null}
                     </span>
                   </button>
                 </Fragment>

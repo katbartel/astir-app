@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
@@ -16,6 +17,8 @@ type Listing = {
   title: string
   companyName: string
   location: string | null
+  // Every region the same role is posted in, folded into one row.
+  locations: string[]
   workMode: string | null
   // ISO 639-1 code of the language the ad is written in (e.g. 'en', 'de'), when
   // the provider exposes it; null otherwise.
@@ -51,9 +54,37 @@ function listedAt(listing: Listing): number {
   return new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
 }
 
-function metaLine(listing: Listing): string {
-  const lang = listing.contentLanguage ? listing.contentLanguage.toUpperCase() : null
-  return [listing.companyName, listing.location, listing.workMode, lang].filter(Boolean).join(' · ')
+function locationParts(listing: Listing): string[] {
+  const raw = listing.locations.length > 0 ? listing.locations : listing.location ? [listing.location] : []
+  return raw
+    .flatMap((value) => value.split(';'))
+    .map((value) => value.trim())
+    .filter(Boolean)
+}
+
+function MetaLine({ listing }: { listing: Listing }) {
+  const parts = locationParts(listing)
+  const primary = parts[0] ?? null
+  const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
+  return (
+    <div className="role-loc">
+      {listing.companyName}
+      {primary ? (
+        <>
+          {' · '}
+          {primary}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
+        </>
+      ) : null}
+      {extra === 0 && listing.workMode ? ` · ${listing.workMode}` : null}
+      {listing.contentLanguage ? ` · ${listing.contentLanguage.toUpperCase()}` : null}
+    </div>
+  )
 }
 
 function sortListings(listings: Listing[], sort: SortKey): Listing[] {
@@ -101,7 +132,7 @@ function ListingRow({
           </a>
           {isFresh(listing) ? <span className="role-new-chip">New</span> : null}
         </div>
-        <div className="role-loc">{metaLine(listing)}</div>
+        <MetaLine listing={listing} />
         <div className="role-posted">Posted: {formatPostedDate(listing.postedAt)}</div>
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
@@ -210,7 +241,7 @@ export function JobBoardsView() {
       company: listing.companyName,
       role: listing.title,
       link: listing.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 

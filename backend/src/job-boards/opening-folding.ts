@@ -1,4 +1,5 @@
 import { companyKey, normalizeForIdentity } from './normalized-job'
+import { normalizeLocationStrings } from './location-normalization'
 import { matchesHiringRegions } from './region-matching'
 
 // The same role posted across several cities/regions is one opening. This
@@ -33,12 +34,10 @@ export type FoldableOpening = {
 // separate array entries or as one ";"-joined string; flatten both so each
 // counts once when folding and toward the "+N" tally.
 export function locationStrings(opening: Pick<FoldableOpening, 'locations' | 'location'>): string[] {
-  const source =
-    opening.locations.length > 0 ? opening.locations : opening.location ? [opening.location] : []
-  return source
-    .flatMap((value) => value.split(';'))
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return normalizeLocationStrings([
+    ...(opening.locations.length > 0 ? opening.locations : []),
+    opening.location,
+  ])
 }
 
 // 2 for a specific selected region (e.g. Germany, Poland, Spain), 1 for a

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { displayLocationParts } from '@/lib/location-display'
 import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
@@ -47,11 +48,7 @@ function listedAt(listing: Listing): number {
 }
 
 function locationParts(listing: Listing): string[] {
-  const raw = listing.locations.length > 0 ? listing.locations : listing.location ? [listing.location] : []
-  return raw
-    .flatMap((value) => value.split(';'))
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return displayLocationParts(listing.locations, listing.location)
 }
 
 function MetaLine({ listing }: { listing: Listing }) {

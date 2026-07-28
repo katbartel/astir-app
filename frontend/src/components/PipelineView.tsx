@@ -8,6 +8,7 @@ import {
   normalizeMode,
   plainDate,
 } from '@/lib/applications'
+import { compactLocationLabel, displayLocationParts } from '@/lib/location-display'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal } from './applications/LogApplicationModal'
@@ -26,7 +27,10 @@ function ApplicationMeta({ application }: { application: Application }) {
   // listing — em-dash when the provider didn't give us one.
   if (posting) parts.push(`Posted: ${plainDate(posting.postedAt) || '—'}`)
   parts.push(`Applied: ${plainDate(application.appliedDate) || 'Unknown'}`)
-  if (posting?.location) parts.push(`Location: ${posting.location}`)
+  if (posting?.location) {
+    const location = compactLocationLabel(displayLocationParts(posting.locations, posting.location))
+    parts.push(`Location: ${location.display}`)
+  }
   if (posting?.workMode) parts.push(`Type: ${normalizeMode(posting.workMode)}`)
   return <>{parts.join(' · ')}</>
 }

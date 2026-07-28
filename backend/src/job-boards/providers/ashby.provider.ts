@@ -106,7 +106,7 @@ export class AshbyProvider implements AtsProvider {
   }
 
   handleFromUrl(url: string): string | null {
-    const match = url.match(/(?:jobs|api)\.ashbyhq\.com\/(?:posting-api\/job-board\/)?([a-z0-9-]+)/i)
+    const match = url.match(/(?:jobs|api)\.ashbyhq\.com\/(?:posting-api\/job-board\/)?([a-z0-9.-]+)/i)
     return match ? match[1].toLowerCase() : null
   }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { displayLocationParts } from '@/lib/location-display'
 import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import {
@@ -64,11 +65,7 @@ function isFresh(role: Role): boolean {
 // prototype's locationLabel. Providers deliver the extras either as separate
 // array entries or as one ";"-joined string, so flatten both.
 function locationParts(role: Role): string[] {
-  const raw = role.locations.length > 0 ? role.locations : role.location ? [role.location] : []
-  return raw
-    .flatMap((value) => value.split(';'))
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return displayLocationParts(role.locations, role.location)
 }
 
 function LocationLine({ role }: { role: Role }) {

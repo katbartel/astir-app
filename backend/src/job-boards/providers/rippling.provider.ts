@@ -15,10 +15,12 @@ type RipplingLocation = {
 
 type RipplingJob = {
   id?: string
+  uuid?: string
   name?: string
   url?: string
   department?: { name?: string }
   locations?: RipplingLocation[]
+  workLocation?: { label?: string; id?: string }
   language?: string
 }
 
@@ -56,6 +58,10 @@ export function ripplingJobsFromHtml(html: string): RipplingJob[] {
   }
 }
 
+export function ripplingJobsFromApi(payload: unknown): RipplingJob[] {
+  return Array.isArray(payload) ? (payload as RipplingJob[]) : []
+}
+
 function locationName(location: RipplingLocation): string | null {
   return [location.name, location.city, location.state, location.country]
     .map((part) => part?.trim())
@@ -65,9 +71,10 @@ function locationName(location: RipplingLocation): string | null {
 }
 
 function workModeFrom(job: RipplingJob): WorkMode | null {
-  const haystack = (job.locations ?? [])
-    .map((location) => `${location.workplaceType ?? ''} ${location.name ?? ''}`)
-    .join(' ')
+  const haystack = [
+    ...(job.locations ?? []).map((location) => `${location.workplaceType ?? ''} ${location.name ?? ''}`),
+    job.workLocation?.label ?? '',
+  ].join(' ')
     .toLowerCase()
   if (haystack.includes('remote')) {
     return 'Remote'
@@ -87,6 +94,10 @@ export class RipplingProvider implements AtsProvider {
   readonly kind = 'ats' as const
 
   handleFromUrl(url: string): string | null {
+    const apiMatch = url.match(/api\.rippling\.com\/platform\/api\/ats\/v1\/board\/([a-z0-9-]+)\/jobs/i)
+    if (apiMatch) {
+      return `api:${apiMatch[1].toLowerCase()}`
+    }
     const match = url.match(/ats\.rippling\.com\/(?:(?:[a-z]{2}(?:-[A-Z]{2})?)\/)?([a-z0-9-]+)\/jobs/i)
     return match ? match[1].toLowerCase() : null
   }
@@ -104,6 +115,18 @@ export class RipplingProvider implements AtsProvider {
   }
 
   private async fetchJobs(handle: string): Promise<RipplingJob[]> {
+    if (handle.startsWith('api:')) {
+      const board = handle.slice(4)
+      const url = `https://api.rippling.com/platform/api/ats/v1/board/${encodeURIComponent(board)}/jobs`
+      const response = await fetch(url, {
+        headers: { accept: 'application/json', 'user-agent': USER_AGENT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      if (!response.ok) {
+        throw new Error(`GET ${url} responded ${response.status}`)
+      }
+      return ripplingJobsFromApi(await response.json())
+    }
     const url = `https://ats.us1.rippling.com/${encodeURIComponent(handle)}/jobs`
     const response = await fetch(url, {
       headers: { accept: 'text/html', 'user-agent': USER_AGENT },
@@ -122,15 +145,21 @@ export class RipplingProvider implements AtsProvider {
   }
 
   normalize(job: RipplingJob, source: JobBoardSourceRef): NormalizedJob | null {
-    if (!job.id || !job.name || !job.url) {
+    const id = job.id ?? job.uuid
+    if (!id || !job.name || !job.url) {
       return null
     }
     const locations = [
-      ...new Set((job.locations ?? []).map(locationName).filter((name): name is string => !!name)),
+      ...new Set(
+        [
+          ...(job.locations ?? []).map(locationName),
+          job.workLocation?.label?.trim() || null,
+        ].filter((name): name is string => !!name),
+      ),
     ]
     return {
       provider: this.provider,
-      externalId: job.id,
+      externalId: id,
       title: job.name.trim(),
       companyName: source.companyName,
       location: locations[0] ?? null,

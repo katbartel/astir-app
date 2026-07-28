@@ -11,6 +11,7 @@ export type RemoteCompanyView = {
   careersUrl: string | null
   companyWebsite: string | null
   note: string | null
+  reviewStatus: string
   // resolved: found on an ATS and being polled; pending: still resolving;
   // unresolved: not on any ATS (its jobs won't surface until it resolves).
   resolutionStatus: string
@@ -124,7 +125,13 @@ export class RemoteCompaniesService {
   // case: pasting the real ATS URL for a company that couldn't be name-probed).
   async update(
     id: string,
-    input: { name?: string; careersUrl?: string; companyWebsite?: string; note?: string },
+    input: {
+      name?: string
+      careersUrl?: string
+      companyWebsite?: string
+      note?: string
+      reviewStatus?: string
+    },
   ): Promise<RemoteCompanyView> {
     const company = await this.prisma.remoteCompany.findUnique({ where: { id } })
     if (!company) {
@@ -136,7 +143,9 @@ export class RemoteCompaniesService {
       careersUrl?: string | null
       companyWebsite?: string | null
       note?: string | null
+      reviewStatus?: string
     } = {}
+    let shouldResolve = false
     if (input.name !== undefined) {
       const name = input.name.trim()
       const nameKey = companyKey(name)
@@ -151,9 +160,12 @@ export class RemoteCompaniesService {
       }
       data.name = name
       data.nameKey = nameKey
+      shouldResolve = nameKey !== company.nameKey
     }
     if (input.careersUrl !== undefined) {
-      data.careersUrl = input.careersUrl.trim() || null
+      const careersUrl = input.careersUrl.trim() || null
+      data.careersUrl = careersUrl
+      shouldResolve = shouldResolve || careersUrl !== company.careersUrl
     }
     if (input.companyWebsite !== undefined) {
       data.companyWebsite = input.companyWebsite.trim() || null
@@ -161,8 +173,13 @@ export class RemoteCompaniesService {
     if (input.note !== undefined) {
       data.note = input.note.trim() || null
     }
+    if (input.reviewStatus !== undefined) {
+      data.reviewStatus = input.reviewStatus
+    }
     const updated = await this.prisma.remoteCompany.update({ where: { id }, data })
-    await this.resolveAndSync(updated)
+    if (shouldResolve) {
+      await this.resolveAndSync(updated)
+    }
     const saved = await this.prisma.remoteCompany.findUnique({ where: { id } })
     return this.toView(saved ?? updated)
   }
@@ -285,6 +302,7 @@ export class RemoteCompaniesService {
       careersUrl: company.careersUrl,
       companyWebsite: company.companyWebsite,
       note: company.note,
+      reviewStatus: company.reviewStatus,
       resolutionStatus: company.resolutionStatus,
       addedByEmail: company.addedByEmail,
       createdAt: company.createdAt,

@@ -4,10 +4,16 @@ import { AshbyProvider } from './ashby.provider'
 import { BambooHrProvider } from './bamboohr.provider'
 import { BlueskyProvider, jobsFromHtml } from './bluesky.provider'
 import { BreezyProvider } from './breezy.provider'
-import { CareerPageProvider, jobsFromCareerPageHtml, lumenaltaJobsFromHtml } from './careerpage.provider'
+import {
+  CareerPageProvider,
+  jobsFromCareerPageHtml,
+  lumenaltaJobsFromHtml,
+  tigerDataJobsFromPayload,
+} from './careerpage.provider'
 import { ComeetProvider, comeetJobsFromHtml } from './comeet.provider'
 import { GemProvider } from './gem.provider'
-import { GreenhouseProvider } from './greenhouse.provider'
+import { GreenhouseProvider, greenhouseEuJobsFromHtml } from './greenhouse.provider'
+import { JazzHrProvider, jazzHrJobsFromHtml } from './jazzhr.provider'
 import { JobPostingProvider } from './jobposting.provider'
 import { JoinProvider } from './join.provider'
 import { LeverProvider } from './lever.provider'
@@ -15,7 +21,7 @@ import { McKinseyProvider } from './mckinsey.provider'
 import { PersonioProvider } from './personio.provider'
 import { PinpointProvider } from './pinpoint.provider'
 import { RecruiteeProvider } from './recruitee.provider'
-import { RipplingProvider, ripplingJobsFromHtml } from './rippling.provider'
+import { RipplingProvider, ripplingJobsFromApi, ripplingJobsFromHtml } from './rippling.provider'
 import { SmartRecruitersProvider } from './smartrecruiters.provider'
 import { TeamtailorProvider } from './teamtailor.provider'
 import { TheMuseProvider } from './themuse.provider'
@@ -63,10 +69,37 @@ describe('GreenhouseProvider.normalize', () => {
     expect(job?.companyName).toBe('Acme')
     expect(provider.normalize({ title: 'No id' }, source)).toBeNull()
   })
+
+  it('extracts EU Greenhouse handles and jobs from the rendered board payload', () => {
+    expect(provider.handleFromUrl('https://job-boards.eu.greenhouse.io/creativefabrica')).toBe(
+      'eu:creativefabrica',
+    )
+    const html = `<script>window.__remixContext = {"state":{"loaderData":{"routes/$url_token":{"jobPosts":{"data":[{"id":4933376101,"title":"Senior Data Analyst","location":"Remote","absolute_url":"https://job-boards.eu.greenhouse.io/creativefabrica/jobs/4933376101","published_at":"2026-07-21T04:55:48-04:00"}]}}}}};</script>`
+    expect(greenhouseEuJobsFromHtml(html, { externalId: 'eu:creativefabrica', companyName: 'Creative Fabrica' })).toEqual([
+      {
+        provider: 'greenhouse',
+        externalId: '4933376101',
+        title: 'Senior Data Analyst',
+        companyName: 'Creative Fabrica',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://job-boards.eu.greenhouse.io/creativefabrica/jobs/4933376101',
+        postedAt: new Date('2026-07-21T04:55:48-04:00'),
+      },
+    ])
+  })
 })
 
 describe('AshbyProvider.normalize', () => {
   const provider = new AshbyProvider()
+
+  it('preserves dotted org handles from Ashby URLs', () => {
+    expect(provider.handleFromUrl('https://jobs.ashbyhq.com/doxy.me')).toBe('doxy.me')
+    expect(provider.handleFromUrl('https://api.ashbyhq.com/posting-api/job-board/doxy.me')).toBe(
+      'doxy.me',
+    )
+  })
 
   it('maps the posting-api payload into a normalized job', () => {
     expect(
@@ -355,6 +388,50 @@ describe('TeamtailorProvider.normalize', () => {
     expect(job?.location).toBeNull()
     expect(provider.normalize({ id: '1', title: 'No url' }, source)).toBeNull()
   })
+
+  it('recognizes configured Teamtailor vanity domains', () => {
+    expect(provider.handleFromUrl('https://careers.akeneo.com/jobs')).toBe('careers.akeneo.com')
+    expect(provider.handleFromUrl('https://careers.cafeyn.co/jobs')).toBe('careers.cafeyn.co')
+    expect(provider.handleFromUrl('https://careers.dare.global/jobs')).toBe('careers.dare.global')
+    expect(provider.handleFromUrl('https://careers.flexciton.com/jobs')).toBe('careers.flexciton.com')
+    expect(provider.handleFromUrl('https://careers.mnemonic.io/jobs')).toBe('careers.mnemonic.io')
+    expect(provider.handleFromUrl('https://careers.viaplaygroup.com/jobs')).toBe('careers.viaplaygroup.com')
+    expect(provider.handleFromUrl('https://career.bannerflow.com/jobs')).toBe('career.bannerflow.com')
+    expect(provider.handleFromUrl('https://career.optiveum.com/jobs')).toBe('career.optiveum.com')
+    expect(provider.handleFromUrl('https://jobs.efficy.com/jobs')).toBe('jobs.efficy.com')
+    expect(provider.handleFromUrl('https://teamtailor.kilo.co/jobs')).toBe('teamtailor.kilo.co')
+  })
+})
+
+describe('JazzHrProvider', () => {
+  const provider = new JazzHrProvider()
+
+  it('extracts the ApplyToJob handle from a careers URL', () => {
+    expect(provider.handleFromUrl('https://busbud.applytojob.com/apply')).toBe('busbud')
+    expect(provider.handleFromUrl('https://example.com/apply')).toBeNull()
+  })
+
+  it('extracts jobs from ApplyToJob list markup', () => {
+    expect(
+      jazzHrJobsFromHtml(
+        '<h3 class="list-group-item-heading"><a href="https://busbud.applytojob.com/apply/KcdYScqq1Y/Senior-FullStack-Developer--Chile">Senior Full-Stack Developer - Chile</a></h3><ul class="list-inline list-group-item-text"><li><i class="fa fa-map-marker"></i>Remote</li></ul>',
+        { externalId: 'busbud', companyName: 'Busbud' },
+      ),
+    ).toEqual([
+      {
+        provider: 'jazzhr',
+        externalId: 'jazzhr:Senior-FullStack-Developer--Chile',
+        title: 'Senior Full-Stack Developer - Chile',
+        companyName: 'Busbud',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://busbud.applytojob.com/apply/KcdYScqq1Y/Senior-FullStack-Developer--Chile',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
 })
 
 describe('ArbeitnowProvider.normalize', () => {
@@ -592,6 +669,46 @@ describe('WorkdayProvider.normalize', () => {
     expect(job?.locations).toEqual([])
     expect(job?.externalId).toBe('/job/remote/PM_JR1')
     expect(provider.normalize({ title: 'No path' }, workday)).toBeNull()
+  })
+
+  it('keeps paginating when Workday only reports total on the first page', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          total: 21,
+          jobPostings: Array.from({ length: 20 }, (_, index) => ({
+            title: `Role ${index}`,
+            externalPath: `/job/London/Role-${index}_JR${index}`,
+            locationsText: 'London',
+            bulletFields: [`JR${index}`],
+          })),
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          total: 0,
+          jobPostings: [
+            {
+              title: 'Role 20',
+              externalPath: '/job/London/Role-20_JR20',
+              locationsText: 'London',
+              bulletFields: ['JR20'],
+            },
+          ],
+        }),
+      } as Response)
+
+    await expect(
+      provider.fetchListings({
+        externalId: 'blackline:wd108:BlackLineCareers',
+        companyName: 'BlackLine',
+      }),
+    ).resolves.toHaveLength(21)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    fetchMock.mockRestore()
   })
 })
 
@@ -1134,6 +1251,9 @@ describe('CareerPageProvider', () => {
     expect(provider.handleFromUrl('https://www.scalerrs.co/careers')).toBe('https://www.scalerrs.co/careers')
     expect(provider.handleFromUrl('https://jobs.bendingspoons.com/')).toBe('https://jobs.bendingspoons.com/')
     expect(provider.handleFromUrl('https://www.veed.io/careers')).toBe('https://www.veed.io/careers')
+    expect(provider.handleFromUrl('https://www.tigerdata.com/careers')).toBe('https://www.tigerdata.com/careers')
+    expect(provider.handleFromUrl('https://www.getbumpa.com/career')).toBe('https://www.getbumpa.com/career')
+    expect(provider.handleFromUrl('https://www.xogito.com/jobs/')).toBe('https://www.xogito.com/jobs/')
     expect(provider.handleFromUrl('https://tuple.app/jobs')).toBeNull()
   })
 
@@ -1356,6 +1476,91 @@ describe('CareerPageProvider', () => {
       },
     ])
   })
+
+  it('extracts Tiger Data roles from its jobs API', () => {
+    expect(
+      tigerDataJobsFromPayload(
+        {
+          jobs: [
+            {
+              id: '2f739405-6cb3-4487-8551-d6727a2bc308',
+              title: 'Business Development Representative (Barcelona)',
+              locationName: 'Spain Full-time',
+              locationExternalName: null,
+              workplaceType: 'Remote',
+              publishedDate: '2026-06-11',
+              externalLink:
+                'https://www.tigerdata.com/careers?ashby_jid=2f739405-6cb3-4487-8551-d6727a2bc308',
+              isListed: true,
+            },
+            {
+              id: 'hidden',
+              title: 'Draft role',
+              isListed: false,
+            },
+          ],
+        },
+        { externalId: 'https://www.tigerdata.com/careers', companyName: 'Timescale' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'tigerdata:2f739405-6cb3-4487-8551-d6727a2bc308',
+        title: 'Business Development Representative (Barcelona)',
+        companyName: 'Timescale',
+        location: 'Spain Full-time',
+        locations: ['Spain Full-time'],
+        workMode: 'Remote',
+        url: 'https://www.tigerdata.com/careers?ashby_jid=2f739405-6cb3-4487-8551-d6727a2bc308',
+        postedAt: new Date('2026-06-11'),
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Bumpa roles from Next data', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"positions":[{"sys":{"id":"6oPg2iseyweigYkQ1wIiov","createdAt":"2026-07-24T10:40:18.103Z"},"fields":{"title":"Product Marketing Associate","link":"https://getbumpa.seamlesshiring.com/job/view/9978?application_source=Direct URL","department":"Product","type":"Full time, Remote","slug":"product-marketing-associate"}}]}}}</script>',
+        { externalId: 'https://www.getbumpa.com/career', companyName: 'Bumpa' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'bumpa:6oPg2iseyweigYkQ1wIiov',
+        title: 'Product Marketing Associate',
+        companyName: 'Bumpa',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://getbumpa.seamlesshiring.com/job/view/9978?application_source=Direct URL',
+        postedAt: new Date('2026-07-24T10:40:18.103Z'),
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Europe-relevant Xogito roles from the WordPress jobs page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<div class="position"><div class="position-container"><div class="position-listing"><div class="listing-title"><a href="https://www.xogito.com/jobs/forward-deployed-engineer-python-ref-111-06/">Forward Deployed Engineer (Python) &#8211; REF 111 &#8211; 06</a><ul class="listing-tags"><li>Full Time</li><li>Permanent</li><li>remote</li><li>Europe and South America,&nbsp;Remote,&nbsp;Remote in Europe,&nbsp;Remote in Europe and South America</li></ul></div></div></div></div><div class="clearfix"></div><div class="position"><div class="position-container"><div class="position-listing"><div class="listing-title"><a href="https://www.xogito.com/jobs/react-native-developer-ref-81-30/">React Native Developer &#8211; REF 81- 30</a><ul class="listing-tags"><li>Full Time</li><li>Permanent</li><li>remote</li><li>Remote,&nbsp;Remote in South America</li></ul></div></div></div></div><div class="clearfix"></div>',
+        { externalId: 'https://www.xogito.com/jobs/', companyName: 'Xogito group' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'xogito:forward-deployed-engineer-python-ref-111-06',
+        title: 'Forward Deployed Engineer (Python) - REF 111 - 06',
+        companyName: 'Xogito group',
+        location: 'Europe and South America, Remote, Remote in Europe, Remote in Europe and South America',
+        locations: ['Europe and South America, Remote, Remote in Europe, Remote in Europe and South America'],
+        workMode: 'Remote',
+        url: 'https://www.xogito.com/jobs/forward-deployed-engineer-python-ref-111-06/',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
 })
 
 describe('ComeetProvider', () => {
@@ -1455,6 +1660,9 @@ describe('RipplingProvider', () => {
   it('extracts the board slug from localized Rippling careers URLs', () => {
     expect(provider.handleFromUrl('https://ats.rippling.com/en-GB/chess/jobs')).toBe('chess')
     expect(provider.handleFromUrl('https://ats.rippling.com/chess/jobs')).toBe('chess')
+    expect(provider.handleFromUrl('https://api.rippling.com/platform/api/ats/v1/board/anaconda/jobs')).toBe(
+      'api:anaconda',
+    )
     expect(provider.handleFromUrl('https://example.com/chess/jobs')).toBeNull()
   })
 
@@ -1479,6 +1687,20 @@ describe('RipplingProvider', () => {
       '</script>'
     expect(ripplingJobsFromHtml(html)).toEqual([{ id: 'a', name: 'Eng' }])
     expect(ripplingJobsFromHtml('<html>no data</html>')).toEqual([])
+  })
+
+  it('extracts jobs from the Rippling public board API shape', () => {
+    expect(
+      ripplingJobsFromApi([
+        {
+          uuid: '6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+          name: 'Enterprise Account Executive - EMEA',
+          url: 'https://ats.rippling.com/anaconda/jobs/6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+          workLocation: { label: 'Remote (Germany)' },
+        },
+      ]),
+    ).toHaveLength(1)
+    expect(ripplingJobsFromApi({ jobs: [] })).toEqual([])
   })
 
   it('maps a Rippling posting', () => {
@@ -1512,6 +1734,31 @@ describe('RipplingProvider', () => {
       url: 'https://ats.rippling.com/chess/jobs/6066415d-520c-46a3-9946-cab468730543',
       postedAt: null,
       contentLanguage: 'en',
+    })
+  })
+
+  it('maps a Rippling public API posting', () => {
+    expect(
+      provider.normalize(
+        {
+          uuid: '6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+          name: 'Enterprise Account Executive - EMEA',
+          url: 'https://ats.rippling.com/anaconda/jobs/6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+          workLocation: { label: 'Remote (Germany)' },
+        },
+        { externalId: 'api:anaconda', companyName: 'Anaconda' },
+      ),
+    ).toEqual({
+      provider: 'rippling',
+      externalId: '6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+      title: 'Enterprise Account Executive - EMEA',
+      companyName: 'Anaconda',
+      location: 'Remote (Germany)',
+      locations: ['Remote (Germany)'],
+      workMode: 'Remote',
+      url: 'https://ats.rippling.com/anaconda/jobs/6d708e7b-d0ca-41fa-9cf9-ff42bfeed65a',
+      postedAt: null,
+      contentLanguage: null,
     })
   })
 })

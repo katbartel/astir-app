@@ -15,6 +15,7 @@ import { ComeetProvider } from './providers/comeet.provider'
 import { GemProvider } from './providers/gem.provider'
 import { GreenhouseProvider } from './providers/greenhouse.provider'
 import { JOB_BOARD_PROVIDERS } from './providers/job-board-provider'
+import { JazzHrProvider } from './providers/jazzhr.provider'
 import { JoinProvider } from './providers/join.provider'
 import { JobPostingProvider } from './providers/jobposting.provider'
 import { LeverProvider } from './providers/lever.provider'
@@ -60,6 +61,7 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
     McKinseyProvider,
     ZohoRecruitProvider,
     JobPostingProvider,
+    JazzHrProvider,
     ArbeitnowProvider,
     TheMuseProvider,
     AdzunaProvider,
@@ -87,6 +89,7 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         bluesky: BlueskyProvider,
         mckinsey: McKinseyProvider,
         zohoRecruit: ZohoRecruitProvider,
+        jazzHr: JazzHrProvider,
         // Generic schema.org reader last: it only runs as a resolution fallback.
         jobPosting: JobPostingProvider,
         arbeitnow: ArbeitnowProvider,
@@ -114,6 +117,7 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         bluesky,
         mckinsey,
         zohoRecruit,
+        jazzHr,
         jobPosting,
         arbeitnow,
         theMuse,
@@ -141,6 +145,7 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
         BlueskyProvider,
         McKinseyProvider,
         ZohoRecruitProvider,
+        JazzHrProvider,
         JobPostingProvider,
         ArbeitnowProvider,
         TheMuseProvider,

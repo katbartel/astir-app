@@ -88,6 +88,8 @@ model RemoteCompany {
   careersUrl       String?  @map("careers_url")
   companyWebsite   String?  @map("company_website")
   note             String?
+  reviewed         Boolean  @default(false)
+  reviewStatus     String   @default("not_reviewed") @map("review_status")
   jobSourceId      String?  @map("job_source_id")
   resolutionStatus String   @default("pending") @map("resolution_status")
   addedByEmail     String?  @map("added_by_email")

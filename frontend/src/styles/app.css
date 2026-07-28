@@ -4221,6 +4221,7 @@ textarea {
 
 .admin-list-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-3);
   margin-top: var(--space-3);
@@ -4270,6 +4271,81 @@ textarea {
   outline: none;
 }
 
+.admin-list-filters {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.admin-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--input-height);
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  font-size: var(--type-chip);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background .2s ease,
+    border-color .2s ease,
+    color .2s ease;
+}
+
+.admin-review-select {
+  min-height: var(--input-height);
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  color: var(--ink2);
+  font: inherit;
+  font-size: var(--type-chip);
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background .2s ease,
+    border-color .2s ease,
+    color .2s ease;
+}
+
+.admin-filter-chip:hover,
+.admin-review-select:hover {
+  border-color: var(--gold);
+  color: var(--gold-text);
+}
+
+.admin-filter-chip:focus-visible,
+.admin-review-select:focus-visible {
+  border-color: var(--gold);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.admin-filter-chip.on {
+  border-color: transparent;
+  background: var(--gold-soft);
+  color: var(--gold-text);
+}
+
+.admin-review-reviewed {
+  border-color: transparent;
+  background: var(--rest-soft);
+  color: var(--rest-text);
+}
+
+.admin-review-to_review {
+  border-color: transparent;
+  background: var(--gold-soft);
+  color: var(--gold-text);
+}
+
 .admin-company-list {
   display: flex;
   flex-direction: column;
@@ -4303,6 +4379,7 @@ textarea {
 .admin-company-heading {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: var(--space-3);
   min-width: 0;
   max-width: 100%;

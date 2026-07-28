@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react'
 import { useUser } from '../UserProvider'
 
 type ResolutionStatus = 'pending' | 'resolved' | 'unresolved'
+type ReviewStatus = 'reviewed' | 'not_reviewed' | 'to_review'
 
 type RemoteCompany = {
   id: string
@@ -11,6 +12,7 @@ type RemoteCompany = {
   careersUrl: string | null
   companyWebsite: string | null
   note: string | null
+  reviewStatus: ReviewStatus
   resolutionStatus: ResolutionStatus
   addedByEmail: string | null
   createdAt: string
@@ -22,21 +24,44 @@ type BulkResultRow = {
 }
 
 const STATUS_LABEL: Record<ResolutionStatus, string> = {
-  resolved: 'Resolved',
+  resolved: 'Active',
   pending: 'Pending',
   unresolved: 'Not found',
 }
 
 type SortKey = 'newest' | 'name' | 'working' | 'not-working'
+type ListFilter = 'active' | 'not-found' | 'reviewed' | 'not-reviewed' | 'to-review'
 
 // "Working" = the careers URL resolved. Used to sort resolved vs. the rest.
 const workingRank = (company: RemoteCompany) => (company.resolutionStatus === 'resolved' ? 1 : 0)
 
 const SORT_LABEL: Record<SortKey, string> = {
   newest: 'Newest first',
-  name: 'Name (A–Z)',
-  working: 'Working first',
-  'not-working': 'Not working first',
+  name: 'Name (A-Z)',
+  working: 'Active first',
+  'not-working': 'Not found first',
+}
+
+const FILTER_LABEL: Record<ListFilter, string> = {
+  active: 'Active',
+  'not-found': 'Not found',
+  reviewed: 'Reviewed',
+  'not-reviewed': 'Not reviewed',
+  'to-review': 'To review',
+}
+
+const REVIEW_LABEL: Record<ReviewStatus, string> = {
+  not_reviewed: 'Not reviewed',
+  to_review: 'To review',
+  reviewed: 'Reviewed',
+}
+
+const REVIEW_STATUS_OPTIONS: ReviewStatus[] = ['not_reviewed', 'to_review', 'reviewed']
+
+const FILTER_TO_REVIEW_STATUS: Partial<Record<ListFilter, ReviewStatus>> = {
+  reviewed: 'reviewed',
+  'not-reviewed': 'not_reviewed',
+  'to-review': 'to_review',
 }
 
 export function AdminPanel() {
@@ -65,6 +90,7 @@ export function AdminPanel() {
   // List search + sort controls.
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('newest')
+  const [filters, setFilters] = useState<ListFilter[]>([])
 
   // Inline editing of a company's name / careers URL.
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -275,6 +301,35 @@ export function AdminPanel() {
     }
   }
 
+  async function updateReviewStatus(company: RemoteCompany, reviewStatus: ReviewStatus) {
+    if (company.reviewStatus === reviewStatus) return
+    setCompanies((prev) =>
+      prev?.map((item) => (item.id === company.id ? { ...item, reviewStatus } : item)) ?? prev,
+    )
+    try {
+      const response = await fetch(`/api/remote-companies/${company.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reviewStatus }),
+      })
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+      const updated = (await response.json()) as RemoteCompany
+      setCompanies((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? prev)
+    } catch {
+      setCompanies((prev) =>
+        prev?.map((item) =>
+          item.id === company.id ? { ...item, reviewStatus: company.reviewStatus } : item,
+        ) ?? prev,
+      )
+    }
+  }
+
+  function toggleFilter(filter: ListFilter) {
+    setFilters((prev) =>
+      prev.includes(filter) ? prev.filter((item) => item !== filter) : [...prev, filter],
+    )
+  }
+
   const resultSummary = bulkResults
     ? {
         resolved: bulkResults.filter((row) => row.status === 'resolved').length,
@@ -285,6 +340,10 @@ export function AdminPanel() {
     : null
 
   const query = search.trim().toLowerCase()
+  const statusFilters = filters.filter((filter) => filter === 'active' || filter === 'not-found')
+  const reviewFilters = filters.filter(
+    (filter) => filter === 'reviewed' || filter === 'not-reviewed' || filter === 'to-review',
+  )
   const visibleCompanies = companies
     ? companies
         .filter(
@@ -295,6 +354,18 @@ export function AdminPanel() {
             (company.companyWebsite?.toLowerCase().includes(query) ?? false) ||
             (company.note?.toLowerCase().includes(query) ?? false),
         )
+        .filter((company) => {
+          if (statusFilters.length === 0) return true
+          return statusFilters.some((filter) =>
+            filter === 'active'
+              ? company.resolutionStatus === 'resolved'
+              : company.resolutionStatus === 'unresolved',
+          )
+        })
+        .filter((company) => {
+          if (reviewFilters.length === 0) return true
+          return reviewFilters.some((filter) => FILTER_TO_REVIEW_STATUS[filter] === company.reviewStatus)
+        })
         .sort((a, b) => {
           switch (sortKey) {
             case 'name':
@@ -409,7 +480,7 @@ export function AdminPanel() {
           <h2 className="prefs-section-title">
             On the list
             {companies
-              ? query
+              ? query || filters.length > 0
                 ? ` (${visibleCompanies?.length ?? 0} of ${companies.length})`
                 : ` (${companies.length})`
               : ''}
@@ -443,6 +514,22 @@ export function AdminPanel() {
                 ))}
               </select>
             </label>
+            <div className="admin-list-filters" aria-label="Filter companies">
+              {(Object.keys(FILTER_LABEL) as ListFilter[]).map((filter) => {
+                const active = filters.includes(filter)
+                return (
+                  <button
+                    key={filter}
+                    className={`admin-filter-chip${active ? ' on' : ''}`}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleFilter(filter)}
+                  >
+                    {FILTER_LABEL[filter]}
+                  </button>
+                )
+              })}
+            </div>
           </div>
         ) : null}
         <p className="prefs-hint">
@@ -457,7 +544,7 @@ export function AdminPanel() {
         ) : companies.length === 0 ? (
           <p className="watch-invite">No companies yet. Add some above.</p>
         ) : visibleCompanies && visibleCompanies.length === 0 ? (
-          <p className="watch-invite">No companies match “{search.trim()}”.</p>
+          <p className="watch-invite">No companies match the current filters.</p>
         ) : (
           <ul className="admin-company-list">
             {visibleCompanies?.map((company) =>
@@ -533,6 +620,20 @@ export function AdminPanel() {
                       <span className={`admin-status admin-status-${company.resolutionStatus}`}>
                         {STATUS_LABEL[company.resolutionStatus]}
                       </span>
+                      <select
+                        className={`admin-review-select admin-review-${company.reviewStatus}`}
+                        value={company.reviewStatus}
+                        aria-label={`Review status for ${company.name}`}
+                        onChange={(event) =>
+                          updateReviewStatus(company, event.target.value as ReviewStatus)
+                        }
+                      >
+                        {REVIEW_STATUS_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {REVIEW_LABEL[status]}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     {company.careersUrl ? (
                       <a

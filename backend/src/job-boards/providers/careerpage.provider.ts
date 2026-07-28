@@ -1,11 +1,12 @@
 import { Injectable } from '@nestjs/common'
-import { NormalizedJob, WorkMode } from '../normalized-job'
+import { NormalizedJob, parseDate, WorkMode } from '../normalized-job'
 import { AtsProvider, JobBoardSourceRef } from './job-board-provider'
 
 const FETCH_TIMEOUT_MS = 15_000
 const USER_AGENT = 'Mozilla/5.0 (compatible; AstirJobBoardBot/1.0)'
 const LUXOFT_PAGE_SIZE = 60
 const LUXOFT_MAX_PAGES = 25
+const TIGERDATA_JOBS_API = 'https://www.tigerdata.com/api/jobs'
 
 function textFromHtml(html: string): string {
   return html
@@ -107,6 +108,8 @@ function cleanHtml(value: string): string {
   return value
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
+    .replace(/&#038;/g, '&')
+    .replace(/&#8211;|&ndash;/g, '-')
     .replace(/&#x27;|&#39;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&amp;/g, '&')
@@ -339,6 +342,65 @@ type VeedJob = {
   function?: { name?: string }
 }
 
+type BumpaPosition = {
+  sys?: { id?: string; createdAt?: string }
+  fields?: {
+    title?: string
+    link?: string
+    type?: string
+    slug?: string
+  }
+}
+
+type TigerDataJob = {
+  id?: string
+  title?: string
+  locationName?: string | null
+  locationExternalName?: string | null
+  workplaceType?: string | null
+  publishedDate?: string | null
+  externalLink?: string | null
+  applyLink?: string | null
+  isListed?: boolean
+}
+
+export function tigerDataJobsFromPayload(payload: unknown, source: JobBoardSourceRef): NormalizedJob[] {
+  const rawJobs =
+    payload && typeof payload === 'object' ? (payload as { jobs?: unknown }).jobs : null
+  if (!Array.isArray(rawJobs)) {
+    return []
+  }
+
+  return (rawJobs as TigerDataJob[])
+    .map((job): NormalizedJob | null => {
+      if (!job.id || !job.title || job.isListed === false) {
+        return null
+      }
+      const locations = [
+        ...new Set(
+          [job.locationName, job.locationExternalName]
+            .filter((location): location is string => !!location)
+            .map((location) => location.trim())
+            .filter(Boolean),
+        ),
+      ]
+      const workplace = job.workplaceType?.trim() ?? ''
+      return {
+        provider: 'careerpage',
+        externalId: `tigerdata:${job.id}`,
+        title: job.title.trim(),
+        companyName: source.companyName,
+        location: locations[0] ?? null,
+        locations,
+        workMode: workModeFromText(workplace || locations.join(' ')),
+        url: job.externalLink || job.applyLink || absoluteUrl(`/careers?ashby_jid=${job.id}`, source.externalId),
+        postedAt: parseDate(job.publishedDate),
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
+}
+
 function nextDataFromHtml(html: string): unknown | null {
   const raw = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/i)?.[1]
   if (!raw) {
@@ -433,6 +495,69 @@ function veedJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJo
     .filter((job): job is NormalizedJob => job !== null)
 }
 
+function bumpaJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const data = nextDataFromHtml(html)
+  const positions =
+    data && typeof data === 'object'
+      ? ((data as { props?: { pageProps?: { positions?: unknown } } }).props?.pageProps?.positions as unknown)
+      : null
+  if (!Array.isArray(positions)) {
+    return []
+  }
+
+  return (positions as BumpaPosition[])
+    .map((position): NormalizedJob | null => {
+      const title = position.fields?.title?.trim()
+      if (!title) {
+        return null
+      }
+      const type = position.fields?.type?.trim() ?? ''
+      const isRemote = type.toLowerCase().includes('remote')
+      const id = position.sys?.id ?? position.fields?.slug ?? slugFromTitle(title)
+      return {
+        provider: 'careerpage',
+        externalId: `bumpa:${id}`,
+        title,
+        companyName: source.companyName,
+        location: isRemote ? 'Remote' : null,
+        locations: isRemote ? ['Remote'] : [],
+        workMode: workModeFromText(type),
+        url: position.fields?.link || source.externalId,
+        postedAt: parseDate(position.sys?.createdAt),
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
+}
+
+function xogitoJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const cards = [...html.matchAll(/<div class="position">([\s\S]*?)<div class="clearfix"><\/div>/gi)]
+  return cards
+    .map((match): NormalizedJob | null => {
+      const body = match[1]
+      const url = body.match(/<a[^>]+href="([^"]+)"/i)?.[1]
+      const title = cleanHtml(body.match(/<a[^>]+href="[^"]+"[^>]*>([\s\S]*?)<\/a>/i)?.[1] ?? '')
+      const tags = [...body.matchAll(/<li>([\s\S]*?)<\/li>/gi)].map((tag) => cleanHtml(tag[1]))
+      const location = tags.find((tag) => tag.toLowerCase().includes('europe')) ?? null
+      if (!url || !title || !location) {
+        return null
+      }
+      return {
+        provider: 'careerpage',
+        externalId: `xogito:${slugFromTitle(title)}`,
+        title,
+        companyName: source.companyName,
+        location,
+        locations: [location],
+        workMode: 'Remote',
+        url: absoluteUrl(url, source.externalId),
+        postedAt: null,
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
+}
+
 export function jobsFromCareerPageHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
   try {
     const parsed = new URL(source.externalId)
@@ -456,6 +581,12 @@ export function jobsFromCareerPageHtml(html: string, source: JobBoardSourceRef):
     }
     if (/(^|\.)veed\.io$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
       return veedJobsFromHtml(html, source)
+    }
+    if (/(^|\.)getbumpa\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/career') {
+      return bumpaJobsFromHtml(html, source)
+    }
+    if (/(^|\.)xogito\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') {
+      return xogitoJobsFromHtml(html, source)
     }
     if (/(^|\.)cerbos\.dev$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/join-us') {
       return cerbosJobsFromHtml(html, source)
@@ -510,6 +641,15 @@ export class CareerPageProvider implements AtsProvider {
       if (/(^|\.)sketch\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
         return parsed.toString()
       }
+      if (/(^|\.)tigerdata\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+        return parsed.toString()
+      }
+      if (/(^|\.)getbumpa\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/career') {
+        return parsed.toString()
+      }
+      if (/(^|\.)xogito\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') {
+        return parsed.toString()
+      }
     } catch {
       return null
     }
@@ -556,6 +696,16 @@ export class CareerPageProvider implements AtsProvider {
         }
       }
       return listings
+    }
+    if (/(^|\.)tigerdata\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      const response = await fetch(TIGERDATA_JOBS_API, {
+        headers: { accept: 'application/json', 'user-agent': USER_AGENT },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      if (!response.ok) {
+        throw new Error(`GET ${TIGERDATA_JOBS_API} responded ${response.status}`)
+      }
+      return tigerDataJobsFromPayload(await response.json(), source)
     }
     return this.fetchPage(source.externalId, source)
   }

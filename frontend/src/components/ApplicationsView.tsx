@@ -12,6 +12,7 @@ import {
   plainDate,
   todayKey,
 } from '@/lib/applications'
+import { compactLocationLabel, displayLocationParts } from '@/lib/location-display'
 import { STAGE_IDS, useStageConfig } from '@/lib/stages'
 import { applicationsToCsv, parseApplicationsCsv } from '@/lib/applications-csv'
 import { KebabMenu } from './applications/KebabMenu'
@@ -58,14 +59,11 @@ function applicationsCountLabel(shown: number, total: number) {
 // Collapse a possibly multi-value location into a compact label plus the full
 // list for the hover tooltip. "Germany,Austria,Finland" becomes "Germany +2"
 // with all three revealed on hover; a single value is shown as-is.
-function locationCell(location: string | null | undefined) {
-  const parts = (location ?? '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-  if (parts.length === 0) return { display: '—', tooltip: undefined }
-  if (parts.length === 1) return { display: parts[0], tooltip: parts[0] }
-  return { display: `${parts[0]} +${parts.length - 1}`, tooltip: parts.join(', ') }
+function locationCell(
+  location: string | null | undefined,
+  locations: string[] | undefined,
+) {
+  return compactLocationLabel(displayLocationParts(locations ?? [], location))
 }
 
 export function ApplicationsView() {
@@ -334,7 +332,10 @@ export function ApplicationsView() {
             ) : (
               rows.map((application) => {
                 const openUrl = application.link || application.posting?.url || ''
-                const location = locationCell(application.posting?.location)
+                const location = locationCell(
+                  application.posting?.location,
+                  application.posting?.locations,
+                )
                 return (
                   <tr key={application.id}>
                     <td>

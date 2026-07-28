@@ -28,6 +28,15 @@ export type RemoteJobBoardListing = {
 // the regular Job Boards feed.
 const MAX_LISTING_AGE_DAYS = 90
 
+type ListingSourceFreshness = {
+  lastSeenAt: Date
+  jobSource: { lastSyncedAt: Date | null } | null
+}
+
+function sourceStillCurrent(source: ListingSourceFreshness): boolean {
+  return !source.jobSource?.lastSyncedAt || source.lastSeenAt >= source.jobSource.lastSyncedAt
+}
+
 // Serves the per-user Remote Job Board feed: openings from the global curated
 // remote-company list, matched to the requesting user's keywords and forced to
 // remote-only regardless of their work-mode preference (the board itself is
@@ -55,7 +64,15 @@ export class RemoteJobBoardService {
             sources: { some: { jobSourceId: { in: sourceIds } } },
             OR: [{ postedAt: null }, { postedAt: { gte: cutoff } }],
           },
-          include: { sources: { select: { provider: true } } },
+          include: {
+            sources: {
+              select: {
+                provider: true,
+                lastSeenAt: true,
+                jobSource: { select: { lastSyncedAt: true } },
+              },
+            },
+          },
         }),
         this.matchingPreferences(userId),
         this.watchlistCompanyKeys(userId),
@@ -78,7 +95,9 @@ export class RemoteJobBoardService {
     const candidates: FoldableOpening[] = listings
       .filter(
         (listing) =>
-          matches.has(listing.id) && !watchlistKeys.has(companyKey(listing.companyName)),
+          matches.has(listing.id) &&
+          listing.sources.some(sourceStillCurrent) &&
+          !watchlistKeys.has(companyKey(listing.companyName)),
       )
       .map((listing) => ({
         id: listing.id,
@@ -87,7 +106,7 @@ export class RemoteJobBoardService {
         url: listing.url,
         location: listing.location,
         locations: listing.locations,
-        workMode: listing.workMode,
+        workMode: listing.workMode ?? 'Remote',
         contentLanguage: listing.contentLanguage,
         postedAt: listing.postedAt,
         firstSeenAt: listing.firstSeenAt,

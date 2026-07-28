@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { NormalizedJob, WorkMode } from '../normalized-job'
+import { NormalizedJob, WorkMode, parseDate } from '../normalized-job'
 import {
   AtsProvider,
   JobBoardSourceRef,
@@ -19,6 +19,12 @@ type PersonioJob = {
   name?: string
   office?: string
   offices?: string[]
+  published_at?: string
+  publishedAt?: string
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
 }
 
 // The board hosts to try, most common first. Same tenant slug, different TLD.
@@ -100,7 +106,13 @@ export class PersonioProvider implements AtsProvider {
       locations,
       workMode: workModeFromPersonio(locations),
       url: `https://${host}/job/${job.id}?language=en`,
-      postedAt: null,
+      postedAt:
+        parseDate(job.published_at) ??
+        parseDate(job.publishedAt) ??
+        parseDate(job.created_at) ??
+        parseDate(job.createdAt) ??
+        parseDate(job.updated_at) ??
+        parseDate(job.updatedAt),
     }
   }
 }

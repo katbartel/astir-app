@@ -10,10 +10,20 @@ export class CreateRemoteCompanyDto {
   @IsString()
   @MaxLength(2000)
   careersUrl?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  companyWebsite?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  note?: string
 }
 
 // Edit an existing company: both fields optional so the admin can change just
-// the name, just the careers URL, or both. An empty careersUrl clears the link.
+// the name, URLs, note, or a combination. Empty optional fields clear their values.
 export class UpdateRemoteCompanyDto {
   @IsOptional()
   @IsString()
@@ -25,6 +35,16 @@ export class UpdateRemoteCompanyDto {
   @IsString()
   @MaxLength(2000)
   careersUrl?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  companyWebsite?: string
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(5000)
+  note?: string
 }
 
 // Bulk paste: one company per line. Each line is either a bare name

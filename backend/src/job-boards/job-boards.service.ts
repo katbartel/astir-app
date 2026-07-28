@@ -28,6 +28,15 @@ export type JobBoardListing = {
 // posting date, and "unknown age" is not the same as "old".
 const MAX_LISTING_AGE_DAYS = 90
 
+type ListingSourceFreshness = {
+  lastSeenAt: Date
+  jobSource: { lastSyncedAt: Date | null } | null
+}
+
+function sourceStillCurrent(source: ListingSourceFreshness): boolean {
+  return !source.jobSource?.lastSyncedAt || source.lastSeenAt >= source.jobSource.lastSyncedAt
+}
+
 @Injectable()
 export class JobBoardsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -50,7 +59,16 @@ export class JobBoardsService {
         },
         include: {
           listing: {
-            include: { sources: { select: { provider: true, jobSourceId: true } } },
+            include: {
+              sources: {
+                select: {
+                  provider: true,
+                  jobSourceId: true,
+                  lastSeenAt: true,
+                  jobSource: { select: { lastSyncedAt: true } },
+                },
+              },
+            },
           },
         },
       }),
@@ -64,6 +82,7 @@ export class JobBoardsService {
       .filter(
         (row) =>
           !appliedListingIds.has(row.listing.id) &&
+          row.listing.sources.some(sourceStillCurrent) &&
           !watchlistKeys.has(companyKey(row.listing.companyName)) &&
           !row.listing.sources.some(
             (source) => source.jobSourceId && remoteSourceIds.has(source.jobSourceId),

@@ -4,12 +4,14 @@ import { AshbyProvider } from './ashby.provider'
 import { BambooHrProvider } from './bamboohr.provider'
 import { BlueskyProvider, jobsFromHtml } from './bluesky.provider'
 import { BreezyProvider } from './breezy.provider'
-import { CareerPageProvider, jobsFromCareerPageHtml } from './careerpage.provider'
+import { CareerPageProvider, jobsFromCareerPageHtml, lumenaltaJobsFromHtml } from './careerpage.provider'
+import { ComeetProvider, comeetJobsFromHtml } from './comeet.provider'
 import { GemProvider } from './gem.provider'
 import { GreenhouseProvider } from './greenhouse.provider'
 import { JobPostingProvider } from './jobposting.provider'
 import { JoinProvider } from './join.provider'
 import { LeverProvider } from './lever.provider'
+import { McKinseyProvider } from './mckinsey.provider'
 import { PersonioProvider } from './personio.provider'
 import { PinpointProvider } from './pinpoint.provider'
 import { RecruiteeProvider } from './recruitee.provider'
@@ -20,6 +22,7 @@ import { TheMuseProvider } from './themuse.provider'
 import { TraffitProvider } from './traffit.provider'
 import { WorkableProvider } from './workable.provider'
 import { WorkdayProvider } from './workday.provider'
+import { ZohoRecruitProvider, zohoRecruitJobsFromHtml } from './zohorecruit.provider'
 
 const source = { externalId: 'acme', companyName: 'Acme' }
 
@@ -133,7 +136,7 @@ describe('WorkableProvider.normalize', () => {
     })
   })
 
-  it('joins city and country and drops jobs without a shortcode', () => {
+  it('joins city and country and drops jobs without any id', () => {
     const job = provider.normalize(
       { title: 'PM', shortcode: 'A1', url: 'https://x.example/1', city: 'Athens', country: 'Greece' },
       'Blueground',
@@ -141,10 +144,44 @@ describe('WorkableProvider.normalize', () => {
     expect(job?.location).toBe('Athens, Greece')
     expect(provider.normalize({ title: 'No shortcode' }, 'Blueground')).toBeNull()
   })
+
+  it('recognizes and maps public Workable company-page jobs', () => {
+    expect(
+      provider.handleFromUrl('https://jobs.workable.com/company/72NtGFPramsp9SiaoUitKh/jobs-at-onthegosystems'),
+    ).toBe('company:72NtGFPramsp9SiaoUitKh/jobs-at-onthegosystems')
+    expect(
+      provider.normalize(
+        {
+          id: '521f4bbc-6af5-42fb-b384-b958492506f7',
+          title: 'Data Analyst - AI Translation Quality',
+          url: 'https://jobs.workable.com/view/b9aEQr2Ga7T5ckfX5cHDuk/remote-data-analyst',
+          location: { locationStr: 'Warsaw, Masovian Voivodeship, Poland' },
+          locationsText: 'Remote Warsaw, Masovian Voivodeship, Poland',
+          published: '2026-07-27T12:00:00.000Z',
+        },
+        'OnTheGoSystems',
+      ),
+    ).toEqual({
+      provider: 'workable',
+      externalId: '521f4bbc-6af5-42fb-b384-b958492506f7',
+      title: 'Data Analyst - AI Translation Quality',
+      companyName: 'OnTheGoSystems',
+      location: 'Warsaw, Masovian Voivodeship, Poland',
+      locations: ['Warsaw, Masovian Voivodeship, Poland', 'Remote Warsaw, Masovian Voivodeship, Poland'],
+      workMode: 'Remote',
+      url: 'https://jobs.workable.com/view/b9aEQr2Ga7T5ckfX5cHDuk/remote-data-analyst',
+      postedAt: new Date('2026-07-27T12:00:00.000Z'),
+    })
+  })
 })
 
 describe('LeverProvider.normalize', () => {
   const provider = new LeverProvider()
+
+  it('preserves dotted board handles from Lever URLs', () => {
+    expect(provider.handleFromUrl('https://jobs.lever.co/Smile.io')).toBe('Smile.io')
+    expect(provider.handleFromUrl('https://jobs.lever.co/ro/bde27362-0652')).toBe('ro')
+  })
 
   it('maps the postings payload into a normalized job', () => {
     expect(
@@ -433,6 +470,15 @@ describe('PersonioProvider.normalize', () => {
       url: 'https://acme.jobs.personio.com/job/2481777?language=en',
       postedAt: null,
     })
+  })
+
+  it('uses Personio date fields when the feed carries them', () => {
+    const job = provider.normalize(
+      { id: 6, name: 'PM', office: 'Berlin', published_at: '2026-07-26T10:00:00Z' },
+      source,
+      'acme.jobs.personio.com',
+    )
+    expect(job?.postedAt).toEqual(new Date('2026-07-26T10:00:00Z'))
   })
 
   it('flags remote offices and drops positions without a name', () => {
@@ -793,6 +839,31 @@ describe('BambooHrProvider', () => {
       provider.normalize({ jobOpeningName: 'No id' }, { externalId: 'x', companyName: 'X' }),
     ).toBeNull()
   })
+
+  it('fills missing list data from detail page structured data', () => {
+    expect(
+      provider.normalize(
+        { id: 43, jobOpeningName: 'Technical Product Manager', isRemote: null },
+        { externalId: 'slite', companyName: 'Slite' },
+        {
+          location: 'Remote',
+          locations: ['Remote', 'Europe'],
+          workMode: 'Remote',
+          postedAt: new Date('2026-07-24T00:00:00Z'),
+        },
+      ),
+    ).toEqual({
+      provider: 'bamboohr',
+      externalId: '43',
+      title: 'Technical Product Manager',
+      companyName: 'Slite',
+      location: 'Remote',
+      locations: ['Remote', 'Europe'],
+      workMode: 'Remote',
+      url: 'https://slite.bamboohr.com/careers/43',
+      postedAt: new Date('2026-07-24T00:00:00Z'),
+    })
+  })
 })
 
 describe('PinpointProvider', () => {
@@ -1054,6 +1125,15 @@ describe('CareerPageProvider', () => {
 
   it('only claims known static career pages', () => {
     expect(provider.handleFromUrl('https://www.cerbos.dev/join-us')).toBe('https://www.cerbos.dev/join-us')
+    expect(provider.handleFromUrl('https://career.luxoft.com/jobs')).toBe('https://career.luxoft.com/jobs')
+    expect(provider.handleFromUrl('https://lumenalta.com/remote-jobs')).toBe('https://lumenalta.com/remote-jobs')
+    expect(provider.handleFromUrl('https://liveblocks.io/careers')).toBe('https://liveblocks.io/careers')
+    expect(provider.handleFromUrl('https://www.sketch.com/careers/')).toBe('https://www.sketch.com/careers/')
+    expect(provider.handleFromUrl('https://status.app/jobs')).toBe('https://status.app/jobs')
+    expect(provider.handleFromUrl('https://helply.com/careers')).toBe('https://helply.com/careers')
+    expect(provider.handleFromUrl('https://www.scalerrs.co/careers')).toBe('https://www.scalerrs.co/careers')
+    expect(provider.handleFromUrl('https://jobs.bendingspoons.com/')).toBe('https://jobs.bendingspoons.com/')
+    expect(provider.handleFromUrl('https://www.veed.io/careers')).toBe('https://www.veed.io/careers')
     expect(provider.handleFromUrl('https://tuple.app/jobs')).toBeNull()
   })
 
@@ -1077,6 +1157,295 @@ describe('CareerPageProvider', () => {
         contentLanguage: 'en',
       },
     ])
+  })
+
+  it('extracts Liveblocks roles from its static careers page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<section id="open-roles"><p class="font-medium text-marketing">GTM Growth Lead</p><p class="text-marketing-subtle">Remote</p><a href="/careers/gtm-growth-lead">View role</a></section>',
+        { externalId: 'https://liveblocks.io/careers', companyName: 'Liveblocks' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'liveblocks:gtm-growth-lead',
+        title: 'GTM Growth Lead',
+        companyName: 'Liveblocks',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://liveblocks.io/careers/gtm-growth-lead',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Sketch roles from its static careers page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<div class="grid-table__item job"><a href="https://sketch-hq.notion.site/Open-application" class="job__column job__position"><span>Open application</span></a><div class="job__column job__department">Any team</div><div class="job__column job__commitment">Full time</div><div class="job__column job_timezone">European Union / United States</div></div>',
+        { externalId: 'https://www.sketch.com/careers/', companyName: 'Sketch' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'sketch:open-application',
+        title: 'Open application',
+        companyName: 'Sketch',
+        location: 'European Union / United States',
+        locations: ['European Union / United States'],
+        workMode: null,
+        url: 'https://sketch-hq.notion.site/Open-application',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Luxoft roles from listing cards', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<a href="/jobs/senior-front-end-developer-26210" class="jobs__list__job"><div class="jobs__list__job__details"><h2 class="subtitle-l text-rich-black">Senior Front-End Developer</h2><p class="body-m-regular text-dark-gray">Front-end React</p><div class="jobs__list__job__details__tags__location text-rich-black"><p class="body-s-regular">Wroclaw</p><p class="body-s-regular">Poland</p></div></div></a>',
+        { externalId: 'https://career.luxoft.com/jobs', companyName: 'Luxoft' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'luxoft:senior-front-end-developer-26210',
+        title: 'Senior Front-End Developer',
+        companyName: 'Luxoft',
+        location: 'Wroclaw',
+        locations: ['Wroclaw', 'Poland'],
+        workMode: null,
+        url: 'https://career.luxoft.com/jobs/senior-front-end-developer-26210',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Lumenalta roles from embedded client job data', () => {
+    expect(
+      lumenaltaJobsFromHtml(
+        '\\"jobsData\\":{\\"country\\":\\"DE\\",\\"clientJobs\\":[{\\"_id\\":\\"68dee35f8c9481db144ea376\\",\\"slug\\":\\"ai-engineer-ai-engineer-551\\",\\"name\\":\\"Senior AI Engineer\\",\\"seniority_level\\":\\"Senior\\"}],\\"companyJobs\\":[]}',
+        { externalId: 'https://lumenalta.com/remote-jobs', companyName: 'Lumenalta' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'lumenalta:68dee35f8c9481db144ea376',
+        title: 'Senior AI Engineer',
+        companyName: 'Lumenalta',
+        location: 'Remote',
+        locations: ['Remote', 'Europe'],
+        workMode: 'Remote',
+        url: 'https://lumenalta.com/jobs/ai-engineer-ai-engineer-551',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('treats Status.app as a known career page even with no open roles', async () => {
+    await expect(provider.verifyHandle('https://status.app/jobs')).resolves.toBe(true)
+    expect(
+      jobsFromCareerPageHtml(
+        '<div id="open-roles"><span class="font-sans text-15 font-semibold">No open roles</span></div>',
+        { externalId: 'https://status.app/jobs', companyName: 'Status.app' },
+      ),
+    ).toEqual([])
+  })
+
+  it('extracts Helply roles from its rendered careers page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<h3 class="font-serif">Account Executive</h3><div class="flex flex-wrap gap-1.5"><span>Full time</span><span>Remote</span><span>Sales</span></div><h3 class="font-serif">Full Stack Engineer (AI focus)</h3><div class="flex flex-wrap gap-1.5"><span>Full time</span><span>Remote</span><span>Engineering</span></div>',
+        { externalId: 'https://helply.com/careers', companyName: 'Helply' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'helply:account-executive',
+        title: 'Account Executive',
+        companyName: 'Helply',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://helply.com/careers',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+      {
+        provider: 'careerpage',
+        externalId: 'helply:full-stack-engineer-ai-focus',
+        title: 'Full Stack Engineer (AI focus)',
+        companyName: 'Helply',
+        location: 'Remote',
+        locations: ['Remote'],
+        workMode: 'Remote',
+        url: 'https://helply.com/careers',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Scalerrs roles from its Webflow careers page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<div role="listitem" class="careers_job_item w-dyn-item"><div class="careers_job_card"><div class="careers_job_text_wrap"><div class="careers_job_tag_list"><div class="tag_text u-text-style-tiny">Remote (Global)</div><div class="tag_text u-text-style-tiny">Full Time</div></div><div class="u-text-style-h4">Senior SEO Strategist</div></div><div class="careers_job-button-wrapper"><a href="https://airtable.com/app/form" class="clickable_link w-inline-block">Apply Now</a></div></div></div>',
+        { externalId: 'https://www.scalerrs.co/careers', companyName: 'Scalerrs' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'scalerrs:senior-seo-strategist',
+        title: 'Senior SEO Strategist',
+        companyName: 'Scalerrs',
+        location: 'Remote (Global)',
+        locations: ['Remote (Global)'],
+        workMode: 'Remote',
+        url: 'https://airtable.com/app/form',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Bending Spoons roles from Next data', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"list":[{"id":"6686d0e2a65ca3994b3a415b","jobTitle":"UX/UI designer","status":"active","availableAsRemoteInDefaultCountries":true,"officeLocations":[{"title":"Milan (Italy)","country":{"name":"Italy"}},{"title":"London (UK)","country":{"name":"United Kingdom"}}]},{"id":"hidden","jobTitle":"Draft role","status":"draft","officeLocations":[]}]}}}</script>',
+        { externalId: 'https://jobs.bendingspoons.com/', companyName: 'Bending Spoons' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'bendingspoons:6686d0e2a65ca3994b3a415b',
+        title: 'UX/UI designer',
+        companyName: 'Bending Spoons',
+        location: 'Milan (Italy)',
+        locations: ['Milan (Italy)', 'London (UK)', 'Italy', 'United Kingdom', 'Remote eligible countries'],
+        workMode: 'Remote',
+        url: 'https://jobs.bendingspoons.com/positions/6686d0e2a65ca3994b3a415b',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts VEED roles from Next data', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<script id="__NEXT_DATA__" type="application/json">{"props":{"pageProps":{"jobPostings":[{"id":"123","title":"Senior Product Manager, AI Editing","locations":[{"name":"Amsterdam - Hybrid","country":{"name":"Netherlands"}},{"name":"London - Hybrid","country":{"name":"United Kingdom"}}],"function":{"name":"Product"}}]}}}</script>',
+        { externalId: 'https://www.veed.io/careers', companyName: 'VEED' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'veed:123',
+        title: 'Senior Product Manager, AI Editing',
+        companyName: 'VEED',
+        location: 'Amsterdam - Hybrid',
+        locations: ['Amsterdam - Hybrid', 'Netherlands', 'London - Hybrid', 'United Kingdom'],
+        workMode: 'Hybrid',
+        url: 'https://www.veed.io/careers',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+})
+
+describe('ComeetProvider', () => {
+  const provider = new ComeetProvider()
+
+  it('extracts the company slug and uid from Comeet URLs', () => {
+    expect(provider.handleFromUrl('https://www.comeet.com/jobs/scylladb/E4.006')).toBe('scylladb/E4.006')
+    expect(provider.handleFromUrl('https://example.com/jobs/scylladb/E4.006')).toBeNull()
+  })
+
+  it('extracts embedded Comeet positions', () => {
+    const html =
+      '<script>COMPANY_POSITIONS_DATA = [{"name":"Technical Support Engineer EMEA","uid":"A9.E66","company_name":"ScyllaDB","location":{"name":"Poland","country":"PL","city":"Warsaw","is_remote":true},"url_comeet_hosted_page":"https://www.comeet.com/jobs/scylladb/E4.006/technical-support-engineer-emea/A9.E66","time_updated":"2026-07-27T07:08:37Z","workplace_type":"Remote"}]; POSITION_DATA = null;</script>'
+
+    expect(comeetJobsFromHtml(html)).toHaveLength(1)
+    expect(provider.normalize(comeetJobsFromHtml(html)[0], { externalId: 'scylladb/E4.006', companyName: 'ScyllaDB' })).toEqual({
+      provider: 'comeet',
+      externalId: 'A9.E66',
+      title: 'Technical Support Engineer EMEA',
+      companyName: 'ScyllaDB',
+      location: 'Poland, Warsaw, PL',
+      locations: ['Poland, Warsaw, PL'],
+      workMode: 'Remote',
+      url: 'https://www.comeet.com/jobs/scylladb/E4.006/technical-support-engineer-emea/A9.E66',
+      postedAt: new Date('2026-07-27T07:08:37Z'),
+      contentLanguage: 'en',
+    })
+  })
+})
+
+describe('ZohoRecruitProvider', () => {
+  const provider = new ZohoRecruitProvider()
+
+  it('maps ITClinical and direct Zoho Recruit URLs to a portal handle', () => {
+    expect(provider.handleFromUrl('https://itclinical.com/careers.php')).toBe(
+      'https://itclinical.zohorecruit.eu/recruit/Portal.na?digest=BZl2tfNA04WFojs2U63iGnvcvvlqhJ2Ix5WvdZf2qD4-',
+    )
+    expect(provider.handleFromUrl('https://itclinical.zohorecruit.eu/recruit/Portal.na?digest=abc')).toBe(
+      'https://itclinical.zohorecruit.eu/recruit/Portal.na?digest=abc',
+    )
+    expect(provider.handleFromUrl('https://example.com/careers.php')).toBeNull()
+  })
+
+  it('extracts encoded Zoho Recruit jobs', () => {
+    const html =
+      '<input type="hidden" value="[{&#34;id&#34;:&#34;33814000003903048&#34;,&#34;Posting_Title&#34;:&#34;Scientific Administrative Assistant&#34;,&#34;Country&#34;:&#34;Portugal&#34;,&#34;Remote_Job&#34;:true}]" id="jobs"><table><tr><td><a href="/recruit/PortalDetail.na?iframe=true&amp;digest=abc&amp;jobid=33814000003903048&amp;widgetid=33814000000231269&amp;embedsource=CareerSite">Scientific Administrative Assistant</a></td><td>Remote</td></tr></table>'
+
+    expect(zohoRecruitJobsFromHtml(html)).toHaveLength(1)
+    expect(
+      provider.normalize(zohoRecruitJobsFromHtml(html)[0], {
+        externalId: 'https://itclinical.zohorecruit.eu/recruit/Portal.na?digest=abc',
+        companyName: 'ITClinical',
+      }),
+    ).toEqual({
+      provider: 'zohorecruit',
+      externalId: '33814000003903048',
+      title: 'Scientific Administrative Assistant',
+      companyName: 'ITClinical',
+      location: 'Portugal',
+      locations: ['Portugal', 'Remote'],
+      workMode: 'Remote',
+      url: 'https://itclinical.zohorecruit.eu/recruit/PortalDetail.na?iframe=true&digest=abc&jobid=33814000003903048&embedsource=CareerSite',
+      postedAt: null,
+      contentLanguage: 'en',
+    })
+  })
+
+  it('extracts rendered Zoho Recruit table rows when the hidden payload is absent', () => {
+    const html =
+      '<table><tr id="zr-joblist-detail_33814000004775001" class="jobDetailRow" data-rowid="33814000004775001"><td><a class="jobdetail" href="/recruit/PortalDetail.na?iframe=true&amp;digest=abc&amp;jobid=33814000004775001&amp;widgetid=33814000000231269&amp;embedsource=CareerSite">AI Specialist</a></td><td>Lisbon</td><td>Portugal</td><td title="Includes fully remote work and flexible hours">Clinical AI role</td><td>Full time</td></tr></table>'
+
+    const jobs = zohoRecruitJobsFromHtml(html)
+    expect(jobs).toHaveLength(1)
+    expect(
+      provider.normalize(jobs[0], {
+        externalId: 'https://itclinical.zohorecruit.eu/recruit/Portal.na?digest=abc',
+        companyName: 'ITClinical',
+      }),
+    ).toEqual({
+      provider: 'zohorecruit',
+      externalId: '33814000004775001',
+      title: 'AI Specialist',
+      companyName: 'ITClinical',
+      location: 'Lisbon, Portugal',
+      locations: ['Lisbon, Portugal', 'Remote'],
+      workMode: 'Remote',
+      url: 'https://itclinical.zohorecruit.eu/recruit/PortalDetail.na?iframe=true&digest=abc&jobid=33814000004775001&embedsource=CareerSite',
+      postedAt: null,
+      contentLanguage: 'en',
+    })
   })
 })
 
@@ -1144,5 +1513,65 @@ describe('RipplingProvider', () => {
       postedAt: null,
       contentLanguage: 'en',
     })
+  })
+})
+
+describe('McKinseyProvider', () => {
+  const provider = new McKinseyProvider()
+
+  it('recognizes McKinsey careers search URLs', () => {
+    expect(provider.handleFromUrl('https://www.mckinsey.com/careers/search-jobs')).toBe('search-jobs')
+    expect(provider.handleFromUrl('https://www.mckinsey.com/careers/search-jobs/jobs/aiengineer-110292')).toBe(
+      'search-jobs',
+    )
+    expect(provider.handleFromUrl('https://example.com/careers/search-jobs')).toBeNull()
+  })
+
+  it('probes McKinsey names only', () => {
+    expect(provider.candidateHandles('McKinsey & Company')).toEqual(['search-jobs'])
+    expect(provider.candidateHandles('Acme')).toEqual([])
+  })
+
+  it('maps a McKinsey posting', () => {
+    expect(
+      provider.normalize(
+        {
+          jobID: '110292',
+          title: 'AI Engineer - QuantumBlack, AI by McKinsey',
+          cities: ['London', 'Lisbon'],
+          countries: ['United Kingdom', 'Portugal'],
+          friendlyURL: 'aiengineer-quantumblackaibymckinsey-110292',
+          postedToLinkedInDate: '2026-07-08',
+        },
+        { externalId: 'search-jobs', companyName: 'McKinsey & Company' },
+      ),
+    ).toEqual({
+      provider: 'mckinsey',
+      externalId: '110292',
+      title: 'AI Engineer - QuantumBlack, AI by McKinsey',
+      companyName: 'McKinsey & Company',
+      location: 'London, United Kingdom',
+      locations: ['London, United Kingdom', 'Lisbon, Portugal', 'United Kingdom', 'Portugal'],
+      workMode: null,
+      url: 'https://www.mckinsey.com/careers/search-jobs/jobs/aiengineer-quantumblackaibymckinsey-110292',
+      postedAt: new Date('2026-07-08'),
+      contentLanguage: 'en',
+    })
+  })
+
+  it('uses a compact primary location for global postings', () => {
+    const job = provider.normalize(
+      {
+        jobID: '15178',
+        title: 'Associate',
+        cities: ['Abu Dhabi', 'Oslo', 'London', 'Berlin', 'New York City'],
+        countries: ['United Arab Emirates', 'Norway', 'United Kingdom', 'Germany', 'United States'],
+        friendlyURL: 'associate-15178',
+      },
+      { externalId: 'search-jobs', companyName: 'McKinsey & Company' },
+    )
+
+    expect(job?.location).toBe('Multiple locations')
+    expect(job?.locations).toContain('Oslo, Norway')
   })
 })

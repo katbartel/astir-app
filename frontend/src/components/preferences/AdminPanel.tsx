@@ -9,6 +9,8 @@ type RemoteCompany = {
   id: string
   name: string
   careersUrl: string | null
+  companyWebsite: string | null
+  note: string | null
   resolutionStatus: ResolutionStatus
   addedByEmail: string | null
   createdAt: string
@@ -45,6 +47,8 @@ export function AdminPanel() {
   // Single-add form.
   const [name, setName] = useState('')
   const [careersUrl, setCareersUrl] = useState('')
+  const [companyWebsite, setCompanyWebsite] = useState('')
+  const [note, setNote] = useState('')
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
@@ -66,6 +70,8 @@ export function AdminPanel() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editName, setEditName] = useState('')
   const [editUrl, setEditUrl] = useState('')
+  const [editCompanyWebsite, setEditCompanyWebsite] = useState('')
+  const [editNote, setEditNote] = useState('')
   const [savingEdit, setSavingEdit] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -123,7 +129,12 @@ export function AdminPanel() {
       const response = await fetch('/api/remote-companies', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, careersUrl: careersUrl.trim() || undefined }),
+        body: JSON.stringify({
+          name: trimmed,
+          careersUrl: careersUrl.trim() || undefined,
+          companyWebsite: companyWebsite.trim() || undefined,
+          note: note.trim() || undefined,
+        }),
       })
       if (response.status === 409) {
         setAddError('That company is already on the list.')
@@ -134,6 +145,8 @@ export function AdminPanel() {
       setCompanies((prev) => [created, ...(prev ?? [])])
       setName('')
       setCareersUrl('')
+      setCompanyWebsite('')
+      setNote('')
     } catch {
       setAddError('Could not add that company. Try again.')
     } finally {
@@ -208,6 +221,8 @@ export function AdminPanel() {
     setEditingId(company.id)
     setEditName(company.name)
     setEditUrl(company.careersUrl ?? '')
+    setEditCompanyWebsite(company.companyWebsite ?? '')
+    setEditNote(company.note ?? '')
     setEditError(null)
   }
 
@@ -225,7 +240,12 @@ export function AdminPanel() {
       const response = await fetch(`/api/remote-companies/${company.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: trimmed, careersUrl: editUrl.trim() }),
+        body: JSON.stringify({
+          name: trimmed,
+          careersUrl: editUrl.trim(),
+          companyWebsite: editCompanyWebsite.trim(),
+          note: editNote.trim(),
+        }),
       })
       if (response.status === 409) {
         setEditError('That company name is already on the list.')
@@ -271,7 +291,9 @@ export function AdminPanel() {
           (company) =>
             !query ||
             company.name.toLowerCase().includes(query) ||
-            (company.careersUrl?.toLowerCase().includes(query) ?? false),
+            (company.careersUrl?.toLowerCase().includes(query) ?? false) ||
+            (company.companyWebsite?.toLowerCase().includes(query) ?? false) ||
+            (company.note?.toLowerCase().includes(query) ?? false),
         )
         .sort((a, b) => {
           switch (sortKey) {
@@ -321,6 +343,26 @@ export function AdminPanel() {
               onChange={(event) => setCareersUrl(event.target.value)}
               maxLength={2000}
               placeholder="https://…"
+            />
+          </label>
+          <label>
+            Company website (optional)
+            <input
+              value={companyWebsite}
+              onChange={(event) => setCompanyWebsite(event.target.value)}
+              maxLength={2000}
+              placeholder="https://example.com"
+            />
+          </label>
+          <label>
+            Note (optional)
+            <textarea
+              className="prefs-textarea admin-note-field"
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+              maxLength={5000}
+              rows={3}
+              placeholder="Context for this company"
             />
           </label>
           <div className="prefs-actions">
@@ -388,7 +430,7 @@ export function AdminPanel() {
               type="search"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by company or URL…"
+              placeholder="Search by company, URL, website, or note…"
               aria-label="Search companies"
             />
             <label className="admin-list-sort">
@@ -442,6 +484,26 @@ export function AdminPanel() {
                         placeholder="https://…"
                       />
                     </label>
+                    <label>
+                      Company website
+                      <input
+                        value={editCompanyWebsite}
+                        onChange={(event) => setEditCompanyWebsite(event.target.value)}
+                        maxLength={2000}
+                        placeholder="https://example.com"
+                      />
+                    </label>
+                    <label>
+                      Note
+                      <textarea
+                        className="prefs-textarea admin-note-field"
+                        value={editNote}
+                        onChange={(event) => setEditNote(event.target.value)}
+                        maxLength={5000}
+                        rows={3}
+                        placeholder="Context for this company"
+                      />
+                    </label>
                     <div className="prefs-actions">
                       <button
                         className="btn solid"
@@ -485,6 +547,20 @@ export function AdminPanel() {
                     ) : (
                       <span className="admin-company-link muted">No careers link</span>
                     )}
+                    {company.companyWebsite ? (
+                      <a
+                        className="admin-company-link"
+                        href={company.companyWebsite}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={company.companyWebsite}
+                      >
+                        Website: {company.companyWebsite}
+                      </a>
+                    ) : (
+                      <span className="admin-company-link muted">No company website</span>
+                    )}
+                    {company.note ? <span className="admin-company-note">{company.note}</span> : null}
                   </div>
                   <div className="admin-company-actions">
                     <button className="text-button" type="button" onClick={() => startEdit(company)}>

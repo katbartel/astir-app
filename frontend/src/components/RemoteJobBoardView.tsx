@@ -32,14 +32,6 @@ type Listing = {
   status: string
 }
 
-type SortKey = 'newest' | 'discovered' | 'company'
-
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: 'newest', label: 'Newest' },
-  { key: 'discovered', label: 'Recently added' },
-  { key: 'company', label: 'Company' },
-]
-
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 
 // "New" means posted at the source within the last 48h. Listings without a
@@ -93,20 +85,8 @@ function MetaLine({ listing }: { listing: Listing }) {
   )
 }
 
-function sortListings(listings: Listing[], sort: SortKey): Listing[] {
-  const sorted = [...listings]
-  switch (sort) {
-    case 'newest':
-      return sorted.sort((a, b) => listedAt(b) - listedAt(a))
-    case 'discovered':
-      return sorted.sort(
-        (a, b) => new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime(),
-      )
-    case 'company':
-      return sorted.sort(
-        (a, b) => a.companyName.localeCompare(b.companyName) || listedAt(b) - listedAt(a),
-      )
-  }
+function sortListings(listings: Listing[]): Listing[] {
+  return [...listings].sort((a, b) => listedAt(b) - listedAt(a))
 }
 
 function ListingRow({
@@ -176,7 +156,6 @@ function ListingRow({
 export function RemoteJobBoardView() {
   const [listings, setListings] = useState<Listing[] | null>(null)
   const [failed, setFailed] = useState(false)
-  const [sort, setSort] = useState<SortKey>('newest')
   const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
@@ -205,7 +184,7 @@ export function RemoteJobBoardView() {
     }
   }, [])
 
-  const sorted = useMemo(() => sortListings(listings ?? [], sort), [listings, sort])
+  const sorted = useMemo(() => sortListings(listings ?? []), [listings])
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
 
@@ -273,19 +252,6 @@ export function RemoteJobBoardView() {
     <section className="screen" data-screen="remote-job-board">
       <div className="page-head">
         <h1>Job board</h1>
-        <div className="option-toggles" role="group" aria-label="Sort listings">
-          {SORT_OPTIONS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`option-toggle${sort === option.key ? ' on' : ''}`}
-              aria-pressed={sort === option.key}
-              onClick={() => setSort(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
       <div className="watchlist">
         {failed ? (

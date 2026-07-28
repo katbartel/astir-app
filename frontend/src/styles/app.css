@@ -4322,6 +4322,16 @@ textarea {
   font-style: italic;
 }
 
+.admin-company-note {
+  display: -webkit-box;
+  overflow: hidden;
+  max-width: 100%;
+  color: var(--muted);
+  font-size: var(--type-chip);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
 .admin-company-edit {
   display: flex;
   flex: 1 1 auto;
@@ -4332,6 +4342,11 @@ textarea {
 
 .admin-company-row.editing {
   align-items: stretch;
+}
+
+.admin-note-field {
+  min-height: calc(var(--input-height) * 2);
+  resize: vertical;
 }
 
 .admin-company-actions {

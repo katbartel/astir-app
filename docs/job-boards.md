@@ -191,11 +191,10 @@ turns polling off.
 
 ## Frontend
 
-**Job Boards** (`/job-boards`, between Watchlist and Pipeline) is a flat feed —
-deliberately not grouped by company — sorted by the chips in the page head: Newest
-(posting date, falling back to first-seen; the default), Recently added (first-seen),
-Company (A–Z). Rows show title, open-posting link, a "New" chip inside 48 hours, and
-a company · location · work-mode meta line.
+**Job Boards** (`/job-boards`, between Watchlist and Pipeline) is a flat feed,
+deliberately not grouped by company, sorted newest to oldest by posting date, falling
+back to first-seen. Rows show title, open-posting link, a "New" chip inside 48 hours,
+and a company · location · work-mode meta line.
 
 **Watchlist** (`/watchlist`) is the editable company list. "Add company" opens a
 modal (careers link first, with name auto-derived from known ATS URLs), and each

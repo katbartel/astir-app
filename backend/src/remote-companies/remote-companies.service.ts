@@ -9,6 +9,8 @@ export type RemoteCompanyView = {
   id: string
   name: string
   careersUrl: string | null
+  companyWebsite: string | null
+  note: string | null
   // resolved: found on an ATS and being polled; pending: still resolving;
   // unresolved: not on any ATS (its jobs won't surface until it resolves).
   resolutionStatus: string
@@ -23,7 +25,7 @@ export type BulkResultRow = {
   status: 'resolved' | 'unresolved' | 'duplicate' | 'invalid'
 }
 
-type CreateInput = { name: string; careersUrl?: string }
+type CreateInput = { name: string; careersUrl?: string; companyWebsite?: string; note?: string }
 
 // A bulk-import line that is a bare URL (rather than a company name) so it can
 // be merged onto the company above it. We require a scheme, a path, or a "www."
@@ -105,6 +107,8 @@ export class RemoteCompaniesService {
         name,
         nameKey,
         careersUrl: input.careersUrl?.trim() || null,
+        companyWebsite: input.companyWebsite?.trim() || null,
+        note: input.note?.trim() || null,
         resolutionStatus: 'pending',
         addedByEmail,
       },
@@ -120,13 +124,19 @@ export class RemoteCompaniesService {
   // case: pasting the real ATS URL for a company that couldn't be name-probed).
   async update(
     id: string,
-    input: { name?: string; careersUrl?: string },
+    input: { name?: string; careersUrl?: string; companyWebsite?: string; note?: string },
   ): Promise<RemoteCompanyView> {
     const company = await this.prisma.remoteCompany.findUnique({ where: { id } })
     if (!company) {
       throw new NotFoundException('Remote company not found')
     }
-    const data: { name?: string; nameKey?: string; careersUrl?: string | null } = {}
+    const data: {
+      name?: string
+      nameKey?: string
+      careersUrl?: string | null
+      companyWebsite?: string | null
+      note?: string | null
+    } = {}
     if (input.name !== undefined) {
       const name = input.name.trim()
       const nameKey = companyKey(name)
@@ -144,6 +154,12 @@ export class RemoteCompaniesService {
     }
     if (input.careersUrl !== undefined) {
       data.careersUrl = input.careersUrl.trim() || null
+    }
+    if (input.companyWebsite !== undefined) {
+      data.companyWebsite = input.companyWebsite.trim() || null
+    }
+    if (input.note !== undefined) {
+      data.note = input.note.trim() || null
     }
     const updated = await this.prisma.remoteCompany.update({ where: { id }, data })
     await this.resolveAndSync(updated)
@@ -267,6 +283,8 @@ export class RemoteCompaniesService {
       id: company.id,
       name: company.name,
       careersUrl: company.careersUrl,
+      companyWebsite: company.companyWebsite,
+      note: company.note,
       resolutionStatus: company.resolutionStatus,
       addedByEmail: company.addedByEmail,
       createdAt: company.createdAt,

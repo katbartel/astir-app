@@ -8,6 +8,43 @@ const LUXOFT_PAGE_SIZE = 60
 const LUXOFT_MAX_PAGES = 25
 const TIGERDATA_JOBS_API = 'https://www.tigerdata.com/api/jobs'
 
+const EMPTY_TRACKABLE_CAREER_PAGES = [
+  { host: /(^|\.)axonista\.com$/i, path: '/careers' },
+  { host: /(^|\.)getharvest\.com$/i, path: '/careers' },
+  { host: /(^|\.)meetedgar\.com$/i, path: '/careers' },
+  { host: /(^|\.)jobs\.mimo\.org$/i, path: '' },
+  { host: /(^|\.)mimo\.org$/i, path: '' },
+  { host: /(^|\.)ockam\.io$/i, path: '/team' },
+  { host: /(^|\.)plausible\.io$/i, path: '/about' },
+  { host: /(^|\.)careers\.promaton\.com$/i, path: '' },
+  { host: /(^|\.)promaton\.com$/i, path: '' },
+  { host: /(^|\.)shogun\.co$/i, path: '/careers' },
+  { host: /(^|\.)getshogun\.com$/i, path: '/careers' },
+  { host: /(^|\.)tuple\.app$/i, path: '/jobs' },
+  { host: /(^|\.)ynab\.com$/i, path: '/careers' },
+]
+
+function normalizedPath(parsed: URL): string {
+  return parsed.pathname.replace(/\/$/, '')
+}
+
+function isEmptyTrackableCareerPage(parsed: URL): boolean {
+  const path = normalizedPath(parsed)
+  return EMPTY_TRACKABLE_CAREER_PAGES.some((page) => page.host.test(parsed.hostname) && page.path === path)
+}
+
+function isAttraxCareerPage(parsed: URL): boolean {
+  const path = normalizedPath(parsed)
+  return (
+    (/(^|\.)jobs\.renesas\.com$/i.test(parsed.hostname) && (path === '/altium-careers' || path === '/jobs')) ||
+    (/(^|\.)jobs\.experian\.com$/i.test(parsed.hostname) && path === '/jobs')
+  )
+}
+
+function isDeelCareerPage(parsed: URL): boolean {
+  return /(^|\.)jobs\.deel\.com$/i.test(parsed.hostname) && normalizedPath(parsed).split('/').length === 2
+}
+
 function textFromHtml(html: string): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
@@ -104,6 +141,32 @@ function sketchJobsFromHtml(html: string, source: JobBoardSourceRef): Normalized
   })
 }
 
+function bobsledJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const jobs = [
+    ...html.matchAll(
+      /<a href="(https:\/\/jobs\.ashbyhq\.com\/Bobsled\/[^"]+)"[^>]*class="[^"]*block py-6[^"]*"[^>]*>[\s\S]*?<h4[^>]*>([\s\S]*?)<\/h4>[\s\S]*?<p[^>]*>([\s\S]*?)<\/p>/gi,
+    ),
+  ]
+
+  return jobs.map((match) => {
+    const url = match[1]
+    const title = cleanHtml(match[2])
+    const location = cleanHtml(match[3])
+    return {
+      provider: 'careerpage',
+      externalId: `bobsled:${url.split('/').pop() ?? slugFromTitle(title)}`,
+      title,
+      companyName: source.companyName,
+      location: location || null,
+      locations: location ? [location] : [],
+      workMode: workModeFromText(location),
+      url,
+      postedAt: null,
+      contentLanguage: 'en',
+    }
+  })
+}
+
 function cleanHtml(value: string): string {
   return value
     .replace(/<[^>]+>/g, ' ')
@@ -115,6 +178,66 @@ function cleanHtml(value: string): string {
     .replace(/&amp;/g, '&')
     .replace(/\s+/g, ' ')
     .trim()
+}
+
+function attrValue(html: string, attribute: string): string | null {
+  const match = html.match(new RegExp(`${attribute}="([^"]+)"`, 'i'))
+  return match?.[1] ?? null
+}
+
+function firstItemValue(body: string, className: string): string | null {
+  const match = body.match(
+    new RegExp(
+      `<div[^>]+class="[^"]*${className}[^"]*"[^>]*>[\\s\\S]*?<p[^>]+class="[^"]*attrax-vacancy-tile__item-value[^"]*"[^>]*>([\\s\\S]*?)<\\/p>`,
+      'i',
+    ),
+  )
+  const value = cleanHtml(match?.[1] ?? '')
+  return value || null
+}
+
+export function attraxJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const tiles = [
+    ...html.matchAll(
+      /<div[^>]+class="[^"]*attrax-vacancy-tile\b[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]+class="[^"]*attrax-vacancy-tile\b|<div[^>]+class=['"]row dragElement widget container-widget wrapper-widget page-job-results__pagination|<\/body>|$)/gi,
+    ),
+  ]
+
+  return tiles
+    .map((match): NormalizedJob | null => {
+      const tile = match[0]
+      const body = match[1]
+      const id = attrValue(tile, 'data-jobid')
+      const titleMatch = body.match(
+        /<a[^>]+class="[^"]*attrax-vacancy-tile__title[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i,
+      )
+      const url = titleMatch?.[1] ? absoluteUrl(titleMatch[1], source.externalId) : null
+      const title = cleanHtml(titleMatch?.[2] ?? '')
+      const location = firstItemValue(body, 'attrax-vacancy-tile__location-freetext')
+      const optionLocation = firstItemValue(body, 'attrax-vacancy-tile__option-location')
+      const roleType = firstItemValue(body, 'attrax-vacancy-tile__option-role-type')
+      const remote = firstItemValue(body, 'attrax-vacancy-tile__option-remote')
+      const locations = [...new Set([location, optionLocation].filter((value): value is string => !!value))]
+      const workMode = workModeFromText([roleType, remote, location].filter(Boolean).join(' '))
+
+      if (!title || !url) {
+        return null
+      }
+
+      return {
+        provider: 'careerpage',
+        externalId: `attrax:${id ?? slugFromTitle(title)}`,
+        title,
+        companyName: source.companyName,
+        location: locations[0] ?? null,
+        locations,
+        workMode,
+        url,
+        postedAt: null,
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
 }
 
 function unescapeRscJson(value: string): string {
@@ -317,6 +440,40 @@ function scalerrsJobsFromHtml(html: string, source: JobBoardSourceRef): Normaliz
     .filter((job): job is NormalizedJob => job !== null)
 }
 
+function levityJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const jobs = [
+    ...html.matchAll(
+      /<a href="(https:\/\/levityai\.notion\.site\/[^"]+)"[^>]*class="[^"]*hover:bg-neutral-2[^"]*"[^>]*>([\s\S]*?)<\/a>/gi,
+    ),
+  ]
+
+  return jobs
+    .map((match): NormalizedJob | null => {
+      const url = match[1].replace(/&amp;/g, '&')
+      const body = match[2]
+      const title = cleanHtml(body.match(/<h3[^>]*>([\s\S]*?)<\/h3>/i)?.[1] ?? '')
+      const location = cleanHtml(
+        body.match(/<span[^>]*class="[^"]*text-secondary[^"]*"[^>]*>([\s\S]*?)<\/span>/i)?.[1] ?? '',
+      )
+      if (!title) {
+        return null
+      }
+      return {
+        provider: 'careerpage',
+        externalId: `levity:${slugFromTitle(title)}:${url.split('?')[0].split('-').pop() ?? slugFromTitle(title)}`,
+        title,
+        companyName: source.companyName,
+        location: location || null,
+        locations: location ? [location] : [],
+        workMode: workModeFromText(location),
+        url,
+        postedAt: null,
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
+}
+
 type BendingSpoonsLocation = {
   title?: string
   country?: { name?: string; enablesRemoteWork?: boolean }
@@ -362,6 +519,47 @@ type TigerDataJob = {
   externalLink?: string | null
   applyLink?: string | null
   isListed?: boolean
+}
+
+type DeelJobPosting = {
+  id?: string
+  title?: string
+  createdAt?: string
+  job?: {
+    jobLocations?: Array<{ location?: { name?: string } }>
+  }
+}
+
+export function deelJobsFromHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
+  const postings = extractJsonArrayAfter(html, '\\"jobPostings\\":[') as DeelJobPosting[]
+  const sourceUrl = new URL(source.externalId)
+  const boardPath = normalizedPath(sourceUrl)
+  return postings
+    .map((posting): NormalizedJob | null => {
+      if (!posting.id || !posting.title) {
+        return null
+      }
+      const locations = [
+        ...new Set(
+          (posting.job?.jobLocations ?? [])
+            .map((location) => location.location?.name?.trim())
+            .filter((location): location is string => !!location),
+        ),
+      ]
+      return {
+        provider: 'careerpage',
+        externalId: `deel:${posting.id}`,
+        title: posting.title.trim(),
+        companyName: source.companyName,
+        location: locations[0] ?? null,
+        locations,
+        workMode: workModeFromText(locations.join(' ')),
+        url: absoluteUrl(`${boardPath}/job-details/${posting.id}/overview`, sourceUrl.origin),
+        postedAt: parseDate(posting.createdAt),
+        contentLanguage: 'en',
+      }
+    })
+    .filter((job): job is NormalizedJob => job !== null)
 }
 
 export function tigerDataJobsFromPayload(payload: unknown, source: JobBoardSourceRef): NormalizedJob[] {
@@ -561,6 +759,12 @@ function xogitoJobsFromHtml(html: string, source: JobBoardSourceRef): Normalized
 export function jobsFromCareerPageHtml(html: string, source: JobBoardSourceRef): NormalizedJob[] {
   try {
     const parsed = new URL(source.externalId)
+    if (isAttraxCareerPage(parsed)) {
+      return attraxJobsFromHtml(html, source)
+    }
+    if (isDeelCareerPage(parsed)) {
+      return deelJobsFromHtml(html, source)
+    }
     if (/(^|\.)lumenalta\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/remote-jobs') {
       return lumenaltaJobsFromHtml(html, source)
     }
@@ -575,6 +779,9 @@ export function jobsFromCareerPageHtml(html: string, source: JobBoardSourceRef):
     }
     if (/(^|\.)scalerrs\.co$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
       return scalerrsJobsFromHtml(html, source)
+    }
+    if (/(^|\.)levity\.ai$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/en/about') {
+      return levityJobsFromHtml(html, source)
     }
     if (/(^|\.)jobs\.bendingspoons\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '') {
       return bendingSpoonsJobsFromHtml(html, source)
@@ -597,6 +804,9 @@ export function jobsFromCareerPageHtml(html: string, source: JobBoardSourceRef):
     if (/(^|\.)sketch\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
       return sketchJobsFromHtml(html, source)
     }
+    if (/(^|\.)bobsled\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/company') {
+      return bobsledJobsFromHtml(html, source)
+    }
   } catch {
     return []
   }
@@ -611,43 +821,58 @@ export class CareerPageProvider implements AtsProvider {
   handleFromUrl(url: string): string | null {
     try {
       const parsed = new URL(url)
-      if (/(^|\.)lumenalta\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/remote-jobs') {
+      if (isEmptyTrackableCareerPage(parsed)) {
         return parsed.toString()
       }
-      if (/(^|\.)career\.luxoft\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') {
+      if (isAttraxCareerPage(parsed)) {
         return parsed.toString()
       }
-      if (/(^|\.)status\.app$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') {
+      if (isDeelCareerPage(parsed)) {
         return parsed.toString()
       }
-      if (/(^|\.)helply\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)lumenalta\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/remote-jobs') {
         return parsed.toString()
       }
-      if (/(^|\.)scalerrs\.co$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)career\.luxoft\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/jobs') {
         return parsed.toString()
       }
-      if (/(^|\.)jobs\.bendingspoons\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '') {
+      if (/(^|\.)status\.app$/i.test(parsed.hostname) && normalizedPath(parsed) === '/jobs') {
         return parsed.toString()
       }
-      if (/(^|\.)veed\.io$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)helply\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
         return parsed.toString()
       }
-      if (/(^|\.)cerbos\.dev$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/join-us') {
+      if (/(^|\.)scalerrs\.co$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
         return parsed.toString()
       }
-      if (/(^|\.)liveblocks\.io$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)levity\.ai$/i.test(parsed.hostname) && normalizedPath(parsed) === '/en/about') {
         return parsed.toString()
       }
-      if (/(^|\.)sketch\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)jobs\.bendingspoons\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '') {
         return parsed.toString()
       }
-      if (/(^|\.)tigerdata\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') {
+      if (/(^|\.)veed\.io$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
         return parsed.toString()
       }
-      if (/(^|\.)getbumpa\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/career') {
+      if (/(^|\.)cerbos\.dev$/i.test(parsed.hostname) && normalizedPath(parsed) === '/join-us') {
         return parsed.toString()
       }
-      if (/(^|\.)xogito\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') {
+      if (/(^|\.)liveblocks\.io$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
+        return parsed.toString()
+      }
+      if (/(^|\.)sketch\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
+        return parsed.toString()
+      }
+      if (/(^|\.)bobsled\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/company') {
+        return parsed.toString()
+      }
+      if (/(^|\.)tigerdata\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') {
+        return parsed.toString()
+      }
+      if (/(^|\.)getbumpa\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/career') {
+        return parsed.toString()
+      }
+      if (/(^|\.)xogito\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/jobs') {
         return parsed.toString()
       }
     } catch {
@@ -664,11 +889,14 @@ export class CareerPageProvider implements AtsProvider {
     try {
       const parsed = new URL(handle)
       if (
-        (/(^|\.)lumenalta\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/remote-jobs') ||
-        (/(^|\.)career\.luxoft\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') ||
-        (/(^|\.)status\.app$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/jobs') ||
-        (/(^|\.)helply\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '/careers') ||
-        (/(^|\.)jobs\.bendingspoons\.com$/i.test(parsed.hostname) && parsed.pathname.replace(/\/$/, '') === '')
+        isEmptyTrackableCareerPage(parsed) ||
+        isAttraxCareerPage(parsed) ||
+        isDeelCareerPage(parsed) ||
+        (/(^|\.)lumenalta\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/remote-jobs') ||
+        (/(^|\.)career\.luxoft\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/jobs') ||
+        (/(^|\.)status\.app$/i.test(parsed.hostname) && normalizedPath(parsed) === '/jobs') ||
+        (/(^|\.)helply\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '/careers') ||
+        (/(^|\.)jobs\.bendingspoons\.com$/i.test(parsed.hostname) && normalizedPath(parsed) === '')
       ) {
         return true
       }

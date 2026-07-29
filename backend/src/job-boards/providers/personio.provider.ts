@@ -62,9 +62,9 @@ export class PersonioProvider implements AtsProvider {
     return (await this.fetchBoard(handle, PROBE_TIMEOUT_MS)) !== null
   }
 
-  // Returns the first host that answers with at least one position, along with
+  // Returns the first host that answers with a valid positions payload, along with
   // the host so job URLs point at the right TLD. Null when neither TLD has a
-  // non-empty board.
+  // valid board.
   private async fetchBoard(
     handle: string,
     timeoutMs?: number,
@@ -72,7 +72,7 @@ export class PersonioProvider implements AtsProvider {
     for (const host of personioHosts(handle)) {
       try {
         const payload = (await fetchJson(`https://${host}/search.json?language=en`, timeoutMs)) as unknown
-        if (Array.isArray(payload) && payload.length > 0) {
+        if (Array.isArray(payload)) {
           return { host, jobs: payload as PersonioJob[] }
         }
       } catch {

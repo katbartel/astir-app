@@ -82,7 +82,7 @@ export class RecruiteeProvider implements AtsProvider {
       const payload = (await fetchJson(this.offersUrl(handle), PROBE_TIMEOUT_MS)) as {
         offers?: unknown[]
       }
-      return Array.isArray(payload.offers) && payload.offers.length > 0
+      return Array.isArray(payload.offers)
     } catch {
       return false
     }

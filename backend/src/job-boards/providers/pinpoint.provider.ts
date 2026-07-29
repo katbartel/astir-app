@@ -89,7 +89,7 @@ export class PinpointProvider implements AtsProvider {
       const payload = (await fetchJson(this.postingsUrl(handle), PROBE_TIMEOUT_MS)) as {
         data?: unknown[]
       }
-      return Array.isArray(payload.data) && payload.data.length > 0
+      return Array.isArray(payload.data)
     } catch {
       return false
     }

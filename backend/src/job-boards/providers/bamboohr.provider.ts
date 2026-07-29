@@ -196,7 +196,7 @@ export class BambooHrProvider implements AtsProvider {
       const payload = (await fetchJson(this.listUrl(handle), PROBE_TIMEOUT_MS)) as {
         result?: unknown[]
       }
-      return Array.isArray(payload.result) && payload.result.length > 0
+      return Array.isArray(payload.result)
     } catch {
       return false
     }

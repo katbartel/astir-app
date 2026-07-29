@@ -186,7 +186,8 @@ export class ZohoRecruitProvider implements AtsProvider {
 
   async verifyHandle(handle: string): Promise<boolean> {
     try {
-      return (await this.fetchJobs(handle)).jobs.length > 0
+      await this.fetchJobs(handle)
+      return true
     } catch {
       return false
     }

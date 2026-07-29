@@ -151,15 +151,12 @@ export class GreenhouseProvider implements AtsProvider {
         if (!response.ok) {
           return false
         }
-        return greenhouseEuJobsFromHtml(await response.text(), {
-          externalId: handle,
-          companyName: handle.slice(3),
-        }).length > 0
+        return true
       }
       const payload = (await fetchJson(this.jobsUrl(handle), PROBE_TIMEOUT_MS)) as {
         jobs?: unknown[]
       }
-      return Array.isArray(payload.jobs) && payload.jobs.length > 0
+      return Array.isArray(payload.jobs)
     } catch {
       return false
     }

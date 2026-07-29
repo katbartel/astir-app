@@ -73,7 +73,8 @@ export class BlueskyProvider implements AtsProvider {
 
   async verifyHandle(handle: string): Promise<boolean> {
     try {
-      return (await this.fetchJobs(handle)).length > 0
+      await this.fetchJobs(handle)
+      return true
     } catch {
       return false
     }

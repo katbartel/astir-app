@@ -67,7 +67,7 @@ export class LeverProvider implements AtsProvider {
   async verifyHandle(handle: string): Promise<boolean> {
     try {
       const payload = (await fetchJson(this.postingsUrl(handle), PROBE_TIMEOUT_MS)) as unknown[]
-      return Array.isArray(payload) && payload.length > 0
+      return Array.isArray(payload)
     } catch {
       return false
     }

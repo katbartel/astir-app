@@ -119,7 +119,7 @@ export class AshbyProvider implements AtsProvider {
       const payload = (await fetchJson(this.boardUrl(handle), PROBE_TIMEOUT_MS)) as {
         jobs?: unknown[]
       }
-      if (Array.isArray(payload.jobs) && payload.jobs.length > 0) {
+      if (Array.isArray(payload.jobs)) {
         return true
       }
     } catch {
@@ -127,7 +127,7 @@ export class AshbyProvider implements AtsProvider {
     }
     try {
       const postings = await this.fetchGraphqlPostings(handle, PROBE_TIMEOUT_MS)
-      return postings.length > 0
+      return Array.isArray(postings)
     } catch {
       return false
     }

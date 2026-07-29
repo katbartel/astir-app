@@ -6,6 +6,7 @@ import { BlueskyProvider, jobsFromHtml } from './bluesky.provider'
 import { BreezyProvider } from './breezy.provider'
 import {
   CareerPageProvider,
+  deelJobsFromHtml,
   jobsFromCareerPageHtml,
   lumenaltaJobsFromHtml,
   tigerDataJobsFromPayload,
@@ -1246,15 +1247,38 @@ describe('CareerPageProvider', () => {
     expect(provider.handleFromUrl('https://lumenalta.com/remote-jobs')).toBe('https://lumenalta.com/remote-jobs')
     expect(provider.handleFromUrl('https://liveblocks.io/careers')).toBe('https://liveblocks.io/careers')
     expect(provider.handleFromUrl('https://www.sketch.com/careers/')).toBe('https://www.sketch.com/careers/')
+    expect(provider.handleFromUrl('https://bobsled.com/company#open-positions')).toBe(
+      'https://bobsled.com/company#open-positions',
+    )
+    expect(provider.handleFromUrl('https://jobs.renesas.com/altium-careers')).toBe(
+      'https://jobs.renesas.com/altium-careers',
+    )
+    expect(provider.handleFromUrl('https://jobs.experian.com/jobs')).toBe('https://jobs.experian.com/jobs')
+    expect(provider.handleFromUrl('https://jobs.deel.com/cardo')).toBe('https://jobs.deel.com/cardo')
     expect(provider.handleFromUrl('https://status.app/jobs')).toBe('https://status.app/jobs')
     expect(provider.handleFromUrl('https://helply.com/careers')).toBe('https://helply.com/careers')
     expect(provider.handleFromUrl('https://www.scalerrs.co/careers')).toBe('https://www.scalerrs.co/careers')
+    expect(provider.handleFromUrl('https://levity.ai/en/about#jobs')).toBe('https://levity.ai/en/about#jobs')
     expect(provider.handleFromUrl('https://jobs.bendingspoons.com/')).toBe('https://jobs.bendingspoons.com/')
     expect(provider.handleFromUrl('https://www.veed.io/careers')).toBe('https://www.veed.io/careers')
     expect(provider.handleFromUrl('https://www.tigerdata.com/careers')).toBe('https://www.tigerdata.com/careers')
     expect(provider.handleFromUrl('https://www.getbumpa.com/career')).toBe('https://www.getbumpa.com/career')
     expect(provider.handleFromUrl('https://www.xogito.com/jobs/')).toBe('https://www.xogito.com/jobs/')
-    expect(provider.handleFromUrl('https://tuple.app/jobs')).toBeNull()
+    expect(provider.handleFromUrl('https://tuple.app/jobs')).toBe('https://tuple.app/jobs')
+    expect(provider.handleFromUrl('https://www.ynab.com/careers#openings')).toBe(
+      'https://www.ynab.com/careers#openings',
+    )
+    expect(provider.handleFromUrl('https://www.getharvest.com/careers')).toBe('https://www.getharvest.com/careers')
+    expect(provider.handleFromUrl('https://meetedgar.com/careers')).toBe('https://meetedgar.com/careers')
+    expect(provider.handleFromUrl('https://jobs.mimo.org/')).toBe('https://jobs.mimo.org/')
+    expect(provider.handleFromUrl('https://careers.promaton.com/')).toBe('https://careers.promaton.com/')
+    expect(provider.handleFromUrl('https://example.com/careers')).toBeNull()
+  })
+
+  it('verifies known empty career pages so they can be tracked before roles exist', async () => {
+    await expect(provider.verifyHandle('https://tuple.app/jobs')).resolves.toBe(true)
+    await expect(provider.verifyHandle('https://www.ynab.com/careers#openings')).resolves.toBe(true)
+    await expect(provider.verifyHandle('https://example.com/careers')).resolves.toBe(false)
   })
 
   it('extracts the Cerbos open role from the rendered careers page', () => {
@@ -1318,6 +1342,72 @@ describe('CareerPageProvider', () => {
         workMode: null,
         url: 'https://sketch-hq.notion.site/Open-application',
         postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Attrax roles from rendered vacancy tiles', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<div class="attrax-vacancy-tile attrax-vacancy-tile--germany attrax-vacancy-tile--altium" data-jobid="6257"><a aria-level="3" class="attrax-vacancy-tile__title attrax-vacancy-tile__item attrax-button" href="/job/staff-strategic-account-manager-w-m-d-in-munich-germany-jid-6257" role="heading" tabindex="0">Staff Strategic Account Manager (w/m/d)</a><div class="attrax-vacancy-tile__location-freetext attrax-vacancy-tile__item"><p class="attrax-vacancy-tile__item-label">Location</p><p class="attrax-vacancy-tile__item-value">Munich, Germany</p></div><div class="attrax-vacancy-tile__option-role-type attrax-vacancy-tile__item"><p class="attrax-vacancy-tile__option-role-type-label attrax-vacancy-tile__item-label">Role Type</p><div class="attrax-vacancy-tile__option-role-type-valueset attrax-vacancy-tile__item-valueset"><p class="attrax-vacancy-tile__item-value">Hybrid</p></div></div></div>',
+        { externalId: 'https://jobs.renesas.com/altium-careers', companyName: 'Altium' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'attrax:6257',
+        title: 'Staff Strategic Account Manager (w/m/d)',
+        companyName: 'Altium',
+        location: 'Munich, Germany',
+        locations: ['Munich, Germany'],
+        workMode: 'Hybrid',
+        url: 'https://jobs.renesas.com/job/staff-strategic-account-manager-w-m-d-in-munich-germany-jid-6257',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Bobsled roles from rendered Ashby links', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<a href="https://jobs.ashbyhq.com/Bobsled/fdda4ddc-27a1-427c-81d5-77f7ec445271" rel="noopener" class="block py-6"><div><h4 class="text-xl text-midnight">AI Engineer</h4></div><p class="mt-1 text-[#868494]">Remote (US)</p></a>',
+        { externalId: 'https://bobsled.com/company#open-positions', companyName: 'Bobsled' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'bobsled:fdda4ddc-27a1-427c-81d5-77f7ec445271',
+        title: 'AI Engineer',
+        companyName: 'Bobsled',
+        location: 'Remote (US)',
+        locations: ['Remote (US)'],
+        workMode: 'Remote',
+        url: 'https://jobs.ashbyhq.com/Bobsled/fdda4ddc-27a1-427c-81d5-77f7ec445271',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Deel roles from embedded job posting data', () => {
+    expect(
+      deelJobsFromHtml(
+        '\\"jobPostings\\":[{\\"id\\":\\"831471ea-bbe3-4ccb-8e2a-5e7172e9abb7\\",\\"title\\":\\"Applied AI Manager\\",\\"createdAt\\":\\"2026-03-30T13:35:53.861Z\\",\\"job\\":{\\"jobLocations\\":[{\\"location\\":{\\"name\\":\\"London\\"}}]}}]',
+        { externalId: 'https://jobs.deel.com/cardo', companyName: 'Cardo AI' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'deel:831471ea-bbe3-4ccb-8e2a-5e7172e9abb7',
+        title: 'Applied AI Manager',
+        companyName: 'Cardo AI',
+        location: 'London',
+        locations: ['London'],
+        workMode: null,
+        url: 'https://jobs.deel.com/cardo/job-details/831471ea-bbe3-4ccb-8e2a-5e7172e9abb7/overview',
+        postedAt: new Date('2026-03-30T13:35:53.861Z'),
         contentLanguage: 'en',
       },
     ])
@@ -1427,6 +1517,28 @@ describe('CareerPageProvider', () => {
         locations: ['Remote (Global)'],
         workMode: 'Remote',
         url: 'https://airtable.com/app/form',
+        postedAt: null,
+        contentLanguage: 'en',
+      },
+    ])
+  })
+
+  it('extracts Levity roles from Notion job links on its about page', () => {
+    expect(
+      jobsFromCareerPageHtml(
+        '<a href="https://levityai.notion.site/Solutions-Engineer-3339127bc66580568c36f6fa9221fd66?source=copy_link" target="_blank" class="flex flex-col md:flex-row items-center gap-2 md:gap-4 px-6 md:px-10.5 py-6 not-last:border-b border-subtle transition-colors hover:bg-neutral-2"><h3 class="text-lg w-full">Solutions Engineer</h3><div class="flex justify-between md:justify-end gap-6 w-full"><span class="text-tag text-secondary">Remote, Germany</span><span class="button button--secondary">Read more</span></div></a>',
+        { externalId: 'https://levity.ai/en/about#jobs', companyName: 'Levity' },
+      ),
+    ).toEqual([
+      {
+        provider: 'careerpage',
+        externalId: 'levity:solutions-engineer:3339127bc66580568c36f6fa9221fd66',
+        title: 'Solutions Engineer',
+        companyName: 'Levity',
+        location: 'Remote, Germany',
+        locations: ['Remote, Germany'],
+        workMode: 'Remote',
+        url: 'https://levityai.notion.site/Solutions-Engineer-3339127bc66580568c36f6fa9221fd66?source=copy_link',
         postedAt: null,
         contentLanguage: 'en',
       },

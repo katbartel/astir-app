@@ -94,7 +94,7 @@ export class WorkdayProvider implements AtsProvider {
     }
     try {
       const payload = await this.queryJobs(parsed, 0, 1, PROBE_TIMEOUT_MS)
-      return (payload.total ?? 0) > 0
+      return typeof payload.total === 'number'
     } catch {
       return false
     }

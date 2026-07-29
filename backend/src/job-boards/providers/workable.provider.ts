@@ -106,12 +106,13 @@ export class WorkableProvider implements AtsProvider {
   async verifyHandle(handle: string): Promise<boolean> {
     try {
       if (handle.startsWith('company:')) {
-        return (await this.fetchCompanyPageJobs(handle.slice('company:'.length), PROBE_TIMEOUT_MS)).jobs.length > 0
+        await this.fetchCompanyPageJobs(handle.slice('company:'.length), PROBE_TIMEOUT_MS)
+        return true
       }
       const payload = (await fetchJson(this.accountUrl(handle), PROBE_TIMEOUT_MS)) as {
         jobs?: unknown[]
       }
-      return Array.isArray(payload.jobs) && payload.jobs.length > 0
+      return Array.isArray(payload.jobs)
     } catch {
       return false
     }

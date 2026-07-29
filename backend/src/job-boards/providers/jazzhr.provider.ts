@@ -88,7 +88,11 @@ export class JazzHrProvider implements AtsProvider {
 
   async verifyHandle(handle: string): Promise<boolean> {
     try {
-      return (await this.fetchPage(boardUrl(handle), { externalId: handle, companyName: 'Company' }, PROBE_TIMEOUT_MS)).length > 0
+      const response = await fetch(boardUrl(handle), {
+        headers: { accept: 'text/html' },
+        signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+      })
+      return response.ok
     } catch {
       return false
     }

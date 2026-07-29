@@ -5,3 +5,6 @@ dist/
 coverage/
 .env
 backend/prisma/generated/
+docs/private-non-europe-hiring.md
+docs/private-europe-hiring.md
+docs/private-company-research.md

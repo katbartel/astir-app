@@ -24,6 +24,7 @@ export type ApplicationView = {
   company: string
   role: string
   link: string | null
+  stageId: string
   status: string
   appliedDate: string
   stageChangedAt: Date
@@ -32,6 +33,48 @@ export type ApplicationView = {
 }
 
 type ApplicationWithListing = Application & { listing: JobListing | null }
+
+const LEGACY_STATUS_TO_STAGE_ID: Record<string, string> = {
+  applied: 'applied',
+  rejected: 'closed',
+  closed: 'closed',
+  offer: 'offer',
+  hired: 'hired',
+  '1st stage': 'progress-1',
+  '2nd stage': 'progress-2',
+  '3rd stage': 'progress-3',
+}
+
+const STAGE_ID_TO_LEGACY_STATUS: Record<string, string> = {
+  applied: 'Applied',
+  'progress-1': '1st stage',
+  'progress-2': '2nd stage',
+  'progress-3': '3rd stage',
+  offer: 'Offer',
+  hired: 'Hired',
+  closed: 'Closed',
+}
+
+function normalizeStageId(stageId?: string | null, status?: string | null): string {
+  const raw = (stageId || status || '').trim()
+  if (!raw) return 'applied'
+  const legacy = LEGACY_STATUS_TO_STAGE_ID[raw.toLowerCase()]
+  if (legacy) return legacy
+  if (
+    raw === 'applied' ||
+    raw === 'offer' ||
+    raw === 'hired' ||
+    raw === 'closed' ||
+    raw.startsWith('progress-')
+  ) {
+    return raw
+  }
+  return 'applied'
+}
+
+function legacyStatus(stageId: string): string {
+  return STAGE_ID_TO_LEGACY_STATUS[stageId] ?? stageId
+}
 
 @Injectable()
 export class ApplicationsService {
@@ -48,6 +91,7 @@ export class ApplicationsService {
 
   async create(userId: string, input: CreateApplicationDto): Promise<ApplicationView> {
     const listingId = await this.resolveListingId(input.listingId)
+    const stageId = normalizeStageId(input.stageId, input.status)
     const application = await this.prisma.application.create({
       data: {
         userId,
@@ -55,7 +99,8 @@ export class ApplicationsService {
         company: input.company.trim(),
         role: input.role.trim(),
         link: input.link?.trim() || null,
-        status: input.status ?? 'Applied',
+        stageId,
+        status: legacyStatus(stageId),
         appliedDate: input.appliedDate,
         note: this.noteValue(input.note),
       },
@@ -66,14 +111,20 @@ export class ApplicationsService {
 
   async update(userId: string, id: string, input: UpdateApplicationDto): Promise<ApplicationView> {
     const existing = await this.owned(userId, id)
-    const statusChanged = input.status !== undefined && input.status !== existing.status
+    const nextStageId =
+      input.stageId !== undefined || input.status !== undefined
+        ? normalizeStageId(input.stageId, input.status)
+        : undefined
+    const statusChanged = nextStageId !== undefined && nextStageId !== existing.stageId
     const application = await this.prisma.application.update({
       where: { id },
       data: {
         ...(input.company !== undefined ? { company: input.company.trim() } : {}),
         ...(input.role !== undefined ? { role: input.role.trim() } : {}),
         ...(input.link !== undefined ? { link: input.link.trim() || null } : {}),
-        ...(input.status !== undefined ? { status: input.status } : {}),
+        ...(nextStageId !== undefined
+          ? { stageId: nextStageId, status: legacyStatus(nextStageId) }
+          : {}),
         ...(input.appliedDate !== undefined ? { appliedDate: input.appliedDate } : {}),
         ...(input.note !== undefined ? { note: this.noteValue(input.note) } : {}),
         ...(statusChanged ? { stageChangedAt: new Date() } : {}),
@@ -121,6 +172,7 @@ export class ApplicationsService {
       company: application.company,
       role: application.role,
       link: application.link,
+      stageId: application.stageId,
       status: application.status,
       appliedDate: application.appliedDate,
       stageChangedAt: application.stageChangedAt,

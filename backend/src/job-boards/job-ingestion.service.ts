@@ -4,6 +4,7 @@ import { JobSource, Prisma } from '@prisma/client'
 import { PrismaService } from '../database/prisma.service'
 import { JobMatchingService } from './job-matching.service'
 import { NormalizedJob, jobFingerprint } from './normalized-job'
+import { normalizeListingLocations } from './location-normalization'
 import {
   AggregatorProvider,
   JOB_BOARD_PROVIDERS,
@@ -169,46 +170,58 @@ export class JobIngestionService implements OnApplicationBootstrap {
   // Consolidation: the listing is keyed by fingerprint, so the same opening
   // arriving from a second provider only adds a JobListingSource row.
   private async upsertListing(job: NormalizedJob, jobSourceId: string, now: Date): Promise<number> {
-    const fingerprint = jobFingerprint(job)
+    const normalizedJob = normalizeListingLocations(job)
+    const fingerprint = jobFingerprint(normalizedJob)
     const existing = await this.prisma.jobListing.findUnique({ where: { fingerprint } })
+    const normalizedExisting = existing
+      ? normalizeListingLocations({
+          location: existing.location ?? normalizedJob.location,
+          locations: [...existing.locations, ...normalizedJob.locations],
+        })
+      : null
     const listing = existing
       ? await this.prisma.jobListing.update({
           where: { fingerprint },
           data: {
             lastSeenAt: now,
-            // Fill blanks a later provider can answer, never overwrite —
+            // Fill blanks a later provider can answer, never overwrite,
             // except locations, where every provider's knowledge is unioned.
-            location: existing.location ?? job.location,
-            locations: [...new Set([...existing.locations, ...job.locations])],
-            workMode: existing.workMode ?? job.workMode,
-            postedAt: existing.postedAt ?? job.postedAt,
-            contentLanguage: existing.contentLanguage ?? job.contentLanguage ?? null,
+            location: normalizedExisting?.location ?? normalizedJob.location,
+            locations: normalizedExisting?.locations ?? normalizedJob.locations,
+            workMode: existing.workMode ?? normalizedJob.workMode,
+            postedAt: existing.postedAt ?? normalizedJob.postedAt,
+            contentLanguage: existing.contentLanguage ?? normalizedJob.contentLanguage ?? null,
           },
         })
       : await this.prisma.jobListing.create({
           data: {
             fingerprint,
-            title: job.title,
-            companyName: job.companyName,
-            location: job.location,
-            locations: job.locations,
-            workMode: job.workMode,
-            contentLanguage: job.contentLanguage ?? null,
-            url: job.url,
-            postedAt: job.postedAt,
+            title: normalizedJob.title,
+            companyName: normalizedJob.companyName,
+            location: normalizedJob.location,
+            locations: normalizedJob.locations,
+            workMode: normalizedJob.workMode,
+            contentLanguage: normalizedJob.contentLanguage ?? null,
+            url: normalizedJob.url,
+            postedAt: normalizedJob.postedAt,
             firstSeenAt: now,
             lastSeenAt: now,
           },
         })
     await this.prisma.jobListingSource.upsert({
-      where: { provider_externalId: { provider: job.provider, externalId: job.externalId } },
-      update: { lastSeenAt: now, url: job.url, listingId: listing.id, jobSourceId },
+      where: {
+        provider_externalId: {
+          provider: normalizedJob.provider,
+          externalId: normalizedJob.externalId,
+        },
+      },
+      update: { lastSeenAt: now, url: normalizedJob.url, listingId: listing.id, jobSourceId },
       create: {
         listingId: listing.id,
         jobSourceId,
-        provider: job.provider,
-        externalId: job.externalId,
-        url: job.url,
+        provider: normalizedJob.provider,
+        externalId: normalizedJob.externalId,
+        url: normalizedJob.url,
         lastSeenAt: now,
       },
     })

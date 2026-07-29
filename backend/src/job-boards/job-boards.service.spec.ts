@@ -8,6 +8,7 @@ type Row = {
     title: string
     companyName: string
     location: string | null
+    locations: string[]
     workMode: string | null
     contentLanguage: string | null
     url: string
@@ -30,6 +31,7 @@ function row(
       title: 'Senior Product Manager',
       companyName,
       location: 'Berlin, DE',
+      locations: ['Berlin, DE'],
       workMode: 'Remote',
       contentLanguage: null,
       url: `https://example.com/${id}`,
@@ -56,6 +58,11 @@ function makeService(options: {
       findMany: jest
         .fn()
         .mockResolvedValue((options.watchlist ?? []).map((name) => ({ nameKey: companyKey(name) }))),
+    },
+    watchlistPreferences: {
+      findUnique: jest.fn().mockResolvedValue({
+        hiringRegions: ['Poland', 'Germany', 'EU'],
+      }),
     },
     remoteCompany: {
       findMany: jest
@@ -117,5 +124,37 @@ describe('JobBoardsService.listForUser exclusions', () => {
     })
     const listings = await service.listForUser('u1')
     expect(listings.map((listing) => listing.id)).toEqual(['undated', 'new', 'old'])
+  })
+
+  it('folds the same role across regions into one listing', async () => {
+    const poland = row('poland', 'Docplanner', {
+      postedAt: '2026-07-24T00:00:00Z',
+      firstSeenAt: '2026-07-24T08:00:00Z',
+    })
+    poland.listing.title = 'Senior Product Manager - Marketplace (100% Remote within Poland)'
+    poland.listing.location = 'Warsaw, Poland'
+    poland.listing.locations = ['Warsaw, Poland', 'Krakow, Poland', 'Gdansk, Poland']
+
+    const spain = row('spain', 'Docplanner', {
+      postedAt: '2026-07-24T00:00:00Z',
+      firstSeenAt: '2026-07-24T09:00:00Z',
+    })
+    spain.listing.title = 'Senior Product Manager - Marketplace (100% Remote within Spain)'
+    spain.listing.location = 'Barcelona, Spain'
+    spain.listing.locations = ['Barcelona, Spain', 'Madrid, Spain', 'Valencia, Spain']
+
+    const service = makeService({ rows: [poland, spain] })
+    const listings = await service.listForUser('u1')
+
+    expect(listings).toHaveLength(1)
+    expect(listings[0].id).toBe('poland')
+    expect(listings[0].locations).toEqual([
+      'Warsaw, Poland',
+      'Krakow, Poland',
+      'Gdansk, Poland',
+      'Barcelona, Spain',
+      'Madrid, Spain',
+      'Valencia, Spain',
+    ])
   })
 })

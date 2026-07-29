@@ -8,6 +8,18 @@ import {
 } from './job-board-provider'
 
 const PROBE_TIMEOUT_MS = 6_000
+const VANITY_HOSTS = new Set([
+  'careers.akeneo.com',
+  'careers.cafeyn.co',
+  'careers.dare.global',
+  'careers.flexciton.com',
+  'careers.mnemonic.io',
+  'careers.viaplaygroup.com',
+  'career.bannerflow.com',
+  'career.optiveum.com',
+  'jobs.efficy.com',
+  'teamtailor.kilo.co',
+])
 
 // Every Teamtailor career site serves a public JSON Feed of its published jobs
 // at https://{handle}.teamtailor.com/jobs.json — no key, no login. The feed
@@ -74,6 +86,13 @@ export class TeamtailorProvider implements AtsProvider {
   readonly kind = 'ats' as const
 
   private feedUrl(handle: string): string {
+    // A handle that is already a full host (e.g. "jobs.zitadel.com") is a
+    // career site served on a vanity domain — the JSON Feed still lives at
+    // /jobs.json, so use it directly. A bare handle is the *.teamtailor.com
+    // subdomain form.
+    if (handle.includes('.')) {
+      return `https://${handle}/jobs.json`
+    }
     return `https://${encodeURIComponent(handle)}.teamtailor.com/jobs.json`
   }
 
@@ -82,7 +101,16 @@ export class TeamtailorProvider implements AtsProvider {
     // at /jobs/{id}. Only the subdomain form is detectable; custom domains
     // carry no handle.
     const match = url.match(/([a-z0-9-]+)\.teamtailor\.com/i)
-    return match && match[1] !== 'www' ? match[1].toLowerCase() : null
+    if (match && match[1] !== 'www') {
+      return match[1].toLowerCase()
+    }
+    try {
+      const parsed = new URL(url)
+      const hostname = parsed.hostname.toLowerCase()
+      return VANITY_HOSTS.has(hostname) ? hostname : null
+    } catch {
+      return null
+    }
   }
 
   candidateHandles(companyName: string): string[] {
@@ -94,7 +122,7 @@ export class TeamtailorProvider implements AtsProvider {
       const payload = (await fetchJson(this.feedUrl(handle), PROBE_TIMEOUT_MS)) as {
         items?: unknown[]
       }
-      return Array.isArray(payload.items) && payload.items.length > 0
+      return Array.isArray(payload.items)
     } catch {
       return false
     }

@@ -17,11 +17,11 @@ export type ResolvedHandle = {
 
 // Turns a watchlist company (name + optional careers URL) into a shared
 // JobSource on one of the ATS providers. Resolution order:
-//   1. An existing source for the same company (someone already resolved it).
-//   2. The careers URL, if it points at a known ATS host (deterministic).
+//   1. The careers URL, if it points at a known ATS host (deterministic).
+//   2. An existing source for the same company (someone already resolved it).
 //   3. Probing candidate slugs against each ATS provider (best guess).
 //   4. Reading the careers page itself for embedded schema.org JobPosting data
-//      (the generic last resort, only when 2 and 3 found nothing).
+//      (the generic last resort, only when 1-3 found nothing).
 // Aggregator providers are never involved here — they are not company-scoped.
 @Injectable()
 export class CompanyResolutionService {
@@ -39,6 +39,10 @@ export class CompanyResolutionService {
   // found on any ATS (a scraping candidate).
   async resolveToSource(name: string, careersUrl: string | null): Promise<JobSource | null> {
     const key = companyKey(name)
+    const fromUrl = careersUrl ? this.resolveFromUrl(careersUrl) : null
+    if (fromUrl) {
+      return this.upsertSource(name, key, fromUrl)
+    }
 
     const existing = await this.prisma.jobSource.findFirst({ where: { companyKey: key } })
     if (existing) {
@@ -46,7 +50,6 @@ export class CompanyResolutionService {
     }
 
     const resolved =
-      (careersUrl ? this.resolveFromUrl(careersUrl) : null) ??
       (await this.resolveByProbing(name)) ??
       (careersUrl ? await this.resolveByCareersPage(careersUrl) : null)
     if (!resolved) {
@@ -54,8 +57,14 @@ export class CompanyResolutionService {
       return null
     }
 
-    // Reuse the board if it already exists under a different company key.
-    const source = await this.prisma.jobSource.upsert({
+    const source = await this.upsertSource(name, key, resolved)
+    this.logger.log(`Resolved "${name}" -> ${source.provider}/${source.externalId}`)
+    return source
+  }
+
+  // Reuse the board if it already exists under a different company key.
+  private async upsertSource(name: string, key: string, resolved: ResolvedHandle): Promise<JobSource> {
+    return this.prisma.jobSource.upsert({
       where: {
         provider_externalId: { provider: resolved.provider, externalId: resolved.externalId },
       },
@@ -68,8 +77,6 @@ export class CompanyResolutionService {
         companyKey: key,
       },
     })
-    this.logger.log(`Resolved "${name}" -> ${source.provider}/${source.externalId}`)
-    return source
   }
 
   private resolveFromUrl(url: string): ResolvedHandle | null {

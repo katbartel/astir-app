@@ -94,7 +94,7 @@ export class WorkdayProvider implements AtsProvider {
     }
     try {
       const payload = await this.queryJobs(parsed, 0, 1, PROBE_TIMEOUT_MS)
-      return (payload.total ?? 0) > 0
+      return typeof payload.total === 'number'
     } catch {
       return false
     }
@@ -124,10 +124,14 @@ export class WorkdayProvider implements AtsProvider {
       throw new Error(`Workday handle "${source.externalId}" is not tenant:dc:site`)
     }
     const jobs: NormalizedJob[] = []
+    let total: number | null = null
     for (let page = 0; page < MAX_PAGES; page++) {
       const payload = await this.queryJobs(parsed, page * PAGE_LIMIT, PAGE_LIMIT, FETCH_TIMEOUT_MS)
       if (!Array.isArray(payload.jobPostings)) {
         throw new Error(`Workday board "${source.externalId}" returned no jobPostings array`)
+      }
+      if (total === null && typeof payload.total === 'number' && payload.total > 0) {
+        total = payload.total
       }
       for (const posting of payload.jobPostings) {
         const normalized = this.normalize(posting, source)
@@ -135,7 +139,7 @@ export class WorkdayProvider implements AtsProvider {
           jobs.push(normalized)
         }
       }
-      if (!payload.jobPostings.length || (page + 1) * PAGE_LIMIT >= (payload.total ?? 0)) {
+      if (!payload.jobPostings.length || (total !== null && (page + 1) * PAGE_LIMIT >= total)) {
         break
       }
     }

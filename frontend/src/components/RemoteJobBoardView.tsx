@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { displayLocationParts } from '@/lib/location-display'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { OpenIcon, PlusIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -31,14 +34,6 @@ type Listing = {
   status: string
 }
 
-type SortKey = 'newest' | 'discovered' | 'company'
-
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: 'newest', label: 'Newest' },
-  { key: 'discovered', label: 'Recently added' },
-  { key: 'company', label: 'Company' },
-]
-
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 
 // "New" means posted at the source within the last 48h. Listings without a
@@ -58,17 +53,14 @@ function listedAt(listing: Listing): number {
 // location with a "+N" chip for the rest. Providers deliver extras either as
 // separate array entries or a ";"-joined string, so flatten both.
 function locationParts(listing: Listing): string[] {
-  const raw = listing.locations.length > 0 ? listing.locations : listing.location ? [listing.location] : []
-  return raw
-    .flatMap((value) => value.split(';'))
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return displayLocationParts(listing.locations, listing.location)
 }
 
 function MetaLine({ listing }: { listing: Listing }) {
   const parts = locationParts(listing)
   const primary = parts[0] ?? null
   const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
   return (
     <div className="role-loc">
       {listing.companyName}
@@ -76,7 +68,11 @@ function MetaLine({ listing }: { listing: Listing }) {
         <>
           {' · '}
           {primary}
-          {extra > 0 ? <span className="more-cities">+{extra}</span> : null}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
         </>
       ) : null}
       {/* A single-location row can show its work mode; when several regions are
@@ -87,20 +83,8 @@ function MetaLine({ listing }: { listing: Listing }) {
   )
 }
 
-function sortListings(listings: Listing[], sort: SortKey): Listing[] {
-  const sorted = [...listings]
-  switch (sort) {
-    case 'newest':
-      return sorted.sort((a, b) => listedAt(b) - listedAt(a))
-    case 'discovered':
-      return sorted.sort(
-        (a, b) => new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime(),
-      )
-    case 'company':
-      return sorted.sort(
-        (a, b) => a.companyName.localeCompare(b.companyName) || listedAt(b) - listedAt(a),
-      )
-  }
+function sortListings(listings: Listing[]): Listing[] {
+  return [...listings].sort((a, b) => listedAt(b) - listedAt(a))
 }
 
 function ListingRow({
@@ -170,7 +154,6 @@ function ListingRow({
 export function RemoteJobBoardView() {
   const [listings, setListings] = useState<Listing[] | null>(null)
   const [failed, setFailed] = useState(false)
-  const [sort, setSort] = useState<SortKey>('newest')
   const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
@@ -199,7 +182,7 @@ export function RemoteJobBoardView() {
     }
   }, [])
 
-  const sorted = useMemo(() => sortListings(listings ?? [], sort), [listings, sort])
+  const sorted = useMemo(() => sortListings(listings ?? []), [listings])
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
 
@@ -241,7 +224,7 @@ export function RemoteJobBoardView() {
       company: listing.companyName,
       role: listing.title,
       link: listing.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 
@@ -263,29 +246,18 @@ export function RemoteJobBoardView() {
     )
   }
 
+  if (!failed && listings === null) {
+    return <PageSkeleton variant="board" />
+  }
+
   return (
     <section className="screen" data-screen="remote-job-board">
       <div className="page-head">
         <h1>Job board</h1>
-        <div className="option-toggles" role="group" aria-label="Sort listings">
-          {SORT_OPTIONS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`option-toggle${sort === option.key ? ' on' : ''}`}
-              aria-pressed={sort === option.key}
-              onClick={() => setSort(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is resting for a moment. Try again soon.</p>
-        ) : listings === null ? (
-          <p className="watch-invite">Gathering remote openings…</p>
         ) : sorted.length === 0 ? (
           <p className="watch-invite">
             No remote roles matching your keywords yet. New openings appear here as the curated

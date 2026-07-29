@@ -5,12 +5,10 @@ import { useMemo, useState } from 'react'
 import {
   type Application,
   type Status,
-  isPipelineStatus,
   normalizeMode,
   plainDate,
-  stageRank,
-  updateApplication,
 } from '@/lib/applications'
+import { compactLocationLabel, displayLocationParts } from '@/lib/location-display'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal } from './applications/LogApplicationModal'
@@ -19,6 +17,7 @@ import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
 import { useStageConfig } from '@/lib/stages'
 import { OpenIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 // "Posted · Applied · Location · Type" for the expanded card, from the linked
 // posting when we have one.
@@ -29,7 +28,10 @@ function ApplicationMeta({ application }: { application: Application }) {
   // listing — em-dash when the provider didn't give us one.
   if (posting) parts.push(`Posted: ${plainDate(posting.postedAt) || '—'}`)
   parts.push(`Applied: ${plainDate(application.appliedDate) || 'Unknown'}`)
-  if (posting?.location) parts.push(`Location: ${posting.location}`)
+  if (posting?.location) {
+    const location = compactLocationLabel(displayLocationParts(posting.locations, posting.location))
+    parts.push(`Location: ${location.display}`)
+  }
   if (posting?.workMode) parts.push(`Type: ${normalizeMode(posting.workMode)}`)
   return <>{parts.join(' · ')}</>
 }
@@ -40,12 +42,14 @@ function PipelineCard({
   onToggle,
   onStage,
   onNote,
+  stageColor,
 }: {
   application: Application
   expanded: boolean
   onToggle: () => void
   onStage: (status: Status) => void
   onNote: (note: NonNullable<Application['note']>) => void
+  stageColor: (status: Status) => string
 }) {
   const openUrl = application.link || application.posting?.url || ''
 
@@ -58,6 +62,7 @@ function PipelineCard({
   return (
     <article
       className={`pipeline-card ${expanded ? 'expanded' : ''}`.trim()}
+      data-stage={stageColor(application.status)}
       tabIndex={0}
       aria-expanded={expanded}
       aria-label={`${application.company}, ${application.role}`}
@@ -108,24 +113,26 @@ function PipelineCard({
 }
 
 export function PipelineView() {
-  const { applications, changeStage, reload, showSnack, overlay } = useApplications()
-  const { isEnabled } = useStageConfig()
+  const { applications, failed, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
+  const { isPipeline, rankOf, colorFor } = useStageConfig()
   const [expandedId, setExpandedId] = useState('')
   const [logging, setLogging] = useState(false)
   const [heardOpen, setHeardOpen] = useState(false)
 
   const pipeline = useMemo(() => {
     return (applications ?? [])
-      .filter(
-        (application) =>
-          isPipelineStatus(application.status) && isEnabled(application.status),
-      )
+      .filter((application) => isPipeline(application.status))
       .sort((a, b) => {
-        const byTime =
-          new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
-        return byTime !== 0 ? byTime : stageRank(b.status) - stageRank(a.status)
+        // Most advanced stage first; break ties by most recent stage change.
+        const byStage = rankOf(b.status) - rankOf(a.status)
+        if (byStage !== 0) return byStage
+        return new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
       })
-  }, [applications, isEnabled])
+  }, [applications, isPipeline, rankOf])
+
+  if (!failed && applications === null) {
+    return <PageSkeleton variant="pipeline" />
+  }
 
   const empty = pipeline.length === 0
 
@@ -191,7 +198,8 @@ export function PipelineView() {
                 setExpandedId((current) => (current === application.id ? '' : application.id))
               }
               onStage={(status) => void changeStage(application, status, 'pipeline')}
-              onNote={(note) => void updateApplication(application.id, { note })}
+              onNote={(note) => saveNote(application, note)}
+              stageColor={colorFor}
             />
           ))
         )}
@@ -199,11 +207,11 @@ export function PipelineView() {
 
       {logging ? (
         <LogApplicationModal
-          initial={{ status: 'Applied' }}
+          initial={{ status: 'applied' }}
           onClose={() => setLogging(false)}
           onSaved={(application, isNew) => {
             void reload()
-            if (isNew && application.status !== 'Hired') {
+            if (isNew && application.status !== 'hired') {
               showSnack({ text: 'Application logged.' })
             }
           }}

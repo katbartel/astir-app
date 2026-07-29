@@ -10,6 +10,7 @@ import {
   todayKey,
   updateApplication,
 } from '@/lib/applications'
+import { STAGE_IDS } from '@/lib/stages'
 import { DatePicker } from './DatePicker'
 import { StageSelect } from './StageSelect'
 
@@ -41,7 +42,7 @@ export function LogApplicationModal({
   const [link, setLink] = useState(initial.link ?? '')
   const [company, setCompany] = useState(initial.company ?? '')
   const [role, setRole] = useState(initial.role ?? '')
-  const [status, setStatus] = useState<Status>(initial.status ?? 'Applied')
+  const [status, setStatus] = useState<Status>(initial.status ?? STAGE_IDS.applied)
   const [appliedDate, setAppliedDate] = useState(initial.appliedDate ?? todayKey())
   const [note, setNote] = useState(noteText(initial.note))
   const [busy, setBusy] = useState(false)

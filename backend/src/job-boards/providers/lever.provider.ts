@@ -56,8 +56,8 @@ export class LeverProvider implements AtsProvider {
     // Careers pages look like https://jobs.lever.co/{account}/ and per-job
     // links https://jobs.lever.co/{account}/{id}. The account is always the
     // first path segment.
-    const match = url.match(/jobs\.lever\.co\/([a-z0-9-]+)/i)
-    return match ? match[1].toLowerCase() : null
+    const match = url.match(/jobs\.lever\.co\/([a-z0-9.-]+)/i)
+    return match ? match[1] : null
   }
 
   candidateHandles(companyName: string): string[] {
@@ -67,7 +67,7 @@ export class LeverProvider implements AtsProvider {
   async verifyHandle(handle: string): Promise<boolean> {
     try {
       const payload = (await fetchJson(this.postingsUrl(handle), PROBE_TIMEOUT_MS)) as unknown[]
-      return Array.isArray(payload) && payload.length > 0
+      return Array.isArray(payload)
     } catch {
       return false
     }

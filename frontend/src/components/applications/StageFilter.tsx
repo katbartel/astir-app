@@ -1,8 +1,8 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { STATUS_OPTIONS, type Status } from '@/lib/applications'
-import { useStageConfig, visibleStatuses } from '@/lib/stages'
+import { type Status } from '@/lib/applications'
+import { useStageConfig } from '@/lib/stages'
 import { CheckIcon, FilterIcon } from '../icons'
 import { MenuScrim, useMenuModality } from './menuModality'
 
@@ -19,8 +19,7 @@ export function StageFilter({
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLSpanElement>(null)
   const active = selected.size > 0
-  const { enabled } = useStageConfig()
-  const stageOptions = visibleStatuses(enabled, STATUS_OPTIONS)
+  const { allStages } = useStageConfig()
   useMenuModality(open, ref, setOpen)
 
   function toggle(status: Status) {
@@ -60,21 +59,21 @@ export function StageFilter({
             </button>
           ) : null}
         </span>
-        {stageOptions.map((option) => {
-          const checked = selected.has(option)
+        {allStages.map((option) => {
+          const checked = selected.has(option.id)
           return (
             <button
-              key={option}
+              key={option.id}
               type="button"
               role="menuitemcheckbox"
               aria-checked={checked}
               className={`stage-filter-option ${checked ? 'checked' : ''}`.trim()}
-              onClick={() => toggle(option)}
+              onClick={() => toggle(option.id)}
             >
               <span className="stage-filter-check" aria-hidden="true">
                 {checked ? <CheckIcon /> : null}
               </span>
-              <span>{option}</span>
+              <span>{option.name}</span>
             </button>
           )
         })}

@@ -3,25 +3,40 @@
 // (/api/applications). The backend persists; these helpers are the only place
 // the frontend talks to it.
 
-export const STATUS_OPTIONS = [
-  'Applied',
-  '1st stage',
-  '2nd stage',
-  '3rd stage',
-  'Offer',
-  'Hired',
-  'Closed',
-] as const
+import {
+  DEFAULT_STAGE_CATALOG,
+  DEFAULT_STAGE_IDS,
+  type StageId,
+  isPipelineStage,
+  normalizeStageId,
+  stageColorKey as stageColorKeyForId,
+  stageRank as stageRankForId,
+  stageVisual,
+} from './stages'
 
-export type Status = (typeof STATUS_OPTIONS)[number]
+export const STATUS_OPTIONS = DEFAULT_STAGE_IDS
+
+export type Status = StageId
 
 // Stages that count as "in motion" and show on the Pipeline screen. Applied
 // and Closed sit outside it.
-export const PIPELINE_STAGES: Status[] = ['1st stage', '2nd stage', '3rd stage', 'Offer', 'Hired']
+export const PIPELINE_STAGES: Status[] = DEFAULT_STAGE_CATALOG.progress
+  .map((stage) => stage.id)
+  .concat(['offer', 'hired'])
 
 export type NoteBlock =
-  | { type: 'text'; text: string }
+  | {
+      type: 'text'
+      text: string
+      bold?: boolean
+      italic?: boolean
+      underline?: boolean
+      strike?: boolean
+      href?: string
+    }
   | { type: 'check'; checked: boolean; text: string }
+  | { type: 'quote'; blocks: NoteBlock[] }
+  | { type: 'collapse'; summary: string; open: boolean; blocks: NoteBlock[] }
 
 export type Note = { kind: string; text?: string; blocks: NoteBlock[] }
 
@@ -40,6 +55,7 @@ export type Application = {
   company: string
   role: string
   link: string | null
+  stageId: StageId
   status: Status
   appliedDate: string
   stageChangedAt: string
@@ -52,22 +68,45 @@ export type ApplicationInput = {
   company: string
   role: string
   link?: string
+  stageId?: StageId
   status?: Status
   appliedDate: string
   note?: Note | null
 }
 
 export function normalizeStatus(status: string | null | undefined): Status {
-  if (status === 'Rejected') return 'Closed'
-  return (STATUS_OPTIONS as readonly string[]).includes(status ?? '') ? (status as Status) : 'Applied'
+  return normalizeStageId(status)
 }
 
 export function isPipelineStatus(status: string): boolean {
-  return PIPELINE_STAGES.includes(normalizeStatus(status))
+  return isPipelineStage(DEFAULT_STAGE_CATALOG, normalizeStatus(status))
 }
 
 export function stageRank(status: string): number {
-  return STATUS_OPTIONS.indexOf(normalizeStatus(status))
+  return stageRankForId(DEFAULT_STAGE_CATALOG, normalizeStatus(status))
+}
+
+// Short key for a status, used as the `data-stage` attribute that drives stage
+// colors in the CSS (see the --stage-* tokens). Kept separate from the labels
+// so the stored/display names stay untouched.
+export function stageColorKey(status: string): string {
+  return stageColorKeyForId(normalizeStatus(status))
+}
+
+// Progress of a status along the on-track journey (Applied … Hired). Closed
+// sits off-track. Drives how far the stage ring fills. Derived from position
+// in the ordered list, so it still holds if stages are added or disabled.
+export type StageProgress = {
+  fraction: number
+  state: 'start' | 'progress' | 'done' | 'closed'
+}
+
+export function stageProgress(status: string): StageProgress {
+  const visual = stageVisual(DEFAULT_STAGE_CATALOG, normalizeStatus(status))
+  return {
+    fraction: visual.fraction,
+    state: visual.state === 'offer' ? 'progress' : visual.state,
+  }
 }
 
 // Normalize a free-form work mode to one of the three display labels, matching
@@ -79,11 +118,20 @@ export function normalizeMode(mode: string | null | undefined): string {
   return 'Remote'
 }
 
+// One block -> its plain text, recursing through quote/collapse containers.
+function blockPlainText(block: NoteBlock): string {
+  if (block.type === 'quote') return block.blocks.map(blockPlainText).join('')
+  if (block.type === 'collapse') {
+    return [block.summary, ...block.blocks.map(blockPlainText)].filter(Boolean).join(' ')
+  }
+  return block.text || ''
+}
+
 // Blocks -> flat text, used to seed the modal textarea.
 export function noteText(note: Note | null | undefined): string {
   if (!note) return ''
   if (Array.isArray(note.blocks) && note.blocks.length > 0) {
-    return note.blocks.map((block) => block.text || '').join('')
+    return note.blocks.map(blockPlainText).join('')
   }
   return note.text || ''
 }
@@ -91,18 +139,6 @@ export function noteText(note: Note | null | undefined): string {
 export function noteFromText(text: string): Note {
   const trimmed = text.trim()
   return { kind: 'blocks', text: trimmed, blocks: trimmed ? [{ type: 'text', text: trimmed }] : [] }
-}
-
-// Split on the "[]" marker into text + checkbox blocks, matching the
-// prototype's noteBlocksFromText.
-export function noteBlocksFromText(text: string): NoteBlock[] {
-  const parts = String(text || '').split('[]')
-  const blocks: NoteBlock[] = []
-  parts.forEach((part, index) => {
-    if (part) blocks.push({ type: 'text', text: part })
-    if (index < parts.length - 1) blocks.push({ type: 'check', checked: false, text: '' })
-  })
-  return blocks
 }
 
 async function asJson<T>(response: Response): Promise<T> {
@@ -113,7 +149,20 @@ async function asJson<T>(response: Response): Promise<T> {
 }
 
 export async function fetchApplications(): Promise<Application[]> {
-  return asJson<Application[]>(await fetch('/api/applications'))
+  const rows = await asJson<Application[]>(await fetch('/api/applications'))
+  return rows.map((application) => {
+    const stageId = normalizeStageId(application.stageId, application.status)
+    return { ...application, stageId, status: stageId }
+  })
+}
+
+function applicationBody(input: Partial<ApplicationInput>): Partial<ApplicationInput> {
+  const body = { ...input }
+  if (input.stageId || input.status) {
+    body.stageId = normalizeStageId(input.stageId, input.status)
+    delete body.status
+  }
+  return body
 }
 
 export async function createApplication(input: ApplicationInput): Promise<Application> {
@@ -121,7 +170,7 @@ export async function createApplication(input: ApplicationInput): Promise<Applic
     await fetch('/api/applications', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify(applicationBody(input)),
     }),
   )
 }
@@ -134,7 +183,7 @@ export async function updateApplication(
     await fetch(`/api/applications/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input),
+      body: JSON.stringify(applicationBody(input)),
     }),
   )
 }

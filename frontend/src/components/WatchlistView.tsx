@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { displayLocationParts } from '@/lib/location-display'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import {
   LogApplicationModal,
@@ -10,6 +12,7 @@ import {
 } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { BellIcon, BellOffIcon, OpenIcon, PlusIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type Role = {
   id: string
@@ -63,17 +66,14 @@ function isFresh(role: Role): boolean {
 // prototype's locationLabel. Providers deliver the extras either as separate
 // array entries or as one ";"-joined string, so flatten both.
 function locationParts(role: Role): string[] {
-  const raw = role.locations.length > 0 ? role.locations : role.location ? [role.location] : []
-  return raw
-    .flatMap((value) => value.split(';'))
-    .map((value) => value.trim())
-    .filter(Boolean)
+  return displayLocationParts(role.locations, role.location)
 }
 
 function LocationLine({ role }: { role: Role }) {
   const parts = locationParts(role)
   const primary = parts[0] ?? null
   const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
   const mode = role.workMode
   if (!primary && !mode) return null
   return (
@@ -81,7 +81,11 @@ function LocationLine({ role }: { role: Role }) {
       {primary ? (
         <>
           {primary}
-          {extra > 0 ? <span className="more-cities">+{extra}</span> : null}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
         </>
       ) : null}
       {/* A single known location can show its work mode; when compressed the
@@ -637,7 +641,7 @@ export function WatchlistView() {
       company: company.name,
       role: role.title,
       link: role.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 
@@ -709,6 +713,12 @@ export function WatchlistView() {
     }
   }, [companies])
 
+  if (!failed && companies === null) {
+    return <PageSkeleton variant="watchlist" />
+  }
+
+  const loadedCompanies = companies ?? []
+
   return (
     <section className="screen" data-screen="watchlist">
       <div className="page-head">
@@ -720,9 +730,7 @@ export function WatchlistView() {
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Your watchlist is resting for a moment. Try again soon.</p>
-        ) : companies === null ? (
-          <p className="watch-invite">Loading your watchlist…</p>
-        ) : companies.length === 0 ? (
+        ) : loadedCompanies.length === 0 ? (
           <p className="watch-invite">
             Add a company you would fight for. We will watch its board for you.
           </p>

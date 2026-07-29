@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, type KeyboardEvent } from 'react'
+import { PageSkeleton } from '../PageSkeleton'
 
 type Preferences = {
   keywords: string[]
@@ -305,7 +306,11 @@ export function WatchlistPreferences() {
         <h1>Job preferences</h1>
       </div>
       {!prefs ? (
-        <p className="prefs-loading">{status === 'error' ? 'Could not load preferences.' : 'Loading…'}</p>
+        status === 'error' ? (
+          <p className="prefs-loading">Could not load preferences.</p>
+        ) : (
+          <PageSkeleton variant="preferences" />
+        )
       ) : (
         <div className="prefs-card">
           <Field

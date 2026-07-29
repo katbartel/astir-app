@@ -1,13 +1,16 @@
 import { Injectable } from '@nestjs/common'
 import { PrismaService } from '../database/prisma.service'
+import { DEFAULT_WATCHLIST_PREFERENCES } from '../users/watchlist-defaults'
 import { UserSettableListingStatus } from './dto/update-listing.dto'
 import { companyKey } from './normalized-job'
+import { FoldableOpening, foldOpenings } from './opening-folding'
 
 export type JobBoardListing = {
   id: string
   title: string
   companyName: string
   location: string | null
+  locations: string[]
   workMode: string | null
   contentLanguage: string | null
   url: string
@@ -25,6 +28,15 @@ export type JobBoardListing = {
 // posting date, and "unknown age" is not the same as "old".
 const MAX_LISTING_AGE_DAYS = 90
 
+type ListingSourceFreshness = {
+  lastSeenAt: Date
+  jobSource: { lastSyncedAt: Date | null } | null
+}
+
+function sourceStillCurrent(source: ListingSourceFreshness): boolean {
+  return !source.jobSource?.lastSyncedAt || source.lastSeenAt >= source.jobSource.lastSyncedAt
+}
+
 @Injectable()
 export class JobBoardsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -37,7 +49,7 @@ export class JobBoardsService {
   // exclusively on the Remote Job Board.
   async listForUser(userId: string): Promise<JobBoardListing[]> {
     const cutoff = new Date(Date.now() - MAX_LISTING_AGE_DAYS * 24 * 60 * 60 * 1000)
-    const [rows, watchlistKeys, appliedListingIds, remoteSourceIds] = await Promise.all([
+    const [rows, preferences, watchlistKeys, appliedListingIds, remoteSourceIds] = await Promise.all([
       this.prisma.userJobListing.findMany({
         where: {
           userId,
@@ -47,18 +59,30 @@ export class JobBoardsService {
         },
         include: {
           listing: {
-            include: { sources: { select: { provider: true, jobSourceId: true } } },
+            include: {
+              sources: {
+                select: {
+                  provider: true,
+                  jobSourceId: true,
+                  lastSeenAt: true,
+                  jobSource: { select: { lastSyncedAt: true } },
+                },
+              },
+            },
           },
         },
       }),
+      this.matchingPreferences(userId),
       this.watchlistCompanyKeys(userId),
       this.appliedListingIds(userId),
       this.remoteCompanySourceIds(),
     ])
-    return rows
+    const statusById = new Map(rows.map((row) => [row.listing.id, row.status]))
+    const candidates: FoldableOpening[] = rows
       .filter(
         (row) =>
           !appliedListingIds.has(row.listing.id) &&
+          row.listing.sources.some(sourceStillCurrent) &&
           !watchlistKeys.has(companyKey(row.listing.companyName)) &&
           !row.listing.sources.some(
             (source) => source.jobSourceId && remoteSourceIds.has(source.jobSourceId),
@@ -68,15 +92,32 @@ export class JobBoardsService {
         id: row.listing.id,
         title: row.listing.title,
         companyName: row.listing.companyName,
+        url: row.listing.url,
         location: row.listing.location,
+        locations: row.listing.locations,
         workMode: row.listing.workMode,
         contentLanguage: row.listing.contentLanguage,
-        url: row.listing.url,
         postedAt: row.listing.postedAt,
         firstSeenAt: row.listing.firstSeenAt,
         providers: [...new Set(row.listing.sources.map((source) => source.provider))],
         matchedKeywords: row.matchedKeywords,
-        status: row.status,
+      }))
+
+    return foldOpenings(candidates, preferences.hiringRegions, appliedListingIds)
+      .map((opening) => ({
+        id: opening.id,
+        title: opening.title,
+        companyName: opening.companyName,
+        location: opening.location,
+        locations: opening.locations,
+        workMode: opening.workMode,
+        contentLanguage: opening.contentLanguage,
+        url: opening.url,
+        postedAt: opening.postedAt,
+        firstSeenAt: opening.firstSeenAt,
+        providers: opening.providers ?? [],
+        matchedKeywords: opening.matchedKeywords,
+        status: statusById.get(opening.id) ?? 'new',
       }))
       // Newest first by real posting date; undated postings fall back to when
       // we first saw them, so a just-ingested but ancient aggregator req can't
@@ -102,6 +143,14 @@ export class JobBoardsService {
 
   private effectiveDate(listing: JobBoardListing): number {
     return (listing.postedAt ?? listing.firstSeenAt).getTime()
+  }
+
+  private async matchingPreferences(userId: string) {
+    const saved = await this.prisma.watchlistPreferences.findUnique({ where: { userId } })
+    const base = saved ?? DEFAULT_WATCHLIST_PREFERENCES
+    return {
+      hiringRegions: base.hiringRegions,
+    }
   }
 
   // Normalized company keys of everything on the user's watchlist, so their

@@ -85,7 +85,7 @@ export class SmartRecruitersProvider implements AtsProvider {
         this.postingsUrl(handle, 0, 1),
         PROBE_TIMEOUT_MS,
       )) as SmartRecruitersPage
-      return Array.isArray(payload.content) && payload.content.length > 0
+      return Array.isArray(payload.content)
     } catch {
       return false
     }

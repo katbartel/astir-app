@@ -10,9 +10,10 @@ import {
   normalizeMode,
   normalizeStatus,
   plainDate,
-  stageRank,
   todayKey,
 } from '@/lib/applications'
+import { compactLocationLabel, displayLocationParts } from '@/lib/location-display'
+import { STAGE_IDS, useStageConfig } from '@/lib/stages'
 import { applicationsToCsv, parseApplicationsCsv } from '@/lib/applications-csv'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
@@ -20,6 +21,7 @@ import { StageFilter } from './applications/StageFilter'
 import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
 import { ChevronDownIcon, OpenIcon, SearchIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type ColumnKey = 'company' | 'role' | 'stage' | 'location' | 'type' | 'posted' | 'applied' | 'menu'
 type Column = { key: ColumnKey; label: string; sortable?: boolean }
@@ -58,18 +60,16 @@ function applicationsCountLabel(shown: number, total: number) {
 // Collapse a possibly multi-value location into a compact label plus the full
 // list for the hover tooltip. "Germany,Austria,Finland" becomes "Germany +2"
 // with all three revealed on hover; a single value is shown as-is.
-function locationCell(location: string | null | undefined) {
-  const parts = (location ?? '')
-    .split(',')
-    .map((part) => part.trim())
-    .filter(Boolean)
-  if (parts.length === 0) return { display: '—', tooltip: undefined }
-  if (parts.length === 1) return { display: parts[0], tooltip: parts[0] }
-  return { display: `${parts[0]} +${parts.length - 1}`, tooltip: parts.join(', ') }
+function locationCell(
+  location: string | null | undefined,
+  locations: string[] | undefined,
+) {
+  return compactLocationLabel(displayLocationParts(locations ?? [], location))
 }
 
 export function ApplicationsView() {
-  const { applications, changeStage, reload, showSnack, overlay } = useApplications()
+  const { applications, failed, changeStage, reload, showSnack, overlay } = useApplications()
+  const { rankOf } = useStageConfig()
   const importInput = useRef<HTMLInputElement>(null)
   const [searchOpen, setSearchOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -104,7 +104,7 @@ export function ApplicationsView() {
       )
       .sort((a, b) => {
         let result = 0
-        if (sort.key === 'stage') result = stageRank(a.status) - stageRank(b.status)
+        if (sort.key === 'stage') result = rankOf(a.status) - rankOf(b.status)
         else if (sort.key === 'role') result = a.role.localeCompare(b.role)
         else result = a.company.localeCompare(b.company)
         if (result === 0) {
@@ -112,7 +112,7 @@ export function ApplicationsView() {
         }
         return sort.dir === 'desc' ? -result : result
       })
-  }, [all, query, stageFilter, sort])
+  }, [all, query, rankOf, stageFilter, sort])
 
   function toggleSort(key: SortKey) {
     setSort((current) =>
@@ -228,6 +228,10 @@ export function ApplicationsView() {
     if (file) await importCsv(file)
   }
 
+  if (!failed && applications === null) {
+    return <PageSkeleton variant="applications" />
+  }
+
   return (
     <section className="screen applications-screen" data-screen="applications">
       <Link className="crumb" href="/pipeline">
@@ -333,7 +337,10 @@ export function ApplicationsView() {
             ) : (
               rows.map((application) => {
                 const openUrl = application.link || application.posting?.url || ''
-                const location = locationCell(application.posting?.location)
+                const location = locationCell(
+                  application.posting?.location,
+                  application.posting?.locations,
+                )
                 return (
                   <tr key={application.id}>
                     <td>
@@ -417,7 +424,7 @@ export function ApplicationsView() {
 
       {logging ? (
         <LogApplicationModal
-          initial={{ status: 'Applied' }}
+          initial={{ status: STAGE_IDS.applied }}
           onClose={() => setLogging(false)}
           onSaved={(_application, isNew) => {
             void reload()

@@ -25,8 +25,6 @@ export function GoalsSetupModal({
 }) {
   const [draft, setDraft] = useState<Goal[]>(() => initial.map((goal) => ({ ...goal })))
 
-  const allSelected = draft.length === activityOrder.length
-
   function toggle(id: ActivityId) {
     setDraft((current) => {
       if (current.some((goal) => goal.id === id)) {
@@ -131,7 +129,6 @@ export function GoalsSetupModal({
           <button className="btn solid" type="button" onClick={() => onSave(draft)}>
             Save
           </button>
-          {allSelected ? <div className="setup-complete">That is the whole list</div> : null}
         </div>
       </section>
     </div>

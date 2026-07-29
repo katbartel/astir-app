@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { displayLocationParts } from '@/lib/location-display'
+import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { OpenIcon, PlusIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -16,6 +19,8 @@ type Listing = {
   title: string
   companyName: string
   location: string | null
+  // Every region the same role is posted in, folded into one row.
+  locations: string[]
   workMode: string | null
   // ISO 639-1 code of the language the ad is written in (e.g. 'en', 'de'), when
   // the provider exposes it; null otherwise.
@@ -27,14 +32,6 @@ type Listing = {
   matchedKeywords: string[]
   status: string
 }
-
-type SortKey = 'newest' | 'discovered' | 'company'
-
-const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
-  { key: 'newest', label: 'Newest' },
-  { key: 'discovered', label: 'Recently added' },
-  { key: 'company', label: 'Company' },
-]
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 
@@ -51,25 +48,37 @@ function listedAt(listing: Listing): number {
   return new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
 }
 
-function metaLine(listing: Listing): string {
-  const lang = listing.contentLanguage ? listing.contentLanguage.toUpperCase() : null
-  return [listing.companyName, listing.location, listing.workMode, lang].filter(Boolean).join(' · ')
+function locationParts(listing: Listing): string[] {
+  return displayLocationParts(listing.locations, listing.location)
 }
 
-function sortListings(listings: Listing[], sort: SortKey): Listing[] {
-  const sorted = [...listings]
-  switch (sort) {
-    case 'newest':
-      return sorted.sort((a, b) => listedAt(b) - listedAt(a))
-    case 'discovered':
-      return sorted.sort(
-        (a, b) => new Date(b.firstSeenAt).getTime() - new Date(a.firstSeenAt).getTime(),
-      )
-    case 'company':
-      return sorted.sort(
-        (a, b) => a.companyName.localeCompare(b.companyName) || listedAt(b) - listedAt(a),
-      )
-  }
+function MetaLine({ listing }: { listing: Listing }) {
+  const parts = locationParts(listing)
+  const primary = parts[0] ?? null
+  const extra = Math.max(0, parts.length - 1)
+  const hiddenLocations = parts.slice(1).join(', ')
+  return (
+    <div className="role-loc">
+      {listing.companyName}
+      {primary ? (
+        <>
+          {' · '}
+          {primary}
+          {extra > 0 ? (
+            <span className="more-cities" data-tooltip={hiddenLocations}>
+              +{extra}
+            </span>
+          ) : null}
+        </>
+      ) : null}
+      {extra === 0 && listing.workMode ? ` · ${listing.workMode}` : null}
+      {listing.contentLanguage ? ` · ${listing.contentLanguage.toUpperCase()}` : null}
+    </div>
+  )
+}
+
+function sortListings(listings: Listing[]): Listing[] {
+  return [...listings].sort((a, b) => listedAt(b) - listedAt(a))
 }
 
 function ListingRow({
@@ -101,7 +110,7 @@ function ListingRow({
           </a>
           {isFresh(listing) ? <span className="role-new-chip">New</span> : null}
         </div>
-        <div className="role-loc">{metaLine(listing)}</div>
+        <MetaLine listing={listing} />
         <div className="role-posted">Posted: {formatPostedDate(listing.postedAt)}</div>
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
@@ -139,7 +148,6 @@ function ListingRow({
 export function JobBoardsView() {
   const [listings, setListings] = useState<Listing[] | null>(null)
   const [failed, setFailed] = useState(false)
-  const [sort, setSort] = useState<SortKey>('newest')
   const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
@@ -168,7 +176,7 @@ export function JobBoardsView() {
     }
   }, [])
 
-  const sorted = useMemo(() => sortListings(listings ?? [], sort), [listings, sort])
+  const sorted = useMemo(() => sortListings(listings ?? []), [listings])
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
 
@@ -210,7 +218,7 @@ export function JobBoardsView() {
       company: listing.companyName,
       role: listing.title,
       link: listing.url,
-      status: 'Applied',
+      status: STAGE_IDS.applied,
     })
   }
 
@@ -232,29 +240,18 @@ export function JobBoardsView() {
     )
   }
 
+  if (!failed && listings === null) {
+    return <PageSkeleton variant="board" />
+  }
+
   return (
     <section className="screen" data-screen="job-boards">
       <div className="page-head">
         <h1>Admin - Job board</h1>
-        <div className="option-toggles" role="group" aria-label="Sort listings">
-          {SORT_OPTIONS.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className={`option-toggle${sort === option.key ? ' on' : ''}`}
-              aria-pressed={sort === option.key}
-              onClick={() => setSort(option.key)}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
       </div>
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Job boards are resting for a moment. Try again soon.</p>
-        ) : listings === null ? (
-          <p className="watch-invite">Gathering openings…</p>
         ) : sorted.length === 0 ? (
           <p className="watch-invite">
             Nothing matching your preferences yet. New openings appear here as boards are checked.

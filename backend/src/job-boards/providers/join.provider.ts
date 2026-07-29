@@ -107,7 +107,7 @@ export class JoinProvider implements AtsProvider {
       const payload = (await fetchJson(this.jobsUrl(company.id, 1), PROBE_TIMEOUT_MS)) as {
         items?: unknown[]
       }
-      return Array.isArray(payload.items) && payload.items.length > 0
+      return Array.isArray(payload.items)
     } catch {
       return false
     }

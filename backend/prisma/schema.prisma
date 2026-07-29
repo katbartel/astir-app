@@ -86,6 +86,10 @@ model RemoteCompany {
   name             String
   nameKey          String   @unique @map("name_key")
   careersUrl       String?  @map("careers_url")
+  companyWebsite   String?  @map("company_website")
+  note             String?
+  reviewed         Boolean  @default(false)
+  reviewStatus     String   @default("not_reviewed") @map("review_status")
   jobSourceId      String?  @map("job_source_id")
   resolutionStatus String   @default("pending") @map("resolution_status")
   addedByEmail     String?  @map("added_by_email")
@@ -193,10 +197,9 @@ model UserJobListing {
 // A job the user has applied to. Logged from the watchlist (or Job Boards),
 // in which case listingId points at the canonical posting so we can show its
 // location, work mode, and posted date; or entered by hand, in which case
-// company/role/link stand alone. status is the pipeline stage (see
-// statusOptions in the client): "Applied" and "Closed" sit outside the active
-// pipeline; the stages in between ("1st stage".."Hired") show on the Pipeline
-// screen. note holds the client's rich-text block structure.
+// company/role/link stand alone. stageId is the fixed stage key used by app
+// logic. status remains for compatibility with older rows and clients. note
+// holds the client's rich-text block structure.
 model Application {
   id             String   @id @default(cuid())
   userId         String   @map("user_id")
@@ -205,6 +208,7 @@ model Application {
   role           String
   link           String?
   status         String   @default("Applied")
+  stageId        String   @default("applied") @map("stage_id")
   appliedDate    String   @map("applied_date")
   stageChangedAt DateTime @default(now()) @map("stage_changed_at")
   note           Json?

@@ -34,7 +34,19 @@ export default async function RootLayout({
   const user = await getCurrentUser()
 
   return (
-    <html lang="en" className={`${displayFont.variable} ${bodyFont.variable}`}>
+    <html
+      lang="en"
+      className={`${displayFont.variable} ${bodyFont.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var m=localStorage.getItem('astir.mode');if(m==='dark'){document.documentElement.dataset.theme='dusk';document.documentElement.style.colorScheme='dark'}else{document.documentElement.style.colorScheme='light'}}catch(e){}",
+          }}
+        />
+      </head>
       <body>
         {user ? <UserProvider user={user}>{children}</UserProvider> : <LoginView />}
         <Tooltips />

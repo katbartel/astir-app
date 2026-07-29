@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { NormalizedJob, WorkMode } from '../normalized-job'
+import { NormalizedJob, WorkMode, parseDate } from '../normalized-job'
 import {
   AtsProvider,
   JobBoardSourceRef,
@@ -19,6 +19,12 @@ type PersonioJob = {
   name?: string
   office?: string
   offices?: string[]
+  published_at?: string
+  publishedAt?: string
+  created_at?: string
+  createdAt?: string
+  updated_at?: string
+  updatedAt?: string
 }
 
 // The board hosts to try, most common first. Same tenant slug, different TLD.
@@ -56,9 +62,9 @@ export class PersonioProvider implements AtsProvider {
     return (await this.fetchBoard(handle, PROBE_TIMEOUT_MS)) !== null
   }
 
-  // Returns the first host that answers with at least one position, along with
+  // Returns the first host that answers with a valid positions payload, along with
   // the host so job URLs point at the right TLD. Null when neither TLD has a
-  // non-empty board.
+  // valid board.
   private async fetchBoard(
     handle: string,
     timeoutMs?: number,
@@ -66,7 +72,7 @@ export class PersonioProvider implements AtsProvider {
     for (const host of personioHosts(handle)) {
       try {
         const payload = (await fetchJson(`https://${host}/search.json?language=en`, timeoutMs)) as unknown
-        if (Array.isArray(payload) && payload.length > 0) {
+        if (Array.isArray(payload)) {
           return { host, jobs: payload as PersonioJob[] }
         }
       } catch {
@@ -100,7 +106,13 @@ export class PersonioProvider implements AtsProvider {
       locations,
       workMode: workModeFromPersonio(locations),
       url: `https://${host}/job/${job.id}?language=en`,
-      postedAt: null,
+      postedAt:
+        parseDate(job.published_at) ??
+        parseDate(job.publishedAt) ??
+        parseDate(job.created_at) ??
+        parseDate(job.createdAt) ??
+        parseDate(job.updated_at) ??
+        parseDate(job.updatedAt),
     }
   }
 }

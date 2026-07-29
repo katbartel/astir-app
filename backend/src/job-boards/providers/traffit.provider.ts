@@ -109,7 +109,7 @@ export class TraffitProvider implements AtsProvider {
   async verifyHandle(handle: string): Promise<boolean> {
     try {
       const posts = await this.fetchPublished(handle, PROBE_TIMEOUT_MS)
-      return posts.length > 0
+      return Array.isArray(posts)
     } catch {
       return false
     }

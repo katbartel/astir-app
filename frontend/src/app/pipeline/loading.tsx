@@ -1,0 +1,5 @@
+import { RoutePageSkeleton } from '@/components/RoutePageSkeleton'
+
+export default function Loading() {
+  return <RoutePageSkeleton active="pipeline" variant="pipeline" />
+}

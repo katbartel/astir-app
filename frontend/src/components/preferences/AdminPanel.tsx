@@ -2,6 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useUser } from '../UserProvider'
+import { PageSkeleton } from '../PageSkeleton'
 
 type ResolutionStatus = 'pending' | 'resolved' | 'unresolved'
 type ReviewStatus = 'reviewed' | 'not_reviewed' | 'to_review'
@@ -540,7 +541,7 @@ export function AdminPanel() {
         {loadFailed ? (
           <p className="watch-invite">Couldn’t load the list. Try refreshing.</p>
         ) : companies === null ? (
-          <p className="watch-invite">Loading…</p>
+          <PageSkeleton variant="preferences" />
         ) : companies.length === 0 ? (
           <p className="watch-invite">No companies yet. Add some above.</p>
         ) : visibleCompanies && visibleCompanies.length === 0 ? (

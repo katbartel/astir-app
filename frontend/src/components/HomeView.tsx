@@ -28,6 +28,7 @@ import { useApplications } from './applications/useApplications'
 import { GoalsSetupModal } from './home/GoalsSetupModal'
 import { useWeekGoals } from './home/useWeekGoals'
 import { CheckIcon, InfoIcon, MinusIcon, PencilIcon, PlusIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type TaskOps = ReturnType<typeof useWeekGoals>['tasks']
 
@@ -425,13 +426,17 @@ function GoalPanel({
 }
 
 export function HomeView() {
-  const { applications, reload, changeStage, showSnack, overlay } = useApplications()
+  const { applications, failed, reload, changeStage, showSnack, overlay } = useApplications()
   const { week, setGoals, stepRest, tasks } = useWeekGoals()
 
   const [logging, setLogging] = useState(false)
   const [heardOpen, setHeardOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [selected, setSelected] = useState<ActivityId | ''>('')
+
+  if (!failed && applications === null) {
+    return <PageSkeleton variant="home" />
+  }
 
   const apps = applications ?? []
   const hasApplications = apps.length > 0

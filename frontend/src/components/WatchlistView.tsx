@@ -12,6 +12,7 @@ import {
 } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { BellIcon, BellOffIcon, OpenIcon, PlusIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type Role = {
   id: string
@@ -712,6 +713,12 @@ export function WatchlistView() {
     }
   }, [companies])
 
+  if (!failed && companies === null) {
+    return <PageSkeleton variant="watchlist" />
+  }
+
+  const loadedCompanies = companies ?? []
+
   return (
     <section className="screen" data-screen="watchlist">
       <div className="page-head">
@@ -723,9 +730,7 @@ export function WatchlistView() {
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Your watchlist is resting for a moment. Try again soon.</p>
-        ) : companies === null ? (
-          <p className="watch-invite">Loading your watchlist…</p>
-        ) : companies.length === 0 ? (
+        ) : loadedCompanies.length === 0 ? (
           <p className="watch-invite">
             Add a company you would fight for. We will watch its board for you.
           </p>

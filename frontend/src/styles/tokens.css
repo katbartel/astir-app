@@ -77,6 +77,8 @@
   --avatar: #D8CDBB;
   --avatar-overlay: rgba(255,253,248,.62);
   --hover-soft: rgba(70,60,40,.05);
+  --skeleton-base: rgba(70,60,40,.08);
+  --skeleton-shine: rgba(255,253,248,.72);
   --tile-control-tint: rgba(70,60,40,.035);
   --tile-control-hover: rgba(70,60,40,.07);
   --tile-control-active: rgba(70,60,40,.11);
@@ -247,6 +249,8 @@
   --avatar: #4A4C54;
   --avatar-overlay: rgba(40,42,48,.70);
   --hover-soft: rgba(236,231,220,.07);
+  --skeleton-base: rgba(236,231,220,.10);
+  --skeleton-shine: rgba(236,231,220,.18);
   --tile-control-tint: rgba(236,231,220,.04);
   --tile-control-hover: rgba(236,231,220,.08);
   --tile-control-active: rgba(236,231,220,.12);

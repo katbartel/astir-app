@@ -17,6 +17,7 @@ import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
 import { useStageConfig } from '@/lib/stages'
 import { OpenIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 // "Posted · Applied · Location · Type" for the expanded card, from the linked
 // posting when we have one.
@@ -112,7 +113,7 @@ function PipelineCard({
 }
 
 export function PipelineView() {
-  const { applications, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
+  const { applications, failed, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
   const { isPipeline, rankOf, colorFor } = useStageConfig()
   const [expandedId, setExpandedId] = useState('')
   const [logging, setLogging] = useState(false)
@@ -128,6 +129,10 @@ export function PipelineView() {
         return new Date(b.stageChangedAt).getTime() - new Date(a.stageChangedAt).getTime()
       })
   }, [applications, isPipeline, rankOf])
+
+  if (!failed && applications === null) {
+    return <PageSkeleton variant="pipeline" />
+  }
 
   const empty = pipeline.length === 0
 

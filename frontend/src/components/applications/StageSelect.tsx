@@ -73,8 +73,8 @@ export function StageSelect({
   const triggerRef = useRef<HTMLButtonElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const selected = normalizeStatus(value)
-  const selectedStage = allStages.find((stage) => stage.id === selected) ?? allStages[0]
   const selectedIndex = Math.max(0, allStages.findIndex((stage) => stage.id === selected))
+  const selectedLabel = labelFor(selected)
 
   useLayoutEffect(() => {
     if (open && menuRef.current && triggerRef.current) {
@@ -119,9 +119,9 @@ export function StageSelect({
           setOpen((value) => !value)
         }}
       >
-          <span className="stage-value">
+        <span className="stage-value">
           <StageRing status={selected} {...visualFor(selected)} />
-          {labelFor(selectedStage.id)}
+          {selectedLabel}
         </span>
         <span className="select-chev" aria-hidden="true">
           <ChevronDownIcon />

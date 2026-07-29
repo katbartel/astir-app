@@ -21,6 +21,7 @@ import { StageFilter } from './applications/StageFilter'
 import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
 import { ChevronDownIcon, OpenIcon, SearchIcon } from './icons'
+import { PageSkeleton } from './PageSkeleton'
 
 type ColumnKey = 'company' | 'role' | 'stage' | 'location' | 'type' | 'posted' | 'applied' | 'menu'
 type Column = { key: ColumnKey; label: string; sortable?: boolean }
@@ -67,7 +68,7 @@ function locationCell(
 }
 
 export function ApplicationsView() {
-  const { applications, changeStage, reload, showSnack, overlay } = useApplications()
+  const { applications, failed, changeStage, reload, showSnack, overlay } = useApplications()
   const { rankOf } = useStageConfig()
   const importInput = useRef<HTMLInputElement>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -225,6 +226,10 @@ export function ApplicationsView() {
     const file = event.target.files?.[0]
     event.target.value = ''
     if (file) await importCsv(file)
+  }
+
+  if (!failed && applications === null) {
+    return <PageSkeleton variant="applications" />
   }
 
   return (

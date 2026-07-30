@@ -71,11 +71,12 @@ function blockHtml(block: NoteBlock): string {
 }
 
 function noteHtml(note: Note | null): string {
-  return blocksHtml(note?.blocks ?? [])
+  return blocksHtml(pruneBlankCheckLines(note?.blocks ?? []))
 }
 
-// HTML for an unchecked checkbox, inserted via execCommand so the browser
-// records it on its native undo stack (a raw DOM mutation would not be).
+// HTML for an unchecked checkbox, inserted via execCommand so the browser keeps
+// the caret and surrounding markup consistent. Undo does not rely on it — the
+// field keeps its own history (see HISTORY_LIMIT).
 const CHECKBOX_HTML = blockHtml({ type: 'check', checked: false, text: '' })
 
 // Serialize a DOM container's children back into the block model. Recurses into
@@ -161,17 +162,21 @@ function serializeContainer(container: Node): NoteBlock[] {
       if (tag === 'U') return walk(element, { ...current, underline: true })
       if (tag === 'S' || tag === 'STRIKE' || tag === 'DEL') return walk(element, { ...current, strike: true })
       if (tag === 'A') return walk(element, { ...current, href: element.getAttribute('href') || current.href })
-      // Block-level wrappers start a new line when they follow other content —
+      // Block-level wrappers start a new line when anything precedes them —
       // unless the previous sibling is itself a block (a collapse or quote),
       // which already breaks the line; adding a "\n" there renders as a phantom
       // blank line after the block once the note is re-seeded.
+      // The test is "has a previous sibling", not "have we emitted anything yet":
+      // preceding lines may all be empty (<div><br></div>), and those still count
+      // as lines. A range clone often starts with exactly that, so the weaker
+      // test silently merged blank lines away from a split's head/tail.
       const prev = element.previousElementSibling
       const afterBlock =
         prev != null &&
         (prev.classList.contains('note-collapse') ||
           prev.classList.contains('note-quote') ||
           prev.tagName === 'BLOCKQUOTE')
-      if ((tag === 'DIV' || tag === 'P') && (text || blocks.length) && !afterBlock) {
+      if ((tag === 'DIV' || tag === 'P') && element.previousSibling != null && !afterBlock) {
         append('\n', current)
       }
       walk(element, current)
@@ -183,7 +188,7 @@ function serializeContainer(container: Node): NoteBlock[] {
 }
 
 function serialize(field: HTMLElement): Note {
-  return { kind: 'blocks', blocks: serializeContainer(field) }
+  return { kind: 'blocks', blocks: pruneBlankCheckLines(serializeContainer(field)) }
 }
 
 // A block is block-level (occupies its own line and breaks the flow on both
@@ -233,6 +238,37 @@ function linesToBlocks(lines: NoteBlock[][]): NoteBlock[] {
     line.forEach((block) => out.push(block))
   })
   return out
+}
+
+function hasVisibleText(block: NoteBlock): boolean {
+  if (block.type === 'text') return block.text.replace(/ /g, ' ').trim().length > 0
+  if (block.type === 'quote') return block.blocks.some(hasVisibleText)
+  if (block.type === 'collapse') return Boolean(block.summary.trim()) || block.blocks.some(hasVisibleText)
+  return false
+}
+
+function isBlankUncheckedCheckLine(line: NoteBlock[]): boolean {
+  return (
+    line[0]?.type === 'check' &&
+    !line[0].checked &&
+    line.slice(1).every((block) => block.type === 'text' && !hasVisibleText(block))
+  )
+}
+
+// Drop leftover blank unchecked checkbox rows from the saved model, at every
+// depth — a collapse or quote body is edited the same way and would otherwise
+// keep persisting the empty row a list continuation leaves behind.
+function pruneBlankCheckLines(blocks: NoteBlock[]): NoteBlock[] {
+  const pruned = blocksToLines(blocks)
+    .filter((line) => !isBlankUncheckedCheckLine(line))
+    .map((line) =>
+      line.map((block) =>
+        block.type === 'quote' || block.type === 'collapse'
+          ? { ...block, blocks: pruneBlankCheckLines(block.blocks) }
+          : block,
+      ),
+    )
+  return linesToBlocks(pruned)
 }
 
 // Move the checkbox line at drag-source index `from` next to the checkbox at
@@ -307,8 +343,18 @@ function markerLineInfo(field: HTMLElement, node: Text, index: number): { hasChe
   const suffix = afterLines[0] ?? []
   const hasCheck = [...prefix, ...suffix].some((block) => block.type === 'check')
   const prefixText = prefix.map((block) => (block.type === 'text' ? block.text : '')).join('')
-  const atStart = prefixText.replace(/ /g, ' ').trim() === ''
+  // A bullet already on the line does not disqualify the marker: a line carries
+  // one marker, so "[]" replaces the bullet (convertMarkers swallows it below).
+  const atStart = prefixText.replace('•', '').replace(/ /g, ' ').trim() === ''
   return { hasCheck, atStart }
+}
+
+// How much of the text before a "[]" marker is a bullet the checkbox is about
+// to replace, so the conversion can swallow it in the same step.
+function bulletPrefixLength(node: Text, index: number): number {
+  const before = (node.textContent || '').slice(0, index)
+  const match = /(?:^|\n)([^\S\n]*\u2022[^\S\n]*)$/.exec(before)
+  return match ? match[1].length : 0
 }
 
 // Replace each "[]" marker with a checkbox. We select the two marker characters
@@ -325,7 +371,9 @@ function convertMarkers(field: HTMLElement): boolean {
   let found = findMarker(field)
   for (let guard = 0; found && guard < 200; guard++) {
     const range = document.createRange()
-    range.setStart(found.node, found.index)
+    // Swallow a bullet already on the line: the checkbox replaces it, so the two
+    // shorthands overwrite each other rather than stacking up.
+    range.setStart(found.node, found.index - bulletPrefixLength(found.node, found.index))
     range.setEnd(found.node, found.index + 2)
     selection.removeAllRanges()
     selection.addRange(range)
@@ -362,79 +410,56 @@ function placeCaretAfterSentinel(field: HTMLElement, selection: Selection) {
   selection.addRange(range)
 }
 
-// With the caret collapsed at a line start, select a leading checkbox or "• "
-// bullet if the line has one, and report which. Leaves the selection covering
-// that marker (ready to be replaced) or collapsed at the line start if none.
-function selectLeadingMarker(selection: Selection): 'check' | 'bullet' | null {
-  if (typeof selection.modify !== 'function' || selection.rangeCount === 0) return null
-  selection.modify('extend', 'forward', 'character')
-  const fragment = selection.getRangeAt(0).cloneContents()
-  if (fragment.querySelector?.('.note-check')) return 'check'
-  if ((fragment.textContent || '').startsWith('•')) {
-    selection.modify('extend', 'forward', 'character') // include the space after "•"
-    return 'bullet'
-  }
-  selection.collapseToStart()
-  return null
+// The container list edits are scoped to: the collapse body holding the caret,
+// or the field itself. Staying inside the body is what keeps rebuilt lines from
+// landing beside it.
+function listContainer(field: HTMLElement): HTMLElement {
+  const context = collapseContext(field)
+  if (context?.where !== 'body') return field
+  return context.collapse.querySelector<HTMLElement>(':scope > .note-collapse-body') ?? field
 }
 
-// Move the caret to the start of the line holding the selection. Selection.modify
-// resolves this against real layout, so it works whether the line break is a
-// <div>, a <br>, or a "\n" inside one span.
-function caretToLineStart(field: HTMLElement): Selection | null {
+// Strip a line's marker while keeping its text: drops a leading checkbox (and
+// the space that follows it) or a leading "• ". Used when one marker replaces
+// the other.
+function stripLineMarker(line: NoteBlock[]): NoteBlock[] {
+  let first = true
+  return line
+    .filter((block) => block.type !== 'check')
+    .map((block) => {
+      if (!first || block.type !== 'text') return block
+      first = false
+      return { ...block, text: block.text.replace(/^\s*•?\s?/, '') }
+    })
+    .filter((block) => block.type !== 'text' || block.text !== '')
+}
+
+// Make the caret's line a checkbox or a bullet line. A line holds at most one
+// marker, so whichever marker is already there is replaced — checkbox and bullet
+// overwrite each other. Runs through the line model rather than a Selection
+// .modify probe, which a leading contenteditable=false checkbox defeats.
+function setLineMarker(container: HTMLElement, target: 'check' | 'bullet') {
+  // The toolbar acts on a selection, but a line is identified from a collapsed
+  // caret; work from the selection's start.
   const selection = window.getSelection()
-  if (!selection || selection.rangeCount === 0) return null
-  const range = selection.getRangeAt(0)
-  if (!field.contains(range.startContainer)) return null
-  selection.collapse(range.startContainer, range.startOffset)
-  if (typeof selection.modify === 'function') selection.modify('move', 'backward', 'lineboundary')
-  return selection
+  if (!selection || selection.rangeCount === 0) return
+  if (!selection.isCollapsed) selection.collapseToStart()
+  const split = splitCaretLines(container)
+  if (!split || split.marker === target) return
+  const { head, prefix, suffix, tail } = split
+  const text = stripLineMarker([...prefix, ...suffix])
+  reseedListLines(container, [...head, [...listOpener(target), CARET_BLOCK, ...text], ...tail])
 }
 
-// Make the current line a checkbox or a bullet. A line holds at most one marker:
-// if it already has the other kind we replace it (a single, undoable step), so
-// checkbox and bullet are mutually exclusive.
-function setLineMarker(field: HTMLElement, target: 'check' | 'bullet') {
-  const selection = caretToLineStart(field)
-  if (!selection) return
-  const existing = selectLeadingMarker(selection)
-  if (existing === target) {
-    selection.collapseToStart()
-    return
-  }
-  if (target === 'check') {
-    document.execCommand('insertHTML', false, CHECKBOX_HTML)
-  } else {
-    document.execCommand('insertText', false, '• ')
-  }
-}
-
-// Turn a "- " typed at the start of a line into a "• " bullet, swapping any
-// checkbox already on the line (mutual exclusion). Fires on the space keydown
-// (before the space is inserted); the dash goes through execCommand so Ctrl+Z
-// restores it.
-function convertBullet(field: HTMLElement): boolean {
-  const selection = window.getSelection()
-  if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
-  const range = selection.getRangeAt(0)
-  const node = range.startContainer
-  if (node.nodeType !== Node.TEXT_NODE || !field.contains(node)) return false
-  const textNode = node as Text
-  const offset = range.startOffset
-  if (!/(^|\n)-$/.test((textNode.textContent || '').slice(0, offset))) return false
-  const target = document.createRange()
-  target.setStart(textNode, offset - 1)
-  target.setEnd(textNode, offset)
-  selection.removeAllRanges()
-  selection.addRange(target)
-  document.execCommand('insertText', false, '• ')
-  const afterBullet = selection.getRangeAt(0).cloneRange()
-  if (caretToLineStart(field) && selectLeadingMarker(selection) === 'check') {
-    document.execCommand('delete')
-  } else {
-    selection.removeAllRanges()
-    selection.addRange(afterBullet)
-  }
+// Turn a "-" typed at the start of a line into a bullet when space is pressed,
+// replacing a checkbox already on that line. Fires on the space keydown, before
+// the space is inserted.
+function convertBullet(container: HTMLElement): boolean {
+  const split = splitCaretLines(container)
+  if (!split) return false
+  const { head, prefix, suffix, tail } = split
+  if (lineTextAfterMarker(prefix) !== '-') return false
+  reseedListLines(container, [...head, [...listOpener('bullet'), CARET_BLOCK, ...suffix], ...tail])
   return true
 }
 
@@ -502,6 +527,13 @@ function splitCaretLines(container: HTMLElement): CaretSplit | null {
 function reseedListLines(container: HTMLElement, lines: NoteBlock[][]) {
   container.innerHTML = lines
     .map((line) => {
+      // A block-level line (quote/collapse) is emitted bare: it already occupies
+      // its own line and breaks the flow on both sides. Wrapping it in a <div>
+      // would hide it from the serializer's afterBlock guard, which only looks
+      // for a direct .note-collapse/.note-quote sibling — it would then add a
+      // phantom "\n" before the following line, growing one blank line above the
+      // block on every reseed.
+      if (isBlockLevel(line)) return blockHtml(line[0])
       const inner = line.map(blockHtml).join('')
       return `<div>${inner || '<br>'}</div>`
     })
@@ -538,10 +570,50 @@ function reseedListLines(container: HTMLElement, lines: NoteBlock[][]) {
   selection.addRange(range)
 }
 
-// Enter on a checkbox/bullet line. With content, continue the list: keep the
-// line and open a fresh one under it carrying the same marker (any text after the
-// caret moves down with it). On an empty marker line, drop the marker instead and
-// leave a plain empty line with the caret on it - the user ending the list.
+function caretHasInlineSuffix(container: HTMLElement): boolean {
+  const selection = window.getSelection()
+  if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
+  const range = selection.getRangeAt(0)
+  if (!container.contains(range.startContainer)) return false
+  if (range.startContainer.nodeType !== Node.TEXT_NODE) return false
+  const after = ((range.startContainer as Text).textContent || '').slice(range.startOffset)
+  return after.replace(/ /g, ' ').length > 0 && !after.startsWith('\n')
+}
+
+// The blocks that open a continued list line. A checkbox is followed by a space
+// so the caret lands in editable text after it — without one the caret is
+// stranded against the contenteditable=false box and typing silently does
+// nothing until you click back in. (pre-wrap keeps the space.)
+function listOpener(marker: 'check' | 'bullet', checked = false): NoteBlock[] {
+  return marker === 'check'
+    ? [{ type: 'check', checked, text: '' }, { type: 'text', text: ' ' }]
+    : [{ type: 'text', text: '• ' }]
+}
+
+// The text of a line's blocks, with the marker's own characters removed, so a
+// line holding only its marker reads as blank.
+function lineTextAfterMarker(line: NoteBlock[]): string {
+  return line
+    .map((block) => (block.type === 'text' ? block.text : ''))
+    .join('')
+    .replace('•', '')
+    .replace(/ /g, ' ')
+    .trim()
+}
+
+// The checked state of whichever checkbox sits on a line (lines hold at most one).
+function lineChecked(line: NoteBlock[]): boolean {
+  const box = line.find((block) => block.type === 'check')
+  return box?.type === 'check' ? box.checked : false
+}
+
+// Enter on a checkbox/bullet line only touches the current line: a non-empty row
+// opens the next row with the same marker, an empty row drops its marker and
+// leaves the caret on that same, now plain, line. Both go through the line model
+// rather than execCommand — insertHTML escapes a collapse body div (the new row
+// would land beside it, after a phantom blank line), and the Selection.modify
+// probe that would find a leading marker to delete is defeated by the checkbox's
+// own contenteditable=false span.
 function handleListEnter(container: HTMLElement): boolean {
   const split = splitCaretLines(container)
   if (!split || !split.marker) return false
@@ -550,11 +622,23 @@ function handleListEnter(container: HTMLElement): boolean {
     reseedListLines(container, [...head, [CARET_BLOCK], ...tail])
     return true
   }
-  const opener: NoteBlock[] =
-    marker === 'check'
-      ? [{ type: 'check', checked: false, text: '' }, { type: 'text', text: ' ' }, CARET_BLOCK]
-      : [{ type: 'text', text: '• ' }, CARET_BLOCK]
-  reseedListLines(container, [...head, prefix, [...opener, ...suffix], ...tail])
+  // Enter at the start of a row's text opens a fresh row of the same kind above
+  // it and leaves the caret there, ready to type the new item — the row that was
+  // there keeps its text, its marker, and its checked state, and simply moves
+  // down. (Enter again on the new empty row drops its marker, above.) The caret
+  // sits at a line start as an element offset rather than inside a text node, so
+  // this is decided from the line model, not from a DOM probe.
+  if (lineTextAfterMarker(prefix) === '') {
+    const line = [...prefix, ...suffix]
+    const opener = [...listOpener(marker, lineChecked(line)), CARET_BLOCK]
+    reseedListLines(container, [...head, opener, line, ...tail])
+    return true
+  }
+  const suffixIsInline = suffix.length > 0 && caretHasInlineSuffix(container)
+  const suffixLine = suffixIsInline ? suffix : []
+  const nextLines = suffixIsInline || suffix.length === 0 ? tail : [suffix, ...tail]
+  const opener: NoteBlock[] = [...listOpener(marker), CARET_BLOCK]
+  reseedListLines(container, [...head, prefix, [...opener, ...suffixLine], ...nextLines])
   return true
 }
 
@@ -649,8 +733,41 @@ function handleCollapseEnter(field: HTMLElement, allowExit: boolean): boolean {
   const body = context.collapse.querySelector<HTMLElement>(':scope > .note-collapse-body')
   if (!body) return false
 
+  // Enter in the title, by where the caret sits in it:
+  //  - at the very start: push the whole section down and open a plain line
+  //    above it, so something can be written before the section;
+  //  - mid-title: split it — the text after the caret drops into the section as
+  //    its first line and the title keeps what came before;
+  //  - at the end: open a fresh empty first line inside the section.
+  // An empty title counts as "at the end" (naming it is optional), so a freshly
+  // inserted collapse still drops into its body on the first Enter.
   if (context.where === 'summary') {
-    caretToStart(body)
+    const summaryEl = context.head?.querySelector<HTMLElement>('.note-collapse-summary')
+    if (!summaryEl) return false
+    const caret = selection.getRangeAt(0)
+    const upToCaret = document.createRange()
+    upToCaret.selectNodeContents(summaryEl)
+    upToCaret.setEnd(caret.startContainer, caret.startOffset)
+    const title = summaryEl.textContent || ''
+    const titleBefore = upToCaret.toString()
+    const titleAfter = title.slice(titleBefore.length)
+
+    if (titleBefore === '' && title !== '') {
+      const above = document.createElement('div')
+      above.appendChild(document.createElement('br'))
+      context.collapse.before(above)
+      caretToStart(above)
+      return true
+    }
+
+    const bodyLines = blocksToLines(serializeContainer(body))
+    const rest = bodyLines.every((line) => line.length === 0) ? [] : bodyLines
+    if (titleAfter !== '') {
+      summaryEl.textContent = titleBefore
+      reseedListLines(body, [[CARET_BLOCK, { type: 'text', text: titleAfter }], ...rest])
+      return true
+    }
+    reseedListLines(body, [[CARET_BLOCK], ...rest])
     return true
   }
 
@@ -696,6 +813,71 @@ function suppressNextClick() {
   document.addEventListener('click', handler, true)
 }
 
+// ---- undo history -----------------------------------------------------------
+// The browser's native undo stack cannot be used here: every structural edit
+// (Enter on a list row, a heading split, a drag reorder) rebuilds a container's
+// innerHTML, which the stack does not record, and routing those edits through
+// execCommand instead is what used to let insertHTML escape a collapse body. So
+// the field keeps its own history of states and takes over ⌘Z / ⇧⌘Z entirely —
+// one source of truth, and every kind of edit is reversible.
+
+// How many steps back ⌘Z can walk. Notes are small, so this is generous.
+const HISTORY_LIMIT = 200
+// A run of typing shorter than this folds into the current step, so ⌘Z undoes
+// words rather than single characters.
+const TYPING_RUN_MS = 700
+
+type CaretMark = { path: number[]; offset: number }
+type HistoryEntry = { html: string; caret: CaretMark | null }
+
+// A caret position that survives an innerHTML swap: the chain of child indices
+// from the field down to the caret's node, plus the offset inside it. Restoring
+// the same HTML makes the same path valid again.
+function markCaret(field: HTMLElement): CaretMark | null {
+  const selection = window.getSelection()
+  if (!selection || selection.rangeCount === 0) return null
+  const range = selection.getRangeAt(0)
+  if (!field.contains(range.startContainer)) return null
+  const path: number[] = []
+  let node: Node = range.startContainer
+  while (node !== field) {
+    const parent: Node | null = node.parentNode
+    if (!parent) return null
+    path.unshift(Array.prototype.indexOf.call(parent.childNodes, node))
+    node = parent
+  }
+  return { path, offset: range.startOffset }
+}
+
+function restoreCaret(field: HTMLElement, mark: CaretMark | null) {
+  const selection = window.getSelection()
+  if (!selection) return
+  let node: Node | null = field
+  if (mark) {
+    for (const index of mark.path) {
+      const child: Node | undefined = node?.childNodes[index]
+      if (!child) {
+        node = null
+        break
+      }
+      node = child
+    }
+  } else {
+    node = null
+  }
+  const range = document.createRange()
+  if (node) {
+    const limit = node.nodeType === Node.TEXT_NODE ? (node.textContent || '').length : node.childNodes.length
+    range.setStart(node, Math.min(mark?.offset ?? 0, limit))
+  } else {
+    // The path no longer resolves (or there was no caret): fall back to the end.
+    range.setStart(field, field.childNodes.length)
+  }
+  range.collapse(true)
+  selection.removeAllRanges()
+  selection.addRange(range)
+}
+
 type ToolbarState = {
   top: number
   left: number
@@ -710,8 +892,9 @@ type ToolbarState = {
 // and collapsible sections. Type "[]" for a checkbox or "- " at a line start for
 // a bullet; select text to reveal a toolbar and use the usual ⌘ shortcuts.
 // Uncontrolled contenteditable (React never re-renders it mid-edit, which would
-// drop the caret). All programmatic edits go through execCommand so Ctrl+Z
-// reverses them.
+// drop the caret). ⌘Z / ⇧⌘Z reverse and replay every kind of edit — typing,
+// structural changes, checkbox toggles, drag reorders — off the field's own
+// history rather than the browser's stack (see HISTORY_LIMIT).
 export function NoteField({
   note,
   onChange,
@@ -727,11 +910,80 @@ export function NoteField({
   // Index (among checkboxes in document order) of the checkbox being dragged, or
   // null when no checkbox drag is in progress.
   const dragCheck = useRef<number | null>(null)
+  const dragContainer = useRef<HTMLElement | null>(null)
   // Where the dragged row will drop: the target checkbox index and whether it
   // lands after (vs before) that row. Kept in a ref so drop matches the hint.
   const dropInfo = useRef<{ index: number; after: boolean } | null>(null)
   // Viewport-space position of the drop indicator line (null hides it).
   const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null)
+  // Undo history: states of the field, oldest first, with historyAt pointing at
+  // the one currently shown. Entries after it are the redo tail.
+  const history = useRef<HistoryEntry[]>([])
+  const historyAt = useRef(-1)
+  // The run of typing currently being folded into one step.
+  const typing = useRef<{ at: number; kind: string }>({ at: 0, kind: '' })
+
+  // Record the field's current state as a new undo step, discarding any redo
+  // tail (a fresh edit after undoing forks the history, as editors do).
+  function commitHistory() {
+    const field = ref.current
+    if (!field) return
+    history.current = history.current.slice(0, historyAt.current + 1)
+    history.current.push({ html: field.innerHTML, caret: markCaret(field) })
+    if (history.current.length > HISTORY_LIMIT) history.current.shift()
+    historyAt.current = history.current.length - 1
+  }
+
+  // Fold the current state into the step already on top, used while a run of
+  // typing is still in progress so the run undoes as one step.
+  function mergeHistory() {
+    const field = ref.current
+    if (!field) return
+    if (historyAt.current < 0) return commitHistory()
+    history.current[historyAt.current] = { html: field.innerHTML, caret: markCaret(field) }
+  }
+
+  // End any in-progress typing run, so the next edit starts its own step.
+  function breakTypingRun() {
+    typing.current = { at: 0, kind: '' }
+  }
+
+  // Commit a discrete step and save. Used by every programmatic edit.
+  function commitAndSave(field: HTMLElement) {
+    commitHistory()
+    breakTypingRun()
+    onChange(serialize(field))
+  }
+
+  // Step the history pointer and put that state back on screen.
+  function travelHistory(delta: number): boolean {
+    const field = ref.current
+    if (!field) return false
+    const next = historyAt.current + delta
+    if (next < 0 || next >= history.current.length) return false
+    const entry = history.current[next]
+    historyAt.current = next
+    busy.current = true
+    field.innerHTML = entry.html
+    restoreCaret(field, entry.caret)
+    busy.current = false
+    breakTypingRun()
+    setToolbar(null)
+    onChange(serialize(field))
+    return true
+  }
+
+  // Group native typing into steps: a new one starts when the kind of edit
+  // changes, after a pause, or at a word boundary, so ⌘Z walks back in useful
+  // chunks rather than one character at a time.
+  function recordTyping(inputType: string, data: string | null) {
+    const now = Date.now()
+    const kind = inputType.startsWith('delete') ? 'delete' : inputType
+    if (kind === typing.current.kind && now - typing.current.at < TYPING_RUN_MS) mergeHistory()
+    else commitHistory()
+    // A space closes the run so the next word becomes its own step.
+    typing.current = { at: now, kind: data === ' ' || data === ' ' ? '' : kind }
+  }
 
   // Run a programmatic edit, then serialize + save once. The busy flag swallows
   // the nested input events execCommand emits so we don't recurse or double-run.
@@ -741,7 +993,7 @@ export function NoteField({
     busy.current = true
     mutate()
     busy.current = false
-    onChange(serialize(field))
+    commitAndSave(field)
   }
 
   // Position the toolbar over the current selection and read back which inline
@@ -781,6 +1033,10 @@ export function NoteField({
     if (seeded.current || !ref.current) return
     seeded.current = true
     ref.current.innerHTML = noteHtml(note)
+    // The seeded state is the first history entry, so ⌘Z can walk all the way
+    // back to how the note looked when it was opened.
+    history.current = [{ html: ref.current.innerHTML, caret: null }]
+    historyAt.current = 0
   }, [note])
 
   useEffect(() => {
@@ -791,11 +1047,15 @@ export function NoteField({
   function handleInput(event: React.FormEvent<HTMLDivElement>) {
     const field = ref.current
     if (!field || busy.current) return
-    // Undo/redo also fire "input"; if we re-converted "[]" here, Ctrl+Z could
-    // never land on the literal "[]" — it would be turned straight back into a
-    // checkbox. Just persist the restored state in that case.
-    const inputType = (event.nativeEvent as InputEvent).inputType
+    const nativeEvent = event.nativeEvent as InputEvent
+    const inputType = nativeEvent.inputType
+    // ⌘Z is handled by our own history, so the browser should never run its own.
+    // If one slips through anyway, just persist what it left behind rather than
+    // re-converting "[]" (which would turn it straight back into a checkbox).
     const isHistory = inputType === 'historyUndo' || inputType === 'historyRedo'
+    // Record the typed character first, so the literal "[]" is its own undo step
+    // and the checkbox conversion the next one — ⌘Z lands on "[]", then on "[".
+    recordTyping(inputType, nativeEvent.data)
     if (!isHistory && (field.textContent || '').includes('[]')) {
       runEdit(() => convertMarkers(field))
       return
@@ -813,7 +1073,7 @@ export function NoteField({
       const collapse = toggle.closest('.note-collapse') as HTMLElement | null
       if (collapse) {
         collapse.dataset.open = collapse.dataset.open === 'false' ? 'true' : 'false'
-        onChange(serialize(field))
+        commitAndSave(field)
       }
       return
     }
@@ -827,18 +1087,23 @@ export function NoteField({
     target.setAttribute('aria-checked', next)
     const box = target.querySelector('.note-box')
     if (box) box.innerHTML = next === 'true' ? CHECK_SVG : ''
-    onChange(serialize(field))
+    commitAndSave(field)
   }
 
-  // Position of a checkbox among all checkboxes in the field, in document order.
-  function checkIndex(field: HTMLElement, check: Element): number {
-    return Array.from(field.querySelectorAll('.note-check')).indexOf(check)
+  function checkContainer(check: Element): HTMLElement {
+    return check.closest<HTMLElement>('.note-collapse-body') ?? ref.current!
+  }
+
+  // Position of a checkbox among all checkboxes in its editing container.
+  function checkIndex(container: HTMLElement, check: Element): number {
+    return Array.from(container.querySelectorAll('.note-check')).indexOf(check)
   }
 
   // Reset all drag affordances (dimmed source, drop line, stored intent).
   function clearDrag(field: HTMLElement | null) {
     field?.querySelectorAll('.note-check-dragging').forEach((el) => el.classList.remove('note-check-dragging'))
     dragCheck.current = null
+    dragContainer.current = null
     dropInfo.current = null
     setDropLine(null)
   }
@@ -868,7 +1133,9 @@ export function NoteField({
     const field = ref.current
     const check = (event.target as HTMLElement).closest('.note-check')
     if (!field || !check) return
-    dragCheck.current = checkIndex(field, check)
+    const container = checkContainer(check)
+    dragContainer.current = container
+    dragCheck.current = checkIndex(container, check)
     // Some browsers require data to be set for a drag to begin.
     event.dataTransfer.setData('text/plain', '')
     event.dataTransfer.effectAllowed = 'move'
@@ -885,9 +1152,10 @@ export function NoteField({
 
   function handleDragOver(event: React.DragEvent) {
     const field = ref.current
-    if (!field || dragCheck.current === null) return
+    const container = dragContainer.current
+    if (!field || !container || dragCheck.current === null) return
     const check = (event.target as HTMLElement).closest('.note-check')
-    if (!check || check.classList.contains('note-check-dragging')) {
+    if (!check || checkContainer(check) !== container || check.classList.contains('note-check-dragging')) {
       dropInfo.current = null
       setDropLine(null)
       return
@@ -899,7 +1167,7 @@ export function NoteField({
     const rect = check.getBoundingClientRect()
     const fieldRect = field.getBoundingClientRect()
     const after = event.clientY > rect.top + rect.height / 2
-    dropInfo.current = { index: checkIndex(field, check), after }
+    dropInfo.current = { index: checkIndex(container, check), after }
     setDropLine({
       top: after ? rect.bottom : rect.top,
       left: rect.left,
@@ -909,11 +1177,12 @@ export function NoteField({
 
   function handleDrop(event: React.DragEvent) {
     const field = ref.current
+    const container = dragContainer.current
     const from = dragCheck.current
     const info = dropInfo.current
-    if (field && from !== null && info) {
+    if (field && container && from !== null && info) {
       event.preventDefault()
-      if (reorderCheckLine(field, from, info.index, info.after)) onChange(serialize(field))
+      if (reorderCheckLine(container, from, info.index, info.after)) commitAndSave(field)
     }
     clearDrag(field)
   }
@@ -966,7 +1235,23 @@ export function NoteField({
     const field = ref.current
     if (!field) return
 
-    // Format shortcuts. The browser's own ⌘Z/⌘A/etc. are left untouched.
+    // Undo/redo run off this field's own history, never the browser's — see the
+    // note above HISTORY_LIMIT for why. ⇧⌘Z and ⌘Y both redo.
+    if ((event.metaKey || event.ctrlKey) && !event.altKey) {
+      const key = event.key.toLowerCase()
+      if (key === 'z') {
+        event.preventDefault()
+        travelHistory(event.shiftKey ? 1 : -1)
+        return
+      }
+      if (key === 'y' && !event.shiftKey) {
+        event.preventDefault()
+        travelHistory(1)
+        return
+      }
+    }
+
+    // Format shortcuts. The browser's own ⌘A/etc. are left untouched.
     if ((event.metaKey || event.ctrlKey) && !event.altKey) {
       const key = event.key.toLowerCase()
       if (!event.shiftKey && (key === 'b' || key === 'i' || key === 'u')) {
@@ -1014,7 +1299,7 @@ export function NoteField({
       busy.current = false
       if (handled) {
         event.preventDefault()
-        onChange(serialize(field))
+        commitAndSave(field)
         return
       }
     }
@@ -1029,16 +1314,11 @@ export function NoteField({
       !busy.current
     ) {
       busy.current = true
-      const context = collapseContext(field)
-      const body =
-        context?.where === 'body'
-          ? context.collapse.querySelector<HTMLElement>(':scope > .note-collapse-body')
-          : null
-      const handled = handleListBackspace(body ?? field)
+      const handled = handleListBackspace(listContainer(field))
       busy.current = false
       if (handled) {
         event.preventDefault()
-        onChange(serialize(field))
+        commitAndSave(field)
         return
       }
     }
@@ -1047,11 +1327,11 @@ export function NoteField({
     // type normally (its own input event handles the save).
     if (event.key === ' ' && !busy.current) {
       busy.current = true
-      const converted = convertBullet(field)
+      const converted = convertBullet(listContainer(field))
       busy.current = false
       if (converted) {
         event.preventDefault()
-        onChange(serialize(field))
+        commitAndSave(field)
       }
     }
   }
@@ -1077,7 +1357,7 @@ export function NoteField({
       event.preventDefault()
       const field = ref.current
       if (!field) return
-      runEdit(() => setLineMarker(field, kind))
+      runEdit(() => setLineMarker(listContainer(field), kind))
       setToolbar(null)
     }
   }

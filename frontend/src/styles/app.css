@@ -123,8 +123,7 @@ button {
   gap: var(--space-hairline);
 }
 
-.nav a,
-.nav span {
+.nav a {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -133,10 +132,6 @@ button {
   color: var(--ink2);
   font-size: var(--type-control);
   text-decoration: none;
-}
-
-.nav span {
-  cursor: default;
 }
 
 .nav .nav-icon {
@@ -156,15 +151,7 @@ button {
   opacity: 0.85;
 }
 
-.sk-nav-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: var(--r-pill);
-  background: var(--skeleton-base);
-}
-
-.nav a.active,
-.nav span.active {
+.nav a.active {
   background: var(--nav-active);
   color: var(--ink);
   font-weight: var(--weight-medium);
@@ -208,217 +195,6 @@ button {
 
 .screen[hidden] {
   display: none;
-}
-
-.skeleton-screen {
-  display: block;
-}
-
-.sk-card,
-.sk-bar,
-.sk-button,
-.sk-icon,
-.sk-pill,
-.sk-arc {
-  position: relative;
-  overflow: hidden;
-  background: var(--skeleton-base);
-}
-
-.sk-card::after,
-.sk-bar::after,
-.sk-button::after,
-.sk-icon::after,
-.sk-pill::after,
-.sk-arc::after {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, var(--skeleton-shine) 50%, transparent 100%);
-  content: "";
-  transform: translateX(-100%);
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes skeleton-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.sk-head,
-.sk-card-top,
-.sk-toolbar,
-.sk-pipeline-row,
-.sk-table-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.sk-head {
-  margin-bottom: var(--space-6);
-}
-
-.sk-title {
-  margin-bottom: var(--space-6);
-}
-
-.sk-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.sk-card {
-  padding: var(--pad-card);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  box-shadow: var(--shadow-card);
-}
-
-.sk-home-card,
-.sk-list-card,
-.sk-prefs-card {
-  display: grid;
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
-}
-
-.sk-bar {
-  display: block;
-  width: 42%;
-  height: var(--r-lg);
-  border-radius: var(--r-pill);
-}
-
-.sk-bar.short {
-  width: 24%;
-}
-
-.sk-bar.medium {
-  width: 42%;
-}
-
-.sk-bar.long {
-  width: 68%;
-}
-
-.sk-bar.full {
-  width: 100%;
-}
-
-.sk-button,
-.sk-pill {
-  display: inline-flex;
-  flex: 0 0 auto;
-  height: var(--input-height);
-  border-radius: var(--r-pill);
-}
-
-.sk-button {
-  width: calc(var(--rail-width) - var(--space-16));
-}
-
-.sk-pill {
-  width: calc(var(--rail-width) - var(--space-8));
-}
-
-.sk-icon {
-  display: inline-flex;
-  flex: 0 0 var(--menu-trigger);
-  width: var(--menu-trigger);
-  height: var(--menu-trigger);
-  border-radius: var(--r-pill);
-}
-
-.sk-goal-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.sk-goal {
-  display: flex;
-  min-height: var(--goal-tile-height);
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-3) var(--space-4);
-  border: var(--border-thin) solid var(--line);
-  border-radius: var(--r-md);
-}
-
-.sk-goal .sk-bar {
-  width: 54%;
-}
-
-.sk-arc {
-  display: block;
-  width: var(--goal-gauge-width);
-  height: var(--goal-gauge-height);
-  border-radius: var(--r-pill) var(--r-pill) var(--r-sm) var(--r-sm);
-}
-
-.sk-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: var(--border-thin) solid var(--line);
-}
-
-.sk-row-main {
-  display: grid;
-  flex: 1 1 auto;
-  gap: var(--space-2);
-}
-
-.sk-row-main .sk-bar {
-  width: 100%;
-}
-
-.sk-row-main .sk-bar.medium {
-  width: 54%;
-}
-
-.sk-pipeline-row {
-  margin-bottom: var(--space-3);
-}
-
-.sk-table {
-  display: grid;
-  min-width: var(--content-max);
-  border-top: var(--border-thin) solid var(--line);
-}
-
-.sk-table-row {
-  padding: var(--space-3) var(--space-2);
-  border-bottom: var(--border-thin) solid var(--line);
-}
-
-.sk-table-row .sk-bar {
-  flex: 1 1 0;
-}
-
-.sk-pref-row {
-  display: grid;
-  gap: var(--space-2);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sk-card::after,
-  .sk-bar::after,
-  .sk-button::after,
-  .sk-icon::after,
-  .sk-pill::after,
-  .sk-arc::after {
-    animation: none;
-    opacity: 0;
-  }
 }
 
 .today-head {
@@ -2373,36 +2149,50 @@ h1 {
   white-space: pre-wrap;
 }
 
+/* The box is the row's left edge, so a checkbox line and a plain line in the
+   same container share one margin. The grip is taken out of flow (below) for
+   exactly that reason — in flow it pushed every box right by its own width. */
 .note-check {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
   height: var(--watch-title-action-size);
-  margin: 0 var(--space-1);
+  margin: 0 var(--space-1) 0 0;
   vertical-align: middle;
   cursor: pointer;
 }
 
 /* Six-dot drag handle before a checkbox. Subtle at rest, solid on hover; it is
-   the only draggable part, so reordering starts here rather than on the box. */
+   the only draggable part, so reordering starts here rather than on the box.
+   Absolutely placed in the gutter left of the box so it never shifts the row. */
 .note-grip {
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--space-3);
+  width: var(--space-2);
   color: var(--placeholder);
-  opacity: 0.4;
+  opacity: 0;
   cursor: grab;
+  touch-action: none;
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
 .note-grip svg {
-  width: 10px;
-  height: 16px;
+  width: var(--space-2);
+  height: var(--space-3);
   fill: currentColor;
 }
 
 .note-check:hover .note-grip {
+  opacity: 1;
+  color: var(--ink2);
+}
+
+.note-grip:hover {
   opacity: 1;
   color: var(--ink2);
 }
@@ -3554,7 +3344,6 @@ textarea {
   }
 
   .goal-grid,
-  .sk-goal-grid,
   .goal-grid.count-1,
   .goal-grid.count-2,
   .goal-grid.count-3,
@@ -3569,11 +3358,7 @@ textarea {
   }
 
   .pipeline-head,
-  .applications-head,
-  .sk-head,
-  .sk-toolbar,
-  .sk-pipeline-row,
-  .sk-table-row {
+  .applications-head {
     align-items: flex-start;
     flex-wrap: wrap;
   }

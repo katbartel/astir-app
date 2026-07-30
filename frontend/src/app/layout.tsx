@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { Bricolage_Grotesque, Instrument_Sans } from 'next/font/google'
+import { ApplicationsProvider } from '@/components/applications/ApplicationsProvider'
 import { DevAgentation } from '@/components/DevAgentation'
 import { LoginView } from '@/components/LoginView'
 import { Tooltips } from '@/components/Tooltips'
@@ -48,7 +49,13 @@ export default async function RootLayout({
         />
       </head>
       <body>
-        {user ? <UserProvider user={user}>{children}</UserProvider> : <LoginView />}
+        {user ? (
+          <UserProvider user={user}>
+            <ApplicationsProvider>{children}</ApplicationsProvider>
+          </UserProvider>
+        ) : (
+          <LoginView />
+        )}
         <Tooltips />
         <DevAgentation />
       </body>

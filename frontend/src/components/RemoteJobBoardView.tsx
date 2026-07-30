@@ -9,7 +9,6 @@ import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { OpenIcon, PlusIcon } from './icons'
-import { PageSkeleton } from './PageSkeleton'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -246,10 +245,6 @@ export function RemoteJobBoardView() {
     )
   }
 
-  if (!failed && listings === null) {
-    return <PageSkeleton variant="board" />
-  }
-
   return (
     <section className="screen" data-screen="remote-job-board">
       <div className="page-head">
@@ -258,6 +253,8 @@ export function RemoteJobBoardView() {
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is resting for a moment. Try again soon.</p>
+        ) : listings === null ? (
+          <p className="watch-invite">Gathering remote openings…</p>
         ) : sorted.length === 0 ? (
           <p className="watch-invite">
             No remote roles matching your keywords yet. New openings appear here as the curated

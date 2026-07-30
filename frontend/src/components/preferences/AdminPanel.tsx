@@ -2,7 +2,6 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useUser } from '../UserProvider'
-import { PageSkeleton } from '../PageSkeleton'
 
 type ResolutionStatus = 'pending' | 'resolved' | 'unresolved'
 type ReviewStatus = 'reviewed' | 'not_reviewed' | 'to_review'
@@ -541,7 +540,7 @@ export function AdminPanel() {
         {loadFailed ? (
           <p className="watch-invite">Couldn’t load the list. Try refreshing.</p>
         ) : companies === null ? (
-          <PageSkeleton variant="preferences" />
+          <p className="watch-invite">Loading…</p>
         ) : companies.length === 0 ? (
           <p className="watch-invite">No companies yet. Add some above.</p>
         ) : visibleCompanies && visibleCompanies.length === 0 ? (
@@ -668,16 +667,17 @@ export function AdminPanel() {
                     <button className="text-button" type="button" onClick={() => startEdit(company)}>
                       Edit
                     </button>
-                    {company.resolutionStatus !== 'resolved' ? (
-                      <button
-                        className="text-button"
-                        type="button"
-                        disabled={retryingId === company.id}
-                        onClick={() => retryOne(company)}
-                      >
-                        {retryingId === company.id ? 'Retrying…' : 'Retry'}
-                      </button>
-                    ) : null}
+                    {/* Offered on Active rows too: a company can be linked to a
+                        board that resolved but has never returned a job, and
+                        re-resolving is how it gets re-probed from scratch. */}
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={retryingId === company.id}
+                      onClick={() => retryOne(company)}
+                    >
+                      {retryingId === company.id ? 'Retrying…' : 'Retry'}
+                    </button>
                     <button className="text-button" type="button" onClick={() => remove(company)}>
                       Remove
                     </button>

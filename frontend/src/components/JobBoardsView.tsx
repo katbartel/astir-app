@@ -9,7 +9,6 @@ import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { OpenIcon, PlusIcon } from './icons'
-import { PageSkeleton } from './PageSkeleton'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -240,10 +239,6 @@ export function JobBoardsView() {
     )
   }
 
-  if (!failed && listings === null) {
-    return <PageSkeleton variant="board" />
-  }
-
   return (
     <section className="screen" data-screen="job-boards">
       <div className="page-head">
@@ -252,6 +247,8 @@ export function JobBoardsView() {
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Job boards are resting for a moment. Try again soon.</p>
+        ) : listings === null ? (
+          <p className="watch-invite">Gathering openings…</p>
         ) : sorted.length === 0 ? (
           <p className="watch-invite">
             Nothing matching your preferences yet. New openings appear here as boards are checked.

@@ -78,16 +78,8 @@ export function pipelineStageIds(catalog: StageCatalog): StageId[] {
   return [...catalog.progress.map((item) => item.id), STAGE_IDS.offer, STAGE_IDS.hired]
 }
 
-function isProgressStageId(id: StageId): boolean {
-  return normalizeStageId(id).startsWith('progress-')
-}
-
 export function stageById(catalog: StageCatalog, id: StageId): StageRecord {
-  const normalized = normalizeStageId(id)
-  return (
-    flattenStages(catalog).find((item) => item.id === normalized) ??
-    (isProgressStageId(normalized) ? stage(normalized, 'In progress', 'progress') : catalog.applying)
-  )
+  return flattenStages(catalog).find((item) => item.id === id) ?? catalog.applying
 }
 
 export function stageLabel(catalog: StageCatalog, id: StageId): string {
@@ -112,16 +104,11 @@ export function normalizeStageId(stageId?: string | null, legacyStatus?: string 
 }
 
 export function stageRank(catalog: StageCatalog, id: StageId): number {
-  const normalized = normalizeStageId(id)
-  const knownIndex = flattenStages(catalog).findIndex((stageItem) => stageItem.id === normalized)
-  if (knownIndex >= 0) return knownIndex
-  if (isProgressStageId(normalized)) return catalog.progress.length
-  return 0
+  return flattenStages(catalog).findIndex((stageItem) => stageItem.id === normalizeStageId(id))
 }
 
 export function isPipelineStage(catalog: StageCatalog, id: StageId): boolean {
-  const normalized = normalizeStageId(id)
-  return isProgressStageId(normalized) || pipelineStageIds(catalog).includes(normalized)
+  return pipelineStageIds(catalog).includes(normalizeStageId(id))
 }
 
 export function stageColorKey(id: StageId): string {
@@ -143,7 +130,7 @@ export function stageVisual(catalog: StageCatalog, id: StageId): StageVisual {
   const index = catalog.progress.findIndex((stageItem) => stageItem.id === normalized)
   const count = catalog.progress.length
   return {
-    fraction: index >= 0 && count > 0 ? (index + 1) / (count + 1) : count / (count + 1),
+    fraction: index >= 0 && count > 0 ? (index + 1) / (count + 1) : 0,
     state: 'progress',
   }
 }

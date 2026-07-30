@@ -162,10 +162,12 @@ export class RemoteCompaniesService {
       data.nameKey = nameKey
       shouldResolve = nameKey !== company.nameKey
     }
+    let careersUrlChanged = false
     if (input.careersUrl !== undefined) {
       const careersUrl = input.careersUrl.trim() || null
       data.careersUrl = careersUrl
-      shouldResolve = shouldResolve || careersUrl !== company.careersUrl
+      careersUrlChanged = careersUrl !== company.careersUrl
+      shouldResolve = shouldResolve || careersUrlChanged
     }
     if (input.companyWebsite !== undefined) {
       data.companyWebsite = input.companyWebsite.trim() || null
@@ -178,7 +180,11 @@ export class RemoteCompaniesService {
     }
     const updated = await this.prisma.remoteCompany.update({ where: { id }, data })
     if (shouldResolve) {
-      await this.resolveAndSync(updated)
+      // A new careers URL is the admin correcting us, so it must not lose to
+      // the source this company is already linked to: force a fresh resolve
+      // even when the URL's host isn't one we recognise, so probing and the
+      // careers-page reader get their turn.
+      await this.resolveAndSync(updated, { force: careersUrlChanged })
     }
     const saved = await this.prisma.remoteCompany.findUnique({ where: { id } })
     return this.toView(saved ?? updated)
@@ -213,14 +219,16 @@ export class RemoteCompaniesService {
   }
 
   // Re-attempt resolution for a single company (e.g. after a new ATS provider
-  // ships, an old "unresolved" company can now be found). Safe to call on an
-  // already-resolved company — resolution reuses the existing source.
+  // ships, an old "unresolved" company can now be found). Also valid on an
+  // already-resolved company: this is the fix-it button for one that latched
+  // onto the wrong board, so it re-probes from scratch rather than handing back
+  // the source it is already linked to.
   async resolveById(id: string): Promise<RemoteCompanyView> {
     const company = await this.prisma.remoteCompany.findUnique({ where: { id } })
     if (!company) {
       throw new NotFoundException('Remote company not found')
     }
-    await this.resolveAndSync(company)
+    await this.resolveAndSync(company, { force: true })
     const saved = await this.prisma.remoteCompany.findUnique({ where: { id } })
     return this.toView(saved ?? company)
   }
@@ -235,7 +243,7 @@ export class RemoteCompaniesService {
     })
     let resolved = 0
     for (const company of companies) {
-      await this.resolveAndSync(company)
+      await this.resolveAndSync(company, { force: true })
       const saved = await this.prisma.remoteCompany.findUnique({
         where: { id: company.id },
         select: { resolutionStatus: true },
@@ -260,10 +268,13 @@ export class RemoteCompaniesService {
   // Resolve to an ATS board and pull it immediately so its jobs show on the
   // Remote Job Board without waiting for the hourly cron. Failures downgrade
   // the company to "unresolved" rather than failing the request.
-  private async resolveAndSync(company: RemoteCompany): Promise<void> {
+  private async resolveAndSync(
+    company: RemoteCompany,
+    options: { force?: boolean } = {},
+  ): Promise<void> {
     let source
     try {
-      source = await this.resolution.resolveToSource(company.name, company.careersUrl)
+      source = await this.resolution.resolveToSource(company.name, company.careersUrl, options)
     } catch (error) {
       this.logger.warn(`Resolve failed for "${company.name}": ${String(error)}`)
       await this.prisma.remoteCompany.update({

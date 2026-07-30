@@ -217,6 +217,29 @@ describe('LeverProvider.normalize', () => {
     expect(provider.handleFromUrl('https://jobs.lever.co/ro/bde27362-0652')).toBe('ro')
   })
 
+  it('tags EU-hosted boards so they are fetched from the EU instance', () => {
+    expect(provider.handleFromUrl('https://jobs.eu.lever.co/pnlfin')).toBe('eu:pnlfin')
+    expect(provider.handleFromUrl('https://jobs.eu.lever.co/pnlfin/abc-123')).toBe('eu:pnlfin')
+    // The US host must not pick up an EU handle, and vice versa.
+    expect(provider.handleFromUrl('https://jobs.lever.co/pnlfin')).toBe('pnlfin')
+  })
+
+  it('routes an eu: handle to the EU API host and a plain one to the US host', async () => {
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(new Response('[]')))
+    try {
+      await provider.fetchListings({ externalId: 'eu:pnlfin', companyName: 'Finom' })
+      await provider.fetchListings({ externalId: 'pnlfin', companyName: 'Finom' })
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+        'https://api.eu.lever.co/v0/postings/pnlfin?mode=json',
+        'https://api.lever.co/v0/postings/pnlfin?mode=json',
+      ])
+    } finally {
+      fetchMock.mockRestore()
+    }
+  })
+
   it('maps the postings payload into a normalized job', () => {
     expect(
       provider.normalize(

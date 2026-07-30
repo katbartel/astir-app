@@ -23,6 +23,14 @@ export type ResolvedHandle = {
 //   4. Reading the careers page itself for embedded schema.org JobPosting data
 //      (the generic last resort, only when 1-3 found nothing).
 // Aggregator providers are never involved here — they are not company-scoped.
+//
+// Step 3 is a guess, so it demands evidence: the board must actually return a
+// posting. Several ATS APIs answer 200 with an empty list for handles they've
+// never heard of (SmartRecruiters does it for *every* handle), which would
+// otherwise stamp a company "resolved" onto a board that can never produce a
+// job and stop resolution before the remaining providers are tried. A handle
+// taken from a careers URL (step 1) is proof in itself and is accepted even
+// when the board is empty today — an empty real board fills up later.
 @Injectable()
 export class CompanyResolutionService {
   private readonly logger = new Logger(CompanyResolutionService.name)
@@ -36,17 +44,26 @@ export class CompanyResolutionService {
   }
 
   // Resolves and returns the shared JobSource, or null if the company was not
-  // found on any ATS (a scraping candidate).
-  async resolveToSource(name: string, careersUrl: string | null): Promise<JobSource | null> {
+  // found on any ATS (a scraping candidate). `force` re-probes from scratch
+  // instead of reusing the source already linked to this company key — the
+  // escape hatch for a company whose source was a bad guess, which would
+  // otherwise be handed back unchanged on every retry.
+  async resolveToSource(
+    name: string,
+    careersUrl: string | null,
+    options: { force?: boolean } = {},
+  ): Promise<JobSource | null> {
     const key = companyKey(name)
     const fromUrl = careersUrl ? this.resolveFromUrl(careersUrl) : null
     if (fromUrl) {
       return this.upsertSource(name, key, fromUrl)
     }
 
-    const existing = await this.prisma.jobSource.findFirst({ where: { companyKey: key } })
-    if (existing) {
-      return existing
+    if (!options.force) {
+      const existing = await this.prisma.jobSource.findFirst({ where: { companyKey: key } })
+      if (existing) {
+        return existing
+      }
     }
 
     const resolved =
@@ -92,12 +109,36 @@ export class CompanyResolutionService {
   private async resolveByProbing(name: string): Promise<ResolvedHandle | null> {
     for (const provider of this.atsProviders) {
       for (const handle of provider.candidateHandles(name)) {
-        if (await provider.verifyHandle(handle)) {
-          return { provider: provider.provider, externalId: handle }
+        if (!(await provider.verifyHandle(handle))) {
+          continue
         }
+        // A guessed slug that verifies but yields nothing is far more likely to
+        // be a stranger's (or a nonexistent) tenant than this company's board,
+        // so keep looking instead of claiming a match.
+        if (!(await this.boardHasPostings(provider, handle, name))) {
+          this.logger.log(
+            `Ignored ${provider.provider}/${handle} for "${name}": board returned no postings`,
+          )
+          continue
+        }
+        return { provider: provider.provider, externalId: handle }
       }
     }
     return null
+  }
+
+  private async boardHasPostings(
+    provider: AtsProvider,
+    handle: string,
+    companyName: string,
+  ): Promise<boolean> {
+    try {
+      const jobs = await provider.fetchListings({ externalId: handle, companyName })
+      return jobs.length > 0
+    } catch {
+      // Unreachable or unparseable is not confirmation either.
+      return false
+    }
   }
 
   // Last resort: hand the careers URL to the generic schema.org reader, which

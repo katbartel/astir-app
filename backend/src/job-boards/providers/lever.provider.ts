@@ -48,14 +48,28 @@ export class LeverProvider implements AtsProvider {
   readonly provider = 'lever'
   readonly kind = 'ats' as const
 
+  // EU-hosted accounts live on a separate Lever instance and are unreachable
+  // on the US API, so the region is carried in the handle as an "eu:" prefix
+  // (same convention as the Greenhouse provider).
+  private isEuHandle(handle: string): boolean {
+    return handle.startsWith('eu:')
+  }
+
   private postingsUrl(handle: string): string {
-    return `https://api.lever.co/v0/postings/${encodeURIComponent(handle)}?mode=json`
+    return this.isEuHandle(handle)
+      ? `https://api.eu.lever.co/v0/postings/${encodeURIComponent(handle.slice(3))}?mode=json`
+      : `https://api.lever.co/v0/postings/${encodeURIComponent(handle)}?mode=json`
   }
 
   handleFromUrl(url: string): string | null {
     // Careers pages look like https://jobs.lever.co/{account}/ and per-job
     // links https://jobs.lever.co/{account}/{id}. The account is always the
-    // first path segment.
+    // first path segment. EU-hosted boards use jobs.eu.lever.co and must be
+    // checked first — the US pattern would otherwise never match them.
+    const euMatch = url.match(/jobs\.eu\.lever\.co\/([a-z0-9.-]+)/i)
+    if (euMatch) {
+      return `eu:${euMatch[1]}`
+    }
     const match = url.match(/jobs\.lever\.co\/([a-z0-9.-]+)/i)
     return match ? match[1] : null
   }

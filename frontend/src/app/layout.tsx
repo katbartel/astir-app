@@ -49,8 +49,16 @@ export default async function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
+            // Runs before first paint. The theme half is longstanding; the
+            // `visited` half is the same idea applied to the greeting, which
+            // otherwise renders "Welcome" and corrects itself to "Welcome
+            // back" a few hundred milliseconds later. Both bits of state live
+            // in localStorage, so the server cannot know them and only a
+            // blocking script can get them onto the page in time. See the
+            // .greet-first / .greet-back rules in app.css.
             __html:
-              "try{var m=localStorage.getItem('astir.mode');if(m==='dark'){document.documentElement.dataset.theme='dusk';document.documentElement.style.colorScheme='dark'}else{document.documentElement.style.colorScheme='light'}}catch(e){}",
+              "try{var m=localStorage.getItem('astir.mode');if(m==='dark'){document.documentElement.dataset.theme='dusk';document.documentElement.style.colorScheme='dark'}else{document.documentElement.style.colorScheme='light'}}catch(e){}" +
+              "try{var s=JSON.parse(localStorage.getItem('astir.v1')||'null');if(s&&s.hasVisited){document.documentElement.dataset.visited='1'}}catch(e){}",
           }}
         />
       </head>

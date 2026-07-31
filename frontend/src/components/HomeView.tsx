@@ -155,6 +155,36 @@ function PlaceholderTile({
   )
 }
 
+// The goals card while this week's goals are still being read out of
+// localStorage. Reuses .goals-support, .goal-grid, .goal-tile, .goal-gauge and
+// .goal-title so the card is exactly the height and shape it will be a moment
+// later — including the same gauge arc, drawn in the placeholder grey. Without
+// this the card renders "Set up your goals for this week" first, which is a
+// lie to anyone who already has goals.
+function GoalsPlaceholder() {
+  return (
+    <>
+      <div className="goals-support sk-shimmer">
+        <span className="sk-bar" style={{ width: '24ch' }} />
+      </div>
+      <div className="goal-grid sk-shimmer" aria-hidden="true">
+        {activityOrder.map((id) => (
+          <article className="goal-tile" key={id}>
+            <svg className="goal-gauge sk-gauge" viewBox="0 0 96 56">
+              <path className="gauge-track" pathLength={126} d="M8 48a40 40 0 0 1 80 0" />
+            </svg>
+            <div className="goal-title-row">
+              <div className="goal-title">
+                <span className="sk-bar" style={{ width: '6ch' }} />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  )
+}
+
 function hasDetail(task: Task): boolean {
   return task.steps.length > 0 || Boolean(task.note?.blocks?.length)
 }
@@ -426,7 +456,7 @@ function GoalPanel({
 
 export function HomeView() {
   const { applications, reload, changeStage, showSnack, overlay } = useApplications()
-  const { week, setGoals, stepRest, tasks } = useWeekGoals()
+  const { week, ready: goalsReady, setGoals, stepRest, tasks } = useWeekGoals()
 
   const [logging, setLogging] = useState(false)
   const [heardOpen, setHeardOpen] = useState(false)
@@ -498,7 +528,9 @@ export function HomeView() {
           </button>
         </div>
         <div>
-          {hasGoals ? (
+          {!goalsReady ? (
+            <GoalsPlaceholder />
+          ) : hasGoals ? (
             <>
               <div className="goals-support">{support}</div>
               <div className="goal-grid">

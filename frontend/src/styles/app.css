@@ -3747,7 +3747,7 @@ textarea {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--pad-card-tight);
+  padding: var(--pad-card-tight) var(--space-4);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
@@ -3760,6 +3760,7 @@ textarea {
   justify-content: space-between;
   min-height: var(--menu-trigger);
   gap: var(--space-3);
+  padding-left: calc(var(--menu-trigger) + var(--space-2));
 }
 
 .stage-bucket h2 {
@@ -3775,15 +3776,29 @@ textarea {
 }
 
 .stage-settings-row {
+  position: relative;
   display: grid;
   grid-template-columns: var(--menu-trigger) var(--watch-title-action-size) minmax(0, 1fr) var(--menu-trigger);
   align-items: center;
   gap: var(--space-2);
   border-radius: var(--r-sm);
+  transition: background .2s ease, opacity .2s ease;
 }
 
 .stage-settings-row.dragging {
-  opacity: .6;
+  background: var(--gold-soft);
+  opacity: .72;
+}
+
+.stage-settings-row.drop-target::before {
+  position: absolute;
+  top: calc(var(--space-1) * -1);
+  right: 0;
+  left: calc(var(--menu-trigger) + var(--space-2));
+  height: var(--space-hairline);
+  border-radius: var(--r-pill);
+  background: var(--gold);
+  content: "";
 }
 
 .stage-grid-cell,
@@ -3803,18 +3818,24 @@ textarea {
 
 .stage-drag-handle {
   display: grid;
-  width: var(--menu-trigger);
-  height: var(--menu-trigger);
+  width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
   place-items: center;
   border: 0;
-  border-radius: var(--r-pill);
   background: transparent;
   color: var(--muted);
   cursor: grab;
+  opacity: 0;
+  transition: color .2s ease, opacity .2s ease;
+}
+
+.stage-settings-row:hover .stage-drag-handle,
+.stage-drag-handle:focus-visible,
+.stage-settings-row.dragging .stage-drag-handle {
+  opacity: 1;
 }
 
 .stage-drag-handle:hover {
-  background: var(--hover-soft);
   color: var(--ink2);
 }
 
@@ -3824,13 +3845,12 @@ textarea {
 
 .stage-drag-handle:focus-visible {
   color: var(--gold-deep);
-  box-shadow: inset 0 0 0 var(--border-thin) var(--gold);
   outline: none;
 }
 
 .stage-drag-handle svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  width: var(--space-2);
+  height: var(--space-3);
   fill: currentColor;
   stroke: none;
 }
@@ -4479,6 +4499,21 @@ textarea {
   color: var(--net-text);
 }
 
+/* Greeting wording. Both words ship in the HTML and CSS picks one, so the
+   right greeting is painted first time rather than corrected after mount —
+   the blocking script in the root layout sets data-visited before paint. */
+.greet-back {
+  display: none;
+}
+
+:root[data-visited] .greet-first {
+  display: none;
+}
+
+:root[data-visited] .greet-back {
+  display: inline;
+}
+
 /* --- Loading placeholders ---------------------------------------------- */
 
 /* These are never a separate skeleton screen. A real component renders its own
@@ -4495,6 +4530,12 @@ textarea {
   border-radius: var(--r-sm);
   background: var(--skeleton-base);
   vertical-align: -0.15em;
+}
+
+/* The goal tile's arc, drawn in the placeholder grey. Same path and same box as
+   the real gauge, so the tile does not change shape when the goals load. */
+.sk-gauge .gauge-track {
+  stroke: var(--skeleton-base);
 }
 
 /* Stands in for a control (the stage select), matching its outer box. */

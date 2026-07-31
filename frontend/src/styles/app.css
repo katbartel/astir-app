@@ -4478,3 +4478,59 @@ textarea {
   background: var(--net-soft);
   color: var(--net-text);
 }
+
+/* --- Loading placeholders ---------------------------------------------- */
+
+/* These are never a separate skeleton screen. A real component renders its own
+   markup with its text swapped for these shapes, so the heights are the ones
+   the loaded component will have and nothing shifts when the data lands.
+
+   .sk-bar stands in for a run of text. It is inline-block and sized in `em`, so
+   the parent's font-size and line-height still set the line box — a row of
+   placeholder bars is exactly as tall as the same row of real text. */
+.sk-bar {
+  display: inline-block;
+  width: 100%;
+  height: 1em;
+  border-radius: var(--r-sm);
+  background: var(--skeleton-base);
+  vertical-align: -0.15em;
+}
+
+/* Stands in for a control (the stage select), matching its outer box. */
+.sk-pill {
+  display: block;
+  width: 100%;
+  min-height: var(--input-height);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  background: var(--skeleton-base);
+}
+
+/* One sweep across the whole group, so the bars read as a single surface
+   loading rather than as unrelated blinking boxes. */
+.sk-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-shimmer::after {
+  position: absolute;
+  animation: sk-sweep 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+  content: '';
+  inset: 0;
+  transform: translateX(-100%);
+}
+
+@keyframes sk-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-shimmer::after {
+    animation: none;
+  }
+}

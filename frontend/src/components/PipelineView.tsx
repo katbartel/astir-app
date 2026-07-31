@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   type Application,
   type Status,
@@ -15,6 +15,7 @@ import { LogApplicationModal } from './applications/LogApplicationModal'
 import { NoteField } from './applications/NoteField'
 import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
+import { useLoadingPlaceholder, useRememberedCount } from './applications/usePlaceholder'
 import { useStageConfig } from '@/lib/stages'
 import { OpenIcon } from './icons'
 
@@ -111,8 +112,43 @@ function PipelineCard({
   )
 }
 
+// The loading stand-in for PipelineCard. Deliberately the same element and the
+// same class names as the card above — .pipeline-card, .pipeline-card-row,
+// .pipeline-company, .pipeline-role, .stage-select — so its height is the card's
+// height and swapping in the real data cannot shift the layout. If the card's
+// row structure changes, change it here too; nothing else stands in for a card.
+// Text widths are varied per row so a stack of these does not read as a grid.
+const PLACEHOLDER_WIDTHS = [
+  ['5ch', '19ch'],
+  ['8ch', '14ch'],
+  ['6ch', '23ch'],
+]
+
+function PipelinePlaceholderCard({ index }: { index: number }) {
+  const [company, role] = PLACEHOLDER_WIDTHS[index % PLACEHOLDER_WIDTHS.length]
+  return (
+    <article className="pipeline-card sk-shimmer" aria-hidden="true">
+      <div className="pipeline-card-row">
+        <div className="pipeline-card-main">
+          <span className="pipeline-company">
+            <span className="sk-bar" style={{ width: company }} />
+          </span>
+          <span className="dot-sep" />
+          <span className="pipeline-role">
+            <span className="sk-bar" style={{ width: role }} />
+          </span>
+        </div>
+        <span className="stage-select">
+          <span className="sk-pill" />
+        </span>
+      </div>
+    </article>
+  )
+}
+
 export function PipelineView() {
-  const { applications, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
+  const { applications, failed, changeStage, saveNote, reload, showSnack, overlay } =
+    useApplications()
   const { isPipeline, rankOf, colorFor } = useStageConfig()
   const [expandedId, setExpandedId] = useState('')
   const [logging, setLogging] = useState(false)
@@ -129,7 +165,20 @@ export function PipelineView() {
       })
   }, [applications, isPipeline, rankOf])
 
-  const empty = pipeline.length === 0
+  // We only get here with no applications at all when the server could not
+  // fetch them (backend down at render time) and the browser is retrying — the
+  // normal path arrives with the rows already in the HTML. `empty` stays false
+  // while that is happening so the "nothing in motion" state is never shown to
+  // someone who simply has not loaded yet.
+  const loading = applications === null && !failed
+  const showPlaceholders = useLoadingPlaceholder(loading)
+  const [placeholderCount, rememberCount] = useRememberedCount('astir.counts.pipeline', 3)
+
+  useEffect(() => {
+    if (applications !== null) rememberCount(pipeline.length)
+  }, [applications, pipeline.length, rememberCount])
+
+  const empty = !loading && pipeline.length === 0
 
   return (
     <section className="screen" data-screen="pipeline">
@@ -160,8 +209,12 @@ export function PipelineView() {
           </div>
         ) : null}
       </div>
-      <div className="pipeline-list">
-        {empty ? (
+      <div className="pipeline-list" aria-busy={showPlaceholders || undefined}>
+        {showPlaceholders ? (
+          Array.from({ length: placeholderCount }, (_, index) => (
+            <PipelinePlaceholderCard index={index} key={index} />
+          ))
+        ) : empty ? (
           <div className="pipeline-empty">
             <div className="sleepy-orb" aria-hidden="true">
               <span className="sleepy-core" />

@@ -1,11 +1,12 @@
 'use client'
 
 import { usePathname } from 'next/navigation'
-import { createContext, useCallback, useEffect, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   type Application,
   type Status,
   fetchApplications,
+  normalizeApplications,
   updateApplication,
 } from '@/lib/applications'
 import { STAGE_IDS, isPipelineStage, useStageConfig } from '@/lib/stages'
@@ -40,9 +41,19 @@ const DATA_ROUTES = new Set(['/', '/pipeline', '/applications'])
 // All applications shows the data we already have instead of a blank screen.
 // The mutations and the snackbar/Hired overlay live here too, so every screen
 // reacts to the same state. Screens read this through useApplications().
-export function ApplicationsProvider({ children }: { children: ReactNode }) {
+export function ApplicationsProvider({
+  initialApplications = null,
+  children,
+}: {
+  // Raw rows the server already fetched for this request, or null when there
+  // were none to fetch (signed out, or the backend was unreachable).
+  initialApplications?: Application[] | null
+  children: ReactNode
+}) {
   const { catalog } = useStageConfig()
-  const [applications, setApplications] = useState<Application[] | null>(null)
+  const [applications, setApplications] = useState<Application[] | null>(() =>
+    initialApplications ? normalizeApplications(initialApplications) : null,
+  )
   const [failed, setFailed] = useState(false)
   const [hiredFor, setHiredFor] = useState<Application | null>(null)
   const { message: snack, showSnack } = useSnackbar()
@@ -61,9 +72,17 @@ export function ApplicationsProvider({ children }: { children: ReactNode }) {
   // `applications` first, so the list we already have stays on screen while
   // the refetch is in flight — that is what keeps route changes free of a
   // loading state.
+  //
+  // The one exception is the very first run when the server already handed us
+  // the rows: refetching them immediately would be a wasted round trip.
   const pathname = usePathname()
+  const seeded = useRef(initialApplications !== null)
   useEffect(() => {
     if (!DATA_ROUTES.has(pathname)) return
+    if (seeded.current) {
+      seeded.current = false
+      return
+    }
     void reload()
   }, [pathname, reload])
 

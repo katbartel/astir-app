@@ -6,6 +6,7 @@ import { DevAgentation } from '@/components/DevAgentation'
 import { LoginView } from '@/components/LoginView'
 import { Tooltips } from '@/components/Tooltips'
 import { UserProvider } from '@/components/UserProvider'
+import { getInitialApplications } from '@/lib/applications-server'
 import { getCurrentUser } from '@/lib/auth'
 import './globals.css'
 
@@ -32,7 +33,12 @@ export default async function RootLayout({
 }: Readonly<{
   children: ReactNode
 }>) {
-  const user = await getCurrentUser()
+  // Both hit the backend with the session cookie; run them together so the
+  // applications fetch does not add a second round trip to time-to-first-byte.
+  const [user, initialApplications] = await Promise.all([
+    getCurrentUser(),
+    getInitialApplications(),
+  ])
 
   return (
     <html
@@ -51,7 +57,9 @@ export default async function RootLayout({
       <body>
         {user ? (
           <UserProvider user={user}>
-            <ApplicationsProvider>{children}</ApplicationsProvider>
+            <ApplicationsProvider initialApplications={initialApplications}>
+              {children}
+            </ApplicationsProvider>
           </UserProvider>
         ) : (
           <LoginView />

@@ -1,10 +1,13 @@
 import { AppShell } from '@/components/AppShell'
-import { WatchlistView } from '@/components/WatchlistView'
+import { WatchlistView, type Company } from '@/components/WatchlistView'
+import { serverGet } from '@/lib/server-api'
 
-export default function WatchlistPage() {
+export default async function WatchlistPage() {
+  const initialCompanies = await serverGet<Company[]>('/api/watchlist/companies')
+
   return (
     <AppShell active="watchlist">
-      <WatchlistView />
+      <WatchlistView initialCompanies={initialCompanies} />
     </AppShell>
   )
 }

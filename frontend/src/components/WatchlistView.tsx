@@ -30,7 +30,7 @@ type Role = {
 
 type NetworkingStage = 'none' | 'active' | 'warm'
 
-type Company = {
+export type Company = {
   id: string
   name: string
   careersUrl: string | null
@@ -545,8 +545,16 @@ function QuietRow({
   )
 }
 
-export function WatchlistView() {
-  const [companies, setCompanies] = useState<Company[] | null>(null)
+// `initialCompanies` is whatever the page already fetched during server
+// rendering, or null when it could not. Seeding from it means a reload arrives
+// with the watchlist on screen rather than a loading line, and the browser
+// fetch below is skipped as redundant. Every mutation still calls reload().
+export function WatchlistView({
+  initialCompanies = null,
+}: {
+  initialCompanies?: Company[] | null
+}) {
+  const [companies, setCompanies] = useState<Company[] | null>(initialCompanies)
   const [failed, setFailed] = useState(false)
   const [editor, setEditor] = useState<Editor>(null)
   const [quietOpen, setQuietOpen] = useState(false)
@@ -567,8 +575,9 @@ export function WatchlistView() {
   }
 
   useEffect(() => {
+    if (initialCompanies !== null) return
     void reload()
-  }, [])
+  }, [initialCompanies])
 
   async function addCompany(form: CompanyForm): Promise<string | null> {
     const response = await fetch('/api/watchlist/companies', {

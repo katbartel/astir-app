@@ -13,7 +13,7 @@ import { OpenIcon, PlusIcon } from './icons'
 type ListingStatus = 'new' | 'irrelevant'
 
 // Shape of GET /api/job-boards/listings (JobBoardListing on the backend).
-type Listing = {
+export type Listing = {
   id: string
   title: string
   companyName: string
@@ -144,14 +144,23 @@ function ListingRow({
   )
 }
 
-export function JobBoardsView() {
-  const [listings, setListings] = useState<Listing[] | null>(null)
+// `initialListings` is whatever the page already fetched during server
+// rendering, or null when it could not. Seeding from it means a reload arrives
+// with the openings on screen rather than "Gathering openings…", and the browser
+// fetch below is skipped as redundant.
+export function JobBoardsView({
+  initialListings = null,
+}: {
+  initialListings?: Listing[] | null
+}) {
+  const [listings, setListings] = useState<Listing[] | null>(initialListings)
   const [failed, setFailed] = useState(false)
   const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
 
   useEffect(() => {
+    if (initialListings !== null) return
     let cancelled = false
     fetch('/api/job-boards/listings')
       .then(async (response) => {
@@ -173,7 +182,7 @@ export function JobBoardsView() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [initialListings])
 
   const sorted = useMemo(() => sortListings(listings ?? []), [listings])
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])

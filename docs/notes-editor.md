@@ -17,7 +17,8 @@ which failure each rule prevents — read it before "simplifying" anything here.
 Free text with checkboxes, bullets, inline marks (bold, italic, underline,
 strikethrough, links), block quotes, and collapsible sections. Type `[]` for a
 checkbox or `- ` at the start of a line for a bullet; select text to reveal a
-floating toolbar. Checkbox rows can be dragged to reorder by their grip handle.
+floating toolbar. A checkbox row can be dragged by its grip to reorder it, in or
+out of sections (section 6).
 
 The field is an **uncontrolled** `contenteditable`. React seeds it once and never
 re-renders it during editing — a re-render would drop the caret. Every edit is
@@ -147,6 +148,42 @@ other.**
 `setLineMarker` collapses the selection to its start first — the toolbar acts on
 a *selection*, while the line model needs a collapsed caret.
 
+### Dragging a line to reorder it
+
+Lives in `noteLineDrag.ts`. Pointer events, no library. The grip on a checkbox
+starts it; 5 px of movement arms it, so a click still reaches the box.
+
+**A note line is not an element** — the field renders lines as text runs
+separated by `"\n"` (section 4), so there is nothing to lift and no slot to open.
+For the length of a drag the field is re-rendered from the line model with one
+`div.note-drag-line` per line, and the field goes `contenteditable=false`. The
+drag runs on that rendering; the drop re-renders the field normally from the
+moved model, as one `commitAndSave` step. A cancelled drag puts back the exact
+markup it started from and records nothing.
+
+- **The unit is exactly one line.** Never a group, never a section with its
+  children. Section headers have no grip and cannot be dragged.
+- **Vertical only.** Indent is never set by dragging sideways; a line inherits
+  the indent of the slot it lands in. The lifted card easing across to that
+  indent (`translate`, 150 ms) is the only horizontal movement in the drag.
+- **A line's section is where it sits**, so the slot decides membership. Quotes
+  and collapse bodies are both containers with slots of their own.
+- Slots carry the pointer height that selects them, and those thresholds run down
+  the page in order: the last one the lifted line's centre has passed wins. A
+  section contributes three kinds — its head's midpoint puts the line *inside*,
+  each child's midpoint moves it down *within*, and the section's own bottom edge
+  puts it *after*. That last pair is why an expanded section's end and the
+  position after the section are two slots at one gap, with two indents.
+- **A closed section is one row with one midpoint.** No interior slots, no
+  auto-expand on hover; a line crossing it lands entirely above or below.
+- Thresholds are measured once, at lift, and never recomputed — the gap moving
+  around must not move the thing that decides where the gap goes.
+- The gap is a real element that moves between containers, so a section's own box
+  grows and shrinks with it. Rows are played from their old positions to their
+  new ones (FLIP, 180 ms) rather than being pushed by a hardcoded offset.
+- **A section that loses its last child stays**, as an empty header. Dragging the
+  first or last line out of a section is the normal way to change membership.
+
 ## 7. Undo and redo
 
 ⌘Z / ⇧⌘Z / ⌘Y are handled by the field, not the browser. The native stack cannot
@@ -182,6 +219,8 @@ collapse in the data, not a CSS bug.
 1. A line carries at most one marker.
 2. Structural edits go through `splitCaretLines` → `reseedListLines`, scoped to
    `listContainer`. Not `execCommand`, not raw DOM surgery.
+2b. A caret split's `suffix` holds **inline content only** — never a block-level
+   line. See section 10.
 3. Line/marker decisions come from the line model, never from `Selection.modify`
    or a text-node probe.
 4. Block-level lines are never wrapped in a line `<div>`.
@@ -191,6 +230,20 @@ collapse in the data, not a CSS bug.
 ## 10. Why the rules exist
 
 Each of these shipped and damaged stored notes.
+
+- **A block-level line read as the caret line's suffix.** `splitCaretLines`
+  serializes the range after the caret and takes `afterLines[0]` as the rest of
+  the caret's line. But when a quote or collapse sits immediately after the
+  caret, `blocksToLines` opens its list with that block instead of with an empty
+  line — so the whole section was read as this line's suffix. Any edit that
+  rewrites the caret's line and does not re-emit the suffix then deleted it:
+  Enter or Backspace on an empty checkbox row above a section (`[...head,
+  [CARET_BLOCK], ...tail]`) silently took the entire section with it. The fix is
+  in the split, not in its callers: `afterLines[0]` counts as the suffix only
+  when it is not `isBlockLevel`, otherwise the suffix is empty and every after-
+  line is tail. Note the asymmetry that hides this — on the `before` side
+  `blocksToLines` always pushes its trailing accumulator, so `prefix` correctly
+  comes out empty in the mirror case.
 
 - **`execCommand('insertHTML')` escapes a collapse body.** With the caret at the
   end of `.note-collapse-body`, inserted markup lands *outside* it, as a sibling

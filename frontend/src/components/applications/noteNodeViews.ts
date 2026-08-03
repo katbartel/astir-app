@@ -28,6 +28,7 @@ import {
   NoteStarterKit,
 } from './noteSchema'
 import { NoteEditing, toggleCheckedAt, toggleCollapsedAt } from './noteEditing'
+import { NoteDrag } from './noteDrag'
 
 // --- glyphs ---
 // Real SVG, per AGENTS.md 4.6: never a text glyph for a UI icon. Colour comes from
@@ -259,5 +260,6 @@ export const noteEditorExtensions = [
   NoteSectionTitle,
   NoteSectionBody,
   NoteEditing,
+  NoteDrag,
   NotePlaceholder,
 ]

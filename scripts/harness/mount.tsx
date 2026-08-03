@@ -22,6 +22,9 @@ type VisualRow = {
   checked: boolean | null
   collapsed: boolean | null
   indent: number
+  /** Absolute viewport coordinates, so a pointer drag can be driven at a row. */
+  left: number
+  width: number
 }
 
 declare global {
@@ -116,6 +119,8 @@ window.ROWS = () => {
         ? section?.getAttribute('data-collapsed') === 'true'
         : null,
       indent: Math.round(box.left - editorLeft),
+      left: Math.round(box.left),
+      width: Math.round(box.width),
     }
   })
 }

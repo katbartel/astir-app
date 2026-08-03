@@ -8,7 +8,7 @@
 // nobody else can know (whether the URL field is open, and what has been typed into
 // it), which is not document state.
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { Command } from '@tiptap/pm/state'
 import { convertRowToSection, setRowType, toggleQuote } from './noteEditing'
@@ -81,6 +81,11 @@ function linkAtCaret(editor: Editor): { href: string; from: number; to: number }
 
 const truncate = (url: string) => (url.length > 42 ? `${url.slice(0, 41)}…` : url)
 
+/** Room the toolbar needs above the selection before it has to flip below it. */
+const TOOLBAR_CLEARANCE = 48
+/** Air kept between a floating surface and the screen edge. */
+const EDGE_MARGIN = 8
+
 export function NoteToolbar({ editor }: { editor: Editor | null }) {
   // A re-render per transaction, so everything below is read fresh. No mark state,
   // no selection state, nothing to fall out of step with the document.
@@ -88,6 +93,11 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
   const [linkFieldOpen, setLinkFieldOpen] = useState(false)
   const [draft, setDraft] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
+  const surfaceRef = useRef<HTMLDivElement>(null)
+  // Measured, so the surface can be centred on the selection and still kept on
+  // screen. Centring with translate(-50%) alone puts a wide toolbar off the left
+  // edge of a short selection, where it cannot be clicked.
+  const [surfaceWidth, setSurfaceWidth] = useState(0)
 
   useEffect(() => {
     if (!editor) return
@@ -106,6 +116,11 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
     setLinkFieldOpen(false)
     setDraft('')
   }, [])
+
+  useLayoutEffect(() => {
+    const width = surfaceRef.current?.offsetWidth ?? 0
+    if (width > 0 && width !== surfaceWidth) setSurfaceWidth(width)
+  }, [surfaceWidth, linkFieldOpen])
 
   useEffect(() => {
     if (linkFieldOpen) inputRef.current?.focus()
@@ -141,6 +156,19 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
     }
   }
   const rect = coords()
+  // Above the selection by default, flipped below when there is no room. Without
+  // this a note near the top of the viewport puts its own toolbar off-screen, where
+  // it cannot be clicked and looks like a button that does nothing.
+  const below = rect.top < TOOLBAR_CLEARANCE
+
+  /** Centred on the selection, then clamped to the screen. AGENTS.md 4: never past an edge. */
+  const clampedLeft = (() => {
+    if (surfaceWidth === 0) return rect.left
+    const viewport = typeof window === 'undefined' ? 0 : window.innerWidth
+    const ideal = rect.left - surfaceWidth / 2
+    const most = Math.max(EDGE_MARGIN, viewport - surfaceWidth - EDGE_MARGIN)
+    return Math.min(Math.max(ideal, EDGE_MARGIN), most)
+  })()
 
   const run = (action: () => void) => (event: React.MouseEvent) => {
     // Keep the selection: the toolbar acts on it, and a mousedown that reaches the
@@ -175,8 +203,9 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
   if (showPopover && link) {
     return (
       <div
+        ref={surfaceRef}
         className="note-popover"
-        style={{ top: rect.bottom, left: rect.left }}
+        style={{ top: rect.bottom, left: clampedLeft }}
         role="group"
         aria-label="Link"
       >
@@ -205,7 +234,12 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
 
   if (linkFieldOpen) {
     return (
-      <div className="note-toolbar note-toolbar-link" style={{ top: rect.top, left: rect.left }}>
+      <div
+        ref={surfaceRef}
+        className="note-toolbar note-toolbar-link"
+        data-below={below ? 'true' : 'false'}
+        style={{ top: below ? rect.bottom : rect.top, left: clampedLeft }}
+      >
         <input
           ref={inputRef}
           className="note-link-input"
@@ -237,7 +271,14 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
   const sectionAvailable = convertRowToSection(state, undefined)
 
   return (
-    <div className="note-toolbar" style={{ top: rect.top, left: rect.left }} role="toolbar" aria-label="Format">
+    <div
+      ref={surfaceRef}
+      className="note-toolbar"
+      data-below={below ? 'true' : 'false'}
+      style={{ top: below ? rect.bottom : rect.top, left: clampedLeft }}
+      role="toolbar"
+      aria-label="Format"
+    >
       {marks.map(([name, title, className]) => (
         <button
           key={name}

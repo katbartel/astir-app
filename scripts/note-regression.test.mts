@@ -26,6 +26,8 @@ type Row = {
   checked: boolean | null
   collapsed: boolean | null
   indent: number
+  left: number
+  width: number
 }
 
 // --- reporting: one line per step of the script ---
@@ -125,6 +127,20 @@ const press = async (key: string, times = 1) => {
   for (let i = 0; i < times; i += 1) await page.keyboard.press(key)
 }
 
+/**
+ * Undo is a keymap on the editable, so a key press only undoes anything when the
+ * editor has focus. Tiptap's focus() is not synchronous, so waiting for it is the
+ * difference between a guard and a flake.
+ */
+async function ensureEditorFocus() {
+  try {
+    await page.waitForFunction(() => !!window.EDITOR?.isFocused, undefined, { timeout: 1500 })
+  } catch {
+    await page.click('.note-editor')
+    await page.waitForFunction(() => !!window.EDITOR?.isFocused)
+  }
+}
+
 /** A real reload, seeded from what the editor would have saved. */
 async function reloadFromSaved() {
   const current = (await saved()) ?? v2(await json())
@@ -136,6 +152,27 @@ const shape = (list: Row[]) =>
   visible(list)
     .map((row) => `${row.kind}${row.checked === true ? '[x]' : row.checked === false ? '[ ]' : ''} "${row.text}"`)
     .join(' | ')
+
+/**
+ * A real pointer drag: hover the row so the grip appears, then press, move, release.
+ * Driven through the mouse rather than by calling the command, because the point is
+ * that the whole path works.
+ */
+async function dragRowTo(rowIndex: number, targetY: number) {
+  const list = visible(await rows())
+  const row = list[rowIndex]
+  if (!row) throw new Error(`no visible row at ${rowIndex}`)
+  await page.mouse.move(row.left + 20, row.top + row.height / 2)
+  await page.waitForSelector('.note-grip:not([hidden])')
+  const grip = await page.locator('.note-grip').boundingBox()
+  if (!grip) throw new Error('the grip has no box')
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  await page.mouse.down()
+  // Past the activation distance first, then to the target.
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 12, { steps: 3 })
+  await page.mouse.move(grip.x + grip.width / 2, targetY, { steps: 12 })
+  await page.mouse.up()
+}
 
 // --- fixtures ---
 
@@ -207,11 +244,181 @@ async function main() {
     return 'three checkboxes, same order, same checked states, document unchanged'
   })
 
+
   // 3
-  deferred(
-    '3. a blank line above a collapsed section survives a drag',
-    'needs drag (5d). The blank-line half is covered by step 1 and addition d.',
-  )
+  await step('3. a blank line above a collapsed section survives a drag', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'top' }] },
+          { type: 'paragraph' },
+          {
+            type: 'section',
+            attrs: { collapsed: true },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'Closed' }] },
+              {
+                type: 'sectionBody',
+                content: [{ type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'hidden' }] }],
+              },
+            ],
+          },
+          {
+            type: 'section',
+            attrs: { collapsed: false },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'Open' }] },
+              {
+                type: 'sectionBody',
+                content: [{ type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'movable' }] }],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const before = shape(await rows())
+    check(
+      before === 'paragraph "top" | paragraph "" | sectionTitle "Closed" | sectionTitle "Open" | check[ ] "movable"',
+      `before: ${before}`,
+    )
+    // Drag the checkbox out of the open section, up above the collapsed one.
+    const list = visible(await rows())
+    const blankRow = list[1]
+    await dragRowTo(4, blankRow.top + 1)
+    const after = shape(await rows())
+    check(
+      after === 'paragraph "top" | check[ ] "movable" | paragraph "" | sectionTitle "Closed" | sectionTitle "Open" | paragraph ""',
+      `after: ${after}`,
+    )
+    check(after.split('paragraph ""').length - 1 === 2, 'one blank line kept, one left behind in the emptied body, none conjured')
+    check(after.includes('check[ ] "movable"'), 'the dragged row landed above the collapsed section')
+    const hidden = (await rows()).find((row) => row.text === 'hidden')
+    check(!!hidden && !hidden.visible, 'the collapsed body is still collapsed and still holds its row')
+    return 'the blank line survived the drag, and nothing was conjured'
+  })
+
+  // 5b, the drag half
+  await step('5 (drag). a dragged row cannot join another row, and never enters a hidden body', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'first' }] },
+          {
+            type: 'section',
+            attrs: { collapsed: true },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'Closed' }] },
+              {
+                type: 'sectionBody',
+                content: [{ type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'hidden' }] }],
+              },
+            ],
+          },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'last' }] },
+        ],
+      }),
+    )
+    // Aim at the middle of the collapsed section: a row can only land above or below.
+    const list = visible(await rows())
+    const closed = list[1]
+    await dragRowTo(2, closed.top + closed.height / 2)
+    const structure = (await json()) as { content: { type: string; content?: unknown[] }[] }
+    const body = await page.evaluate(() => {
+      const out: string[] = []
+      window.EDITOR!.state.doc.descendants((node) => {
+        if (node.type.name === 'sectionBody') out.push(node.textContent)
+        return true
+      })
+      return out
+    })
+    check(body.length === 1 && body[0] === 'hidden', `nothing landed in the hidden body: ${JSON.stringify(body)}`)
+    check(structure.content.length === 3, `still three top-level nodes: ${structure.content.map((n) => n.type).join(', ')}`)
+    const boxes = await page.locator('.note-check-row').evaluateAll((els) =>
+      els.map((el) => el.querySelectorAll('.note-box').length),
+    )
+    check(
+      boxes.every((count) => count === 1),
+      `every checkbox row still has exactly one box: ${JSON.stringify(boxes)}`,
+    )
+    return 'a row crossed the collapsed section entirely, and no row gained a second marker'
+  })
+
+  // drag, the invariants alongside it
+  await step('drag. a reorder changes order and nothing else', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'check',
+            attrs: { checked: true },
+            content: [
+              { type: 'text', text: 'see ' },
+              {
+                type: 'text',
+                text: 'the posting',
+                marks: [{ type: 'link', attrs: { href: 'https://example.test/x', target: '_blank', rel: 'noreferrer noopener' } }],
+              },
+            ],
+          },
+          { type: 'paragraph', content: [{ type: 'text', text: 'below' }] },
+        ],
+      }),
+    )
+    const before = await page.evaluate(() => {
+      const rowsOut: unknown[] = []
+      window.EDITOR!.state.doc.forEach((node) => rowsOut.push(node.toJSON()))
+      return JSON.stringify(rowsOut)
+    })
+    const list = visible(await rows())
+    // Drag the checkbox below the paragraph.
+    await dragRowTo(0, list[1].top + list[1].height + 2)
+    const after = await page.evaluate(() => {
+      const rowsOut: unknown[] = []
+      window.EDITOR!.state.doc.forEach((node) => rowsOut.push(node.toJSON()))
+      return JSON.stringify(rowsOut)
+    })
+    check(after !== before, 'the order changed')
+    const beforeRows = JSON.parse(before) as unknown[]
+    const afterRows = JSON.parse(after) as unknown[]
+    check(
+      JSON.stringify([...afterRows].reverse()) === JSON.stringify(beforeRows),
+      `the two rows swapped and nothing else: ${after}`,
+    )
+    // Invariant 6, said precisely: the node objects are identical, so text, marks,
+    // type and checked state cannot have changed.
+    const moved = afterRows.find((row) => (row as { type: string }).type === 'check')
+    const original = beforeRows.find((row) => (row as { type: string }).type === 'check')
+    check(JSON.stringify(moved) === JSON.stringify(original), 'the moved row is byte-identical, link mark and checked state included')
+    const gripOnHeader = await page.evaluate(() => {
+      // A section header must never offer a grip.
+      const title = document.querySelector('.note-section-title')
+      return title ? 'a section is present' : 'no section here'
+    })
+    check(gripOnHeader === 'no section here', 'no section in this fixture, header grips are covered below')
+    return 'order changed, the moved row byte-identical, link mark and checked state kept'
+  })
+
+  await step('drag. a section header has no grip', async () => {
+    await seed(sectionWithChecks)
+    const list = visible(await rows())
+    const title = list[0]
+    check(title.kind === 'sectionTitle', 'the first row is the header')
+    await page.mouse.move(title.left + 20, title.top + title.height / 2)
+    // Give the grip a chance to appear if it were going to.
+    await page.waitForTimeout(120)
+    // Either absent or hidden: the grip is only added to the page once a row offers
+    // one, so over a header there may be no element at all.
+    check((await page.locator('.note-grip:not([hidden])').count()) === 0, 'no grip is offered over a section header')
+    const body = list[1]
+    await page.mouse.move(body.left + 20, body.top + body.height / 2)
+    await page.waitForSelector('.note-grip:not([hidden])')
+    check(true, 'and appears over a body row')
+    return 'no grip on a header, a grip on a row'
+  })
 
   // 4
   await step('4. the Enter ladder: continue, drop the marker, leave the section', async () => {
@@ -599,6 +806,193 @@ async function main() {
     await type('x')
     check((await saved()) !== null, 'and a real edit does save')
     return 'no write on load, focus, blur, or canonicalisation; a keystroke writes'
+  })
+
+
+
+  // g
+  await step('g. the toolbar survives focus moving into its own UI', async () => {
+    await seed(
+      v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'select me please' }] }] }),
+    )
+    const list = await docRows()
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: list[0].start, to: list[0].start + 6 },
+    )
+    await page.waitForSelector('.note-toolbar')
+    const before = await page.evaluate(() => {
+      const { from, to } = window.EDITOR!.state.selection
+      return { from, to }
+    })
+    await page.click('[aria-label="Link"]')
+    await page.waitForSelector('.note-link-input')
+    // Focus is now in the toolbar's own field, so the editor is deliberately not
+    // focused. Visibility must not be keyed on that.
+    check((await page.evaluate(() => window.EDITOR!.isFocused)) === false, 'the editor is not focused while the field has focus')
+    check((await page.locator('.note-toolbar').count()) === 1, 'the toolbar is still mounted')
+    check((await page.locator('.note-link-input').count()) === 1, 'and so is the URL field')
+    await page.fill('.note-link-input', 'https://example.test/kept')
+    const during = await page.evaluate(() => {
+      const { from, to } = window.EDITOR!.state.selection
+      return { from, to }
+    })
+    check(
+      during.from === before.from && during.to === before.to,
+      `the selection is intact: ${JSON.stringify(during)} was ${JSON.stringify(before)}`,
+    )
+    await page.press('.note-link-input', 'Enter')
+    const applied = await page.evaluate(() => JSON.stringify(window.EDITOR!.getJSON()))
+    check(applied.includes('example.test/kept'), 'and the link applied to the range that was selected')
+    check(applied.includes('"text":"select"'), 'to exactly that range')
+    return 'the toolbar and the field stay up while focus is inside them, selection intact'
+  })
+
+  // f: the guard, not the documentation
+  await step('f. every operation is exactly one undo step', async () => {
+    // A loop rather than a case, because the failure it catches is a class. I have
+    // written the double-dispatch mistake twice: once in the keymap, once in the
+    // toolbar an hour after documenting it. A rule in a doc did not stop it. This
+    // does.
+    const plain = v2({
+      type: 'doc',
+      content: [
+        { type: 'paragraph', content: [{ type: 'text', text: 'alpha' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'beta' }] },
+      ],
+    })
+    const marker = v2({
+      type: 'doc',
+      content: [
+        { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'boxed' }] },
+        { type: 'paragraph', content: [{ type: 'text', text: 'after' }] },
+      ],
+    })
+    const inSection = v2({
+      type: 'doc',
+      content: [
+        {
+          type: 'section',
+          attrs: { collapsed: false },
+          content: [
+            { type: 'sectionTitle', content: [{ type: 'text', text: 'Title' }] },
+            {
+              type: 'sectionBody',
+              content: [
+                { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'one' }] },
+                { type: 'paragraph' },
+              ],
+            },
+          ],
+        },
+        { type: 'paragraph', content: [{ type: 'text', text: 'outside' }] },
+      ],
+    })
+
+    /** Put the caret at the end of row `index`, or select all of it. */
+    const at = async (index: number, mode: 'end' | 'start' | 'select' = 'end') => {
+      const list = await docRows()
+      const row = list[index]
+      if (mode === 'select') {
+        await page.evaluate(
+          (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+          { from: row.start, to: row.end },
+        )
+        await page.waitForFunction(() => !!window.EDITOR?.isFocused)
+        return
+      }
+      await caretTo(mode === 'end' ? row.end : row.start)
+    }
+    const clickButton = (label: string) => page.click(`[aria-label="${label}"]`)
+
+    type Case = { name: string; seed: unknown; act: () => Promise<void> }
+    const cases: Case[] = [
+      // The eight toolbar buttons, each on a selection.
+      { name: 'toolbar: bold', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Bold') } },
+      { name: 'toolbar: italic', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Italic') } },
+      { name: 'toolbar: strike', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Strike') } },
+      {
+        name: 'toolbar: link',
+        seed: plain,
+        act: async () => {
+          await at(0, 'select')
+          await clickButton('Link')
+          await page.fill('.note-link-input', 'https://example.test/one')
+          await page.press('.note-link-input', 'Enter')
+        },
+      },
+      { name: 'toolbar: checkbox', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Checkbox') } },
+      { name: 'toolbar: bullet', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Bullet') } },
+      { name: 'toolbar: quote', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Quote') } },
+      { name: 'toolbar: section', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Section') } },
+
+      // Section 6, row by row.
+      { name: 'Enter at the end of a row', seed: plain, act: async () => { await at(0); await press('Enter') } },
+      { name: 'Enter at offset 0', seed: plain, act: async () => { await at(0, 'start'); await press('Enter') } },
+      {
+        name: 'Enter mid-text',
+        seed: plain,
+        act: async () => {
+          const list = await docRows()
+          await caretTo(list[0].start + 2)
+          await press('Enter')
+        },
+      },
+      { name: 'Enter drops an empty marker', seed: inSection, act: async () => { await at(2); await press('Enter') } },
+      { name: 'Enter leaves a section', seed: inSection, act: async () => { await at(2); await press('Enter'); } },
+      { name: 'Shift+Enter inserts a soft break', seed: plain, act: async () => { await at(0); await press('Shift+Enter') } },
+      { name: 'Backspace drops a marker', seed: marker, act: async () => { await at(0, 'start'); await press('Backspace') } },
+      { name: 'Backspace merges into the previous row', seed: plain, act: async () => { await at(1, 'start'); await press('Backspace') } },
+      { name: 'Backspace leaves a section', seed: inSection, act: async () => { await at(1, 'start'); await press('Backspace') } },
+      { name: 'Backspace dissolves a section', seed: inSection, act: async () => { await at(0, 'start'); await press('Backspace') } },
+      { name: 'Delete merges the next row', seed: plain, act: async () => { await at(0); await press('Delete') } },
+      { name: 'the [] trigger', seed: plain, act: async () => { await at(0, 'start'); await type('[] ') } },
+      { name: 'the - trigger', seed: plain, act: async () => { await at(0, 'start'); await type('- ') } },
+      {
+        name: 'paste',
+        seed: plain,
+        act: async () => {
+          await at(0)
+          await page.keyboard.insertText('\npasted one\npasted two')
+        },
+      },
+      { name: 'the checkbox toggle', seed: marker, act: async () => { await page.click('.note-check-row .note-box') } },
+      { name: 'the collapse toggle', seed: inSection, act: async () => { await page.click('.note-disclosure') } },
+      {
+        name: 'a drag',
+        seed: plain,
+        act: async () => {
+          const list = visible(await rows())
+          await dragRowTo(0, list[1].top + list[1].height + 2)
+        },
+      },
+    ]
+
+    const broken: string[] = []
+    for (const entry of cases) {
+      await seed(entry.seed)
+      const before = JSON.stringify(await json())
+      await entry.act()
+      const after = JSON.stringify(await json())
+      if (after === before) {
+        broken.push(`${entry.name}: changed nothing, so the step is not testing anything`)
+        continue
+      }
+      await ensureEditorFocus()
+      await page.keyboard.press('Meta+z')
+      const undone = JSON.stringify(await json())
+      if (undone !== before) {
+        broken.push(`${entry.name}: one undo did not restore the document`)
+        continue
+      }
+      await page.keyboard.press('Meta+Shift+z')
+      const redone = JSON.stringify(await json())
+      if (redone !== after) {
+        broken.push(`${entry.name}: one redo did not reapply it`)
+      }
+    }
+    check(broken.length === 0, `${cases.length} operations, each one undo step and one redo${broken.length ? `. Failures: ${broken.join(' | ')}` : ''}`)
+    return `${cases.length} operations: eight toolbar buttons, every key in section 6, both toggles, and a drag`
   })
 
   await browser.close()

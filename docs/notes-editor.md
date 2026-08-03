@@ -729,10 +729,19 @@ does not move the caret and does not toggle the card (section 10).
 
 ## 7. Toolbar
 
-- **Trigger**: a non-empty selection inside the field. It hides on collapse of
-  the selection, on blur, and on Escape.
-- **Placement**: fixed, centered over the selection, offset above it, flipping
-  below when there is no room. It never covers the row being edited.
+- **Visibility derives from a non-empty selection inside the editor, and persists
+  while focus is inside toolbar-owned UI**, including the URL field. **Never keyed on
+  editor focus alone.** Opening the URL field moves focus out of the editor by
+  definition, so a focus-only rule unmounts the field the moment it is clicked into,
+  and the Link button reads as a button that does nothing. It hides when the
+  selection collapses, on Escape, and when focus leaves both the editor and the
+  toolbar.
+- **Placement**: fixed, centred over the selection, offset above it, flipping below
+  when there is no room above. It never covers the row being edited. **The horizontal
+  position is measured and clamped to the screen**, not centred with a CSS
+  `translate(-50%)`: the toolbar is wider than a short selection, so centring alone
+  puts it past the left edge where it cannot be clicked. AGENTS.md 4 already says no
+  surface extends past a screen edge.
 - **Contents**, in order, with separators: bold, italic, strike, link, separator,
   check, bullet, quote, section. Exactly those eight. No underline (3.2), and
   nothing that is not in the schema.
@@ -800,9 +809,27 @@ The behaviour, carried forward in full:
   paragraph (3.3). Dragging the first or last row out of a section is the normal
   way to change membership.
 - A cancelled drag dispatches nothing and records no history entry.
+- **The drop leaves the caret in the row that moved.** Invariant 7 applies to a drag
+  like anything else, and it is also what keeps undo reachable: undo is a keymap on
+  the editable, so a drag that never focused it would leave cmd Z doing nothing.
+- Lift state is plugin state with `addToHistory: false`, and the drop is one
+  transaction. Nothing about the appearance of a drag is in the document.
 
 Visual treatment: the lifted row is a card surface at `--r-md` with menu shadow
-`0 6px 24px rgba(60,50,30,.12)`. The gap is a plain space with no dashed outline.
+`0 6px 24px rgba(60,50,30,.12)`. The gap is a plain space with no dashed outline, and
+it takes the indent of the target slot. Under `prefers-reduced-motion` the lift and
+the reorder still happen; only the durations go to zero.
+
+Two mistakes this cost, both worth keeping:
+
+1. **The host element is resolved on use, never captured.** React mounts the editor's
+   DOM into its final wrapper after the plugin's view is created, so a parent
+   captured at init is a detached node: listeners on it never fire and the grip never
+   appears.
+2. **Having passed threshold `i` selects slot `i`, not `i + 1`.** The off-by-one
+   lands the row one position below the gap that was shown, which nobody can see
+   until they read the document. There is also an explicit "above everything" slot,
+   because no row's midpoint can express it.
 
 ---
 
@@ -843,6 +870,36 @@ wrong; one user action was often several steps.
 3. **Notes autosave. There is no save button.** `onChange` fires with the v2
    envelope; the adapter debounces and persists. The pipeline adapter updates
    local state optimistically so re-opening a card shows the edit immediately.
+   Autosave fires on user edits only: invariant 17.
+
+### 10.1 Flushing a pending save
+
+The debounce is what makes a save cheap, and it is also what can lose the last
+thing typed. When a save is pending, it flushes on:
+
+- the notes container collapsing,
+- the card closing,
+- a route change,
+- the component unmounting,
+- and the tab closing or reloading.
+
+For the last one, `visibilitychange` to `hidden` is the reliable signal and
+`beforeunload` is the backstop; `beforeunload` alone is not dependable on mobile
+Safari, and neither fires reliably after a crash, which is why the flush is not the
+only protection.
+
+Two rules about the flush itself:
+
+1. **It is synchronous where the platform allows it.** For `localStorage` it always
+   is. For the API it cannot be, so the pipeline adapter also writes through to its
+   optimistic local state before the request goes out.
+2. **A failed flush never discards the edit.** For Home the value stays in
+   `astir.v1`. For pipeline the pending document is kept in memory and retried, and
+   the editor is not reseeded from the server while a write is outstanding: doing so
+   is how a save failure becomes a visible data loss.
+
+Harness step: type into a note, immediately collapse the container, hard reload, the
+text is there.
 4. Neither adapter ever writes HTML, and neither reads structure back out of the
    DOM to build what it saves.
 

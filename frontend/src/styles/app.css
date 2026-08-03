@@ -4890,14 +4890,19 @@ textarea {
   box-shadow: 0 6px 24px rgba(60, 50, 30, 0.12);
 }
 
-/* Above the selection, centred on it. */
+/* Above the selection and below it when there is no room above. The horizontal
+   position is computed and clamped in JS, so the transform is vertical only. */
 .note-toolbar {
-  transform: translate(-50%, calc(-100% - var(--space-2)));
+  transform: translateY(calc(-100% - var(--space-2)));
+}
+
+.note-toolbar[data-below='true'] {
+  transform: translateY(var(--space-2));
 }
 
 /* Under the link it belongs to, so it never covers the text being read. */
 .note-popover {
-  transform: translate(-50%, var(--space-1));
+  transform: translateY(var(--space-1));
   padding: var(--space-1) var(--space-2);
   gap: var(--space-2);
 }
@@ -4954,15 +4959,17 @@ textarea {
   stroke-width: 1.8;
 }
 
-/* The three mark buttons are letterforms rather than icons: B, I, S read faster
-   than any drawing of them, and every editor uses them. */
+/* The three mark buttons are letterforms, not icons: the character IS the content,
+   per AGENTS.md 4.6. Each renders in the format it names, each has an aria-label,
+   and the size comes from the type scale (the shared button rule above), never a
+   hardcoded value. The body font is used: a serif stack for the italic would be a
+   second, unnamed typeface. */
 .note-toolbar .note-tb-bold {
   font-weight: 700;
 }
 
 .note-toolbar .note-tb-italic {
   font-style: italic;
-  font-family: Georgia, 'Times New Roman', serif;
 }
 
 .note-toolbar .note-tb-strike {
@@ -5008,4 +5015,94 @@ textarea {
 
 .note-popover-action {
   color: var(--gold-deep);
+}
+
+/* Notes drag. See docs/notes-editor.md section 8.
+
+   The grip is one element, moved to the hovered row from ProseMirror coordinates
+   rather than rendered per row. It is absolutely positioned in the gutter, so its
+   width can never shift a row: that is the shared left edge rule in section 5. */
+
+.note-editor-shell {
+  position: relative;
+}
+
+.note-editor-shell .note-grip {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-hairline);
+  width: var(--space-2);
+  height: calc(var(--type-body) * 1.5);
+  padding: var(--space-1) 0;
+  /* In the gutter, left of the row's own left edge. */
+  margin-left: calc((var(--space-2) + var(--note-grip-gap)) * -1);
+  place-content: center;
+  border: none;
+  background: transparent;
+  cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Fades in on row hover, over 150ms. */
+.note-editor-shell:hover .note-grip {
+  opacity: 1;
+}
+
+.note-editor-shell .note-grip:hover {
+  opacity: 1;
+}
+
+.note-editor-shell .note-grip span {
+  width: var(--space-hairline);
+  height: var(--space-hairline);
+  border-radius: var(--r-pill);
+  background: var(--placeholder);
+}
+
+/* The row being dragged stays in the document; this is only how it looks. */
+.note-editor .note-dragging {
+  opacity: 0.35;
+}
+
+/* The gap is a plain space at the target indent. No dashed outline. */
+.note-drag-gap {
+  border-radius: var(--r-sm);
+  background: var(--hover-soft);
+  pointer-events: none;
+}
+
+/* The lifted row: card surface, r-md, menu shadow. It eases across to the target
+   indent, which is the only horizontal movement in a drag. */
+.note-drag-card {
+  position: fixed;
+  z-index: 70;
+  max-width: calc(var(--space-16) * 5);
+  padding: var(--space-1) var(--space-3);
+  overflow: hidden;
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: 0 6px 24px rgba(60, 50, 30, 0.12);
+  color: var(--ink);
+  font-size: var(--type-body);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(var(--space-4), calc(-50% + 0px)) scale(1.01);
+  transition: transform 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The lift and the reorder still happen. Only the durations go. */
+  .note-editor-shell .note-grip,
+  .note-drag-card {
+    transition-duration: 0s;
+  }
+}
+
+.note-drag-card[data-reduce-motion='true'] {
+  transition-duration: 0s;
 }

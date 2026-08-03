@@ -103,7 +103,7 @@ export const NoteQuote = Node.create({
     return [{ tag: 'blockquote' }]
   },
   renderHTML({ HTMLAttributes }) {
-    return ['blockquote', mergeAttributes(HTMLAttributes, { class: 'note-quote' }), 0]
+    return ['blockquote', mergeAttributes(HTMLAttributes, { class: 'note-blockquote' }), 0]
   },
 })
 
@@ -180,43 +180,46 @@ export const NoteSectionBody = Node.create({
  * here, and the reason is the same in every case: it is not in the schema, so it
  * must not be reachable by a paste, a shortcut, or an input rule.
  */
+export const NoteStarterKit = StarterKit.configure({
+  // Replaced above, because sections and rows need different groups than the
+  // defaults give.
+  document: false,
+  paragraph: false,
+
+  // Not in the schema. Notes have one level of nesting and four row types.
+  heading: false,
+  blockquote: false, // our own `quote`, with row+ content
+  bulletList: false, // our own flat `bullet` row
+  orderedList: false,
+  listItem: false,
+  listKeymap: false,
+  code: false,
+  codeBlock: false,
+  horizontalRule: false,
+
+  // Cut deliberately: an underline mark collides with link styling, and the
+  // link is worth more. See docs/notes-editor.md 3.2.
+  underline: false,
+
+  // Nothing appends a trailing node to a notes document. An empty last row is
+  // real content when it is there and must not be conjured when it is not.
+  trailingNode: false,
+
+  link: {
+    openOnClick: false, // clicking places the caret; cmd or ctrl click opens
+    autolink: false, // a link is applied deliberately, never guessed from typing
+    linkOnPaste: false,
+    HTMLAttributes: { class: 'note-link', rel: 'noreferrer noopener' },
+  },
+
+  // Word-level undo, carried forward from the editor being replaced: same input
+  // kind, roughly 700ms, breaking at spaces. See docs/notes-editor.md 9.
+  undoRedo: { newGroupDelay: 700 },
+})
+
+/** Schema only, no views and no key handling. What the schema tests assert against. */
 export const noteExtensions: Extensions = [
-  StarterKit.configure({
-    // Replaced above, because sections and rows need different groups than the
-    // defaults give.
-    document: false,
-    paragraph: false,
-
-    // Not in the schema. Notes have one level of nesting and four row types.
-    heading: false,
-    blockquote: false, // our own `quote`, with row+ content
-    bulletList: false, // our own flat `bullet` row
-    orderedList: false,
-    listItem: false,
-    listKeymap: false,
-    code: false,
-    codeBlock: false,
-    horizontalRule: false,
-
-    // Cut deliberately: an underline mark collides with link styling, and the
-    // link is worth more. See docs/notes-editor.md 3.2.
-    underline: false,
-
-    // Nothing appends a trailing node to a notes document. An empty last row is
-    // real content when it is there and must not be conjured when it is not.
-    trailingNode: false,
-
-    link: {
-      openOnClick: false, // clicking places the caret; cmd or ctrl click opens
-      autolink: false, // a link is applied deliberately, never guessed from typing
-      linkOnPaste: false,
-      HTMLAttributes: { class: 'note-link', rel: 'noreferrer noopener' },
-    },
-
-    // Word-level undo, carried forward from the editor being replaced: same input
-    // kind, roughly 700ms, breaking at spaces. See docs/notes-editor.md 9.
-    undoRedo: { newGroupDelay: 700 },
-  }),
+  NoteStarterKit,
   NoteDocument,
   NoteParagraph,
   NoteCheck,

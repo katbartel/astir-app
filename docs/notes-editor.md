@@ -436,9 +436,14 @@ stricter and it is load-bearing:
    any other.
 
 Field recipe, the standard input recipe from AGENTS.md: **`--paper` background**,
-`--line2` border, input radius, gold focus border with no glow, placeholder
-`Add a note` shown only when the document is a single empty paragraph.
+`--line2` border, input radius, gold focus border with no glow.
 `white-space: pre-wrap`.
+
+**The placeholder shows on exactly one condition**: the document has one child, it
+is a `paragraph`, and its content is empty. Keyed on that, explicitly, and not on
+Tiptap's `isEmpty`. The two are not the same and the difference is a real note: a
+note of three empty rows is not empty, must keep its rows (invariant 2), and must
+not show `Add a note`. Both cases are asserted in the harness.
 
 The shipped `.note-field` used `--tile`. That was drift, not a decision: every
 other input surface in the app is `--paper` (the base `input, select` rule,
@@ -740,10 +745,18 @@ to the notes editor, not just the one you were asked to make.
     rows; it never deletes them.
 14. A mark never outlives the text it was attached to.
 15. A notes container's expanded state changes only via its disclosure control.
+16. **A NodeView holds no state.** It renders from the node's attributes and
+    dispatches transactions. No React state mirroring a checkbox, no collapsed
+    flag held beside the node, no DOM read to decide what to render. A NodeView
+    keeping its own copy of the document's state is the same failure this rewrite
+    exists to delete, wearing a React costume: two places to disagree, and the
+    view winning. Both the checkbox toggle and the collapse toggle are
+    transactions, which is also what makes them undoable (section 9).
 
 Only three of these were reworded from the block model brief, and only where they
 named the superseded implementation: 1 (ids to structural identity), 5 and 12
-(the array to the document). The obligations are unchanged.
+(the array to the document). The obligations are unchanged. Invariant 16 was added
+during the rebuild.
 
 ---
 

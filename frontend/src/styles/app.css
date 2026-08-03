@@ -25,6 +25,18 @@ button {
   cursor: pointer;
 }
 
+/* Live-region text: announced, never seen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .app {
   display: flex;
   max-width: var(--page-max);
@@ -2121,11 +2133,15 @@ h1 {
   color: var(--ink2);
 }
 
+/* The extra left padding is the grip gap: everything in the field — checkboxes,
+   plain lines, sections — starts one gap further in, so the grip sitting off the
+   checkbox's left edge keeps the gutter it had. */
 .note-field {
   min-height: calc(var(--input-height) * 3);
   overflow: auto;
   resize: vertical;
-  padding: var(--space-3);
+  padding: var(--space-3) var(--space-3) var(--space-3)
+    calc(var(--space-3) + var(--note-grip-gap));
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--input-radius);
   background: var(--tile);
@@ -2167,7 +2183,7 @@ h1 {
    Absolutely placed in the gutter left of the box so it never shifts the row. */
 .note-grip {
   position: absolute;
-  right: 100%;
+  right: calc(100% + var(--note-grip-gap));
   top: 50%;
   transform: translateY(-50%);
   display: inline-flex;
@@ -2197,41 +2213,36 @@ h1 {
   color: var(--ink2);
 }
 
-.note-check.note-check-dragging {
-  opacity: 0.4;
+/* A note line is a text run between newlines, not an element — for the length of
+   a drag the field is re-rendered with one of these per line so the drag has
+   boxes to measure, indent and move (see noteLineDrag.ts). It has to render
+   exactly like the run it stands in for, so it carries no styling of its own. */
+.note-drag-line {
+  cursor: text;
 }
 
-/* Floating preview of the row under the cursor while dragging. */
-.note-drag-ghost {
-  position: fixed;
-  top: -1000px;
-  left: -1000px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-  background: var(--tile);
-  color: var(--ink);
-  font-size: var(--type-body);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-}
-
-.note-drag-ghost .note-box {
-  width: var(--space-4);
-  height: var(--space-4);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-}
-
-/* Line showing where the dragged row will drop. */
-.note-drop-line {
-  position: fixed;
+/* The lifted line: the whole row travels as one card, checkbox and grip
+   included. Position, size, shadow and transform are set inline by the drag —
+   it measures the padding and border here to place the card so nothing shifts. */
+.note-drag-line.note-line-lifted {
   z-index: 60;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--gold);
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  cursor: grabbing;
+}
+
+/* The grip is a hover affordance only: it has done its job once the line is in
+   the air, and the pointer is still over it, so hover must not bring it back. */
+.note-line-lifted .note-check .note-grip {
+  opacity: 0;
+}
+
+/* The slot the line would land in: empty space of exactly the line's height,
+   sitting in whichever container owns that slot — so a section's own box grows
+   and shrinks as the line moves in and out of it. */
+.note-drag-gap {
   pointer-events: none;
 }
 
@@ -3743,11 +3754,14 @@ textarea {
   gap: var(--space-4);
 }
 
+/* Title, stage mark and the row inputs all start at the card's left padding
+   edge, and the +/- buttons end at the matching inset on the right, so the card
+   reads as one aligned column. The drag handle hangs into the left padding. */
 .stage-bucket {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--pad-card-tight) var(--space-4);
+  padding: var(--pad-card-tight) var(--pad-card);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
@@ -3760,45 +3774,89 @@ textarea {
   justify-content: space-between;
   min-height: var(--menu-trigger);
   gap: var(--space-3);
-  padding-left: calc(var(--menu-trigger) + var(--space-2));
 }
 
 .stage-bucket h2 {
   color: var(--ink2);
   font-size: var(--type-secondary);
   font-weight: var(--weight-medium);
+  line-height: 1.35;
 }
 
+/* Above the title the card padding is followed by two gaps that have no echo
+   under the last row: the head row's slack over its line box, and the leading
+   above the letters' cap height (~4px at this size). Add both back below so the
+   card reads as evenly padded rather than top heavy. */
 .stage-bucket-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding-bottom: calc(
+    (var(--menu-trigger) - var(--type-secondary) * 1.35) / 2 + var(--space-1)
+  );
 }
 
 .stage-settings-row {
+  /* The grip hangs in this lane, left of the row. A lifted row takes the lane
+     back as padding so the grip travels inside the card instead of beside it. */
+  --grip-lane: calc(var(--space-3) + var(--space-1));
   position: relative;
   display: grid;
-  grid-template-columns: var(--menu-trigger) var(--watch-title-action-size) minmax(0, 1fr) var(--menu-trigger);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   border-radius: var(--r-sm);
   transition: background .2s ease, opacity .2s ease;
 }
 
-.stage-settings-row.dragging {
-  background: var(--gold-soft);
-  opacity: .72;
+/* Buckets without a delete button let the field run to the same right edge the
+   +/- buttons end at. */
+.stage-settings-row.no-actions {
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
-.stage-settings-row.drop-target::before {
-  position: absolute;
-  top: calc(var(--space-1) * -1);
-  right: 0;
-  left: calc(var(--menu-trigger) + var(--space-2));
-  height: var(--space-hairline);
-  border-radius: var(--r-pill);
-  background: var(--gold);
-  content: "";
+/* The whole row lifts as one card, grip and buttons included. Position, size,
+   shadow and transform are set inline by the sortable hook — it measures the
+   padding and border below to place the card so nothing shifts at lift. */
+.stage-settings-row.lifted {
+  z-index: 5;
+  padding: var(--space-2) var(--grip-lane);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  cursor: grabbing;
+}
+
+.stage-settings-row.lifted .stage-drag-handle {
+  left: 0;
+  cursor: grabbing;
+}
+
+/* The name reads as plain text in the air; its chrome comes back on drop. */
+.stage-settings-row.lifted input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stage-settings-row.lifted .stage-action-cell {
+  opacity: .4;
+  pointer-events: none;
+}
+
+/* Same lifted look for a keyboard pick, which stays in the flow and so cannot
+   take on padding or a border without pushing the list around. */
+.stage-settings-row.picked {
+  z-index: 4;
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+}
+
+/* The slot the lifted row came from: empty space of exactly the row's height,
+   slid to wherever the drop would land. */
+.stage-row-placeholder {
+  flex: 0 0 auto;
 }
 
 .stage-grid-cell,
@@ -3817,8 +3875,10 @@ textarea {
 }
 
 .stage-drag-handle {
+  position: absolute;
+  left: calc(var(--grip-lane) * -1);
   display: grid;
-  width: var(--watch-title-action-size);
+  width: var(--space-3);
   height: var(--watch-title-action-size);
   place-items: center;
   border: 0;
@@ -3826,13 +3886,20 @@ textarea {
   color: var(--muted);
   cursor: grab;
   opacity: 0;
-  transition: color .2s ease, opacity .2s ease;
+  touch-action: none;
+  transition: color .2s ease, opacity .15s ease;
 }
 
 .stage-settings-row:hover .stage-drag-handle,
 .stage-drag-handle:focus-visible,
-.stage-settings-row.dragging .stage-drag-handle {
+.stage-settings-row.picked .stage-drag-handle {
   opacity: 1;
+}
+
+/* Hover affordance only: once the row is in the air the grip has done its job,
+   and the pointer sits right on top of it, so hover must not bring it back. */
+.stage-settings-row.lifted .stage-drag-handle {
+  opacity: 0;
 }
 
 .stage-drag-handle:hover {
@@ -3849,8 +3916,8 @@ textarea {
 }
 
 .stage-drag-handle svg {
-  width: var(--space-2);
-  height: var(--space-3);
+  width: calc(var(--space-3) - var(--space-hairline));
+  height: calc(var(--space-4) - var(--space-hairline));
   fill: currentColor;
   stroke: none;
 }
@@ -4573,5 +4640,223 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   .sk-shimmer::after {
     animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Notes editor. See docs/notes-editor.md section 5.
+
+   Everything here is scoped under .note-editor so it cannot reach the editor
+   being replaced, whose .note-* rules are still live above until its call sites
+   move over.
+
+   The load-bearing rule is the shared left edge: inside any one container a
+   checkbox row and a plain paragraph line up, and the checkbox box is what
+   defines that edge. The grip (arriving with the drag) is absolutely positioned
+   in the gutter for exactly that reason, so its width can never shift a row.
+   --------------------------------------------------------------------------- */
+
+.note-editor-shell .note-editor {
+  min-height: calc(var(--input-height) * 3);
+  padding: var(--space-3) var(--space-3) var(--space-3)
+    calc(var(--space-3) + var(--note-grip-gap));
+  overflow: auto;
+  resize: vertical;
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  /* The input recipe, per AGENTS.md. The old field used --tile, which was drift:
+     every other input surface in the app is paper. */
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--type-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.note-editor-shell .note-editor:focus {
+  border-color: var(--gold);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+/* One row per row node. A marker row is a flex pair of marker and line; a
+   paragraph holds its inline content directly, so it must NOT be a flex
+   container, or every inline run becomes a flex item and text stops wrapping. */
+.note-editor .note-row {
+  position: relative;
+  min-height: calc(var(--type-body) * 1.5);
+}
+
+.note-editor .note-check-row,
+.note-editor .note-bullet-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.note-editor .note-line {
+  flex: 1;
+  min-width: 0;
+}
+
+/* An empty row keeps full line height: selectable, focusable, and never collapsed
+   away. Invariant 2. */
+.note-editor .note-row:empty::after,
+.note-editor .note-line:empty::after {
+  content: '';
+  display: inline-block;
+}
+
+/* The box defines the row's left edge, so a paragraph indents to match it rather
+   than the box hanging off to one side. */
+.note-editor .note-box,
+.note-editor .note-bullet {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--space-4);
+  /* Match the line box (font-size x line-height) so a marker sits on the first
+     line of a row that wraps. */
+  height: calc(var(--type-body) * 1.5);
+}
+
+/* A paragraph lines up with a marker row's text: the box plus the gap. This is
+   the shared left edge, measured from the box. */
+.note-editor .note-para {
+  padding-left: calc(var(--space-4) + var(--space-1));
+}
+
+.note-editor .note-box {
+  height: var(--space-4);
+  margin-top: calc((var(--type-body) * 1.5 - var(--space-4)) / 2);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--space-1);
+  background: var(--tile);
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+
+.note-editor .note-box svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.note-editor .note-check-row[data-checked='true'] .note-box {
+  border-color: transparent;
+  background: var(--gold-soft);
+}
+
+.note-editor .note-check-row[data-checked='true'] .note-box svg {
+  opacity: 1;
+}
+
+.note-editor .note-bullet {
+  color: var(--placeholder);
+}
+
+.note-editor .note-bullet svg {
+  width: var(--space-2);
+  height: var(--space-2);
+}
+
+/* Quote: unchanged recipe from the field being replaced. */
+.note-editor .note-blockquote {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: 3px solid var(--line2);
+}
+
+/* Section. The disclosure control is the only thing that opens or closes it
+   (invariant 15), and the body stays in the document either way: this attribute
+   is all that hides it, so a toggle serialises nothing. */
+.note-editor .note-section {
+  position: relative;
+  margin: var(--space-2) 0;
+}
+
+.note-editor .note-disclosure {
+  position: absolute;
+  top: 0;
+  left: calc(var(--space-1) * -1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: calc(var(--type-body) * 1.5);
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--placeholder);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.note-editor .note-disclosure:hover {
+  background: var(--hover-soft);
+  color: var(--ink2);
+}
+
+.note-editor .note-disclosure svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.note-editor .note-section[data-collapsed='true'] .note-disclosure {
+  transform: rotate(-90deg);
+}
+
+.note-editor .note-section[data-collapsed='false'] .note-disclosure {
+  transform: rotate(90deg);
+}
+
+.note-editor .note-section-title {
+  font-weight: 600;
+  padding-left: var(--space-6);
+}
+
+.note-editor .note-section[data-collapsed='true'] .note-section-body {
+  display: none;
+}
+
+/* Child rows indent one step, from the section in the document and never from a
+   tab in the text. */
+.note-editor .note-section-body {
+  padding-left: var(--space-6);
+}
+
+/* A link: gold, solid 1px underline at 40% opacity. Never blue. There is no
+   underline mark in notes, so nothing else here is underlined. */
+.note-editor .note-link {
+  color: var(--gold-text);
+  text-decoration-line: underline;
+  text-decoration-thickness: var(--border-thin);
+  text-decoration-color: color-mix(in srgb, var(--gold-text) 40%, transparent);
+  text-underline-offset: 2px;
+  cursor: text;
+}
+
+/* "Add a note" shows on exactly one condition: the document is a single empty
+   paragraph. The decoration that carries this class is applied on that condition
+   and no other. */
+.note-editor .note-placeholder::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--placeholder);
+  pointer-events: none;
+  height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-editor .note-disclosure,
+  .note-editor .note-box svg {
+    transition: none;
   }
 }

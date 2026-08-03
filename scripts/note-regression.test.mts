@@ -259,17 +259,132 @@ async function main() {
     return 'one marker per row by trigger, by repeat trigger, and by inserted text'
   })
 
-  // 6
-  deferred(
-    '6. apply a link, cmd click opens it, the popover shows the URL',
-    'needs the toolbar to apply a link and to host the popover (5c). cmd click on an existing link mark is wired and covered by the mark round trip in addition b.',
-  )
+  // 7, run before 6: it is the toolbar's acceptance case.
+  await step('7. a checkbox becomes the section header, with no second section', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'Plan' }] },
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'one' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'two' }] },
+        ],
+      }),
+    )
+    // Select the text in the checkbox, which is what brings the toolbar up.
+    const list = await docRows()
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: list[0].start, to: list[0].end },
+    )
+    await page.waitForSelector('.note-toolbar')
+    await page.click('[aria-label="Section"]')
 
-  // 7
-  deferred(
-    '7. converting a checkbox to a section adopts what follows it',
-    'needs the toolbar (5c). This is its acceptance case and runs first there.',
-  )
+    const now = visible(await rows())
+    // The header plus the two rows it adopted: three rows, from three before.
+    check(now.length === 3, `${now.length} rows on screen`)
+    check(now[0].kind === 'sectionTitle' && now[0].text === 'Plan', `the checkbox became the header: ${shape(await rows())}`)
+    const structure = (await json()) as { content: { type: string }[] }
+    check(structure.content.length === 1, `exactly one top-level node, no second section: ${structure.content.map((n) => n.type).join(', ')}`)
+    check(structure.content[0].type === 'section', 'and it is the section')
+    check(
+      now[1].text === 'one' && now[2].text === 'two',
+      `the rows that followed became its children: ${shape(await rows())}`,
+    )
+    check(now[1].indent > now[0].indent, 'and they are indented under it')
+    check(now[1].checked === true, 'with their checked states kept')
+    // And a section inside a section is not offered.
+    await page.evaluate(() => window.EDITOR!.chain().focus().setTextSelection({ from: 6, to: 9 }).run())
+    await page.waitForSelector('.note-toolbar')
+    const disabled = await page.locator('[aria-label="Section"]').isDisabled()
+    check(disabled, 'the section button is disabled inside a section body')
+    return 'the row became the header and adopted what followed it, one section total'
+  })
+
+  // 6
+  await step('6. a link applies to a selection, cmd click opens it, the popover shows it', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'see the posting' }] },
+        ],
+      }),
+    )
+    const list = await docRows()
+    // "the posting", a range inside one row.
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: list[0].start + 4, to: list[0].end },
+    )
+    await page.waitForSelector('.note-toolbar')
+    await page.click('[aria-label="Link"]')
+    await page.fill('.note-link-input', 'https://example.test/posting')
+    await page.press('.note-link-input', 'Enter')
+
+    const marks = await page.evaluate(() => {
+      const out: { text: string; href: string | null }[] = []
+      window.EDITOR!.state.doc.descendants((node) => {
+        if (node.isText) {
+          const link = node.marks.find((mark) => mark.type.name === 'link')
+          out.push({ text: node.text ?? '', href: link ? String(link.attrs.href) : null })
+        }
+        return true
+      })
+      return out
+    })
+    check(
+      marks.some((run) => run.text === 'the posting' && run.href === 'https://example.test/posting'),
+      `the href is stored on the run: ${JSON.stringify(marks)}`,
+    )
+    check(
+      marks.some((run) => run.text === 'see ' && run.href === null),
+      'and only on the selected run',
+    )
+    const attrs = await page.evaluate(() => {
+      let found: Record<string, unknown> = {}
+      window.EDITOR!.state.doc.descendants((node) => {
+        const link = node.marks?.find((mark) => mark.type.name === 'link')
+        if (link) found = link.attrs as Record<string, unknown>
+        return true
+      })
+      return Object.keys(found).sort()
+    })
+    check(JSON.stringify(attrs) === JSON.stringify(['href', 'rel', 'target']), `stored attrs: ${attrs.join(', ')}`)
+
+    // Cmd click opens it. Plain click does not: it places the caret.
+    await page.click('.note-link')
+    check((await page.evaluate(() => window.OPENED.length)) === 0, 'a plain click opened nothing, it placed the caret')
+    await page.click('.note-link', { modifiers: ['Meta'] })
+    const opened = await page.evaluate(() => window.OPENED)
+    check(
+      opened.length === 1 && opened[0] === 'https://example.test/posting',
+      `cmd click opened it: ${JSON.stringify(opened)}`,
+    )
+
+    // The caret inside the link shows the popover with the URL.
+    const inLink = await page.evaluate(() => {
+      let at = 0
+      window.EDITOR!.state.doc.descendants((node, pos) => {
+        if (node.isText && node.marks.some((mark) => mark.type.name === 'link')) at = pos + 2
+        return true
+      })
+      return at
+    })
+    await caretTo(inLink)
+    await page.waitForSelector('.note-popover')
+    const url = (await page.locator('.note-popover-url').textContent()) ?? ''
+    check(url.includes('example.test/posting'), `the popover shows the URL: ${url}`)
+    check((await page.locator('.note-popover-action', { hasText: 'Open' }).count()) === 1, 'with an Open action')
+    check((await page.locator('.note-popover-action', { hasText: 'Remove' }).count()) === 1, 'and a Remove action')
+
+    // Remove takes the mark off the whole run, and the text stays.
+    await page.click('.note-popover-action:has-text("Remove")')
+    const after = await page.evaluate(() => JSON.stringify(window.EDITOR!.getJSON()))
+    check(!after.includes('"link"'), 'Remove took the mark off')
+    check(after.includes('see the posting'), 'and left the text alone')
+    return 'applied to one run, cmd click opens, popover shows the URL with Open and Remove'
+  })
 
   // 8
   await step('8. Enter inside a section adds a line, with no tab and no indent jump', async () => {

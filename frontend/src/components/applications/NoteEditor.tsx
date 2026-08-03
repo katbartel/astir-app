@@ -15,6 +15,7 @@ import { useEffect, useRef } from 'react'
 import type { Editor } from '@tiptap/core'
 import { NOTE_VERSION, readNote, type StoredNote } from '@/lib/noteMigration'
 import { noteEditorExtensions } from './noteNodeViews'
+import { NoteToolbar } from './NoteToolbar'
 
 type Props = {
   /** A v2 note, an un-migrated v1 note, or null. */
@@ -70,5 +71,10 @@ export function NoteEditor({ note, onChange, ariaLabel = 'Note', onReady }: Prop
     if (editor) ready.current?.(editor)
   }, [editor])
 
-  return <EditorContent editor={editor} className="note-editor-shell" />
+  return (
+    <div className="note-editor-shell">
+      <EditorContent editor={editor} />
+      <NoteToolbar editor={editor} />
+    </div>
+  )
 }

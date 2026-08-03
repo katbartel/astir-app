@@ -10,6 +10,7 @@
 
 import { Extension, InputRule } from '@tiptap/core'
 import { keymap } from '@tiptap/pm/keymap'
+import { lift, wrapIn } from '@tiptap/pm/commands'
 import { Plugin } from '@tiptap/pm/state'
 import { Fragment, Slice, type Node as PmNode, type ResolvedPos, type Schema } from '@tiptap/pm/model'
 import { TextSelection, type Command, type EditorState, type Transaction } from '@tiptap/pm/state'
@@ -445,6 +446,63 @@ export function setRowType(name: 'paragraph' | 'check' | 'bullet'): Command {
     if (dispatch) dispatch(tr.scrollIntoView())
     return true
   }
+}
+
+/**
+ * Turn the caret's row into a section, adopting the rows that follow it.
+ *
+ * This is the original bug's acceptance case: converting a checkbox with text used
+ * to create a *second*, empty section, because conversion was implemented as
+ * insertion. Here it is one `replaceWith`: the row becomes the title, the rows
+ * after it up to the next section become the body, and nothing is inserted.
+ *
+ * Adoption stops at the next section, or at the end of the container. A row with
+ * nothing after it gets a body of one empty paragraph, so the caret has somewhere
+ * to go (3.3).
+ *
+ * Only at top level. A section cannot exist inside a quote or another section, so
+ * rather than silently moving content out of its container to make room, the
+ * command declines and the toolbar button shows as disabled.
+ */
+export const convertRowToSection: Command = (state, dispatch) => {
+  const $from = state.selection.$from
+  const row = rowAround($from)
+  if (!row) return false
+  const container = containerOf($from, row.depth)
+  if (container.node.type.name !== 'doc') return false
+
+  const schema = state.schema
+  const rowPos = $from.before(row.depth)
+  const adopted: PmNode[] = []
+  for (let index = container.indexInParent + 1; index < container.node.childCount; index += 1) {
+    const child = container.node.child(index)
+    if (child.type.name === 'section') break
+    adopted.push(child)
+  }
+
+  if (!dispatch) return true
+  const title = schema.nodes.sectionTitle.createChecked(null, row.node.content)
+  const body = schema.nodes.sectionBody.createChecked(
+    null,
+    adopted.length > 0 ? adopted : [schema.nodes.paragraph.createChecked(null)],
+  )
+  const section = schema.nodes.section.createChecked({ collapsed: false }, [title, body])
+  const end = adopted.reduce((total, node) => total + node.nodeSize, rowPos + row.node.nodeSize)
+
+  const tr = state.tr.replaceWith(rowPos, end, section)
+  // Caret at the end of the title: the row the caret was on is now the title.
+  tr.setSelection(TextSelection.create(tr.doc, rowPos + 2 + title.content.size))
+  dispatch(tr.scrollIntoView())
+  return true
+}
+
+/** Wrap the caret's row in a quote, or lift it back out if it is already in one. */
+export const toggleQuote: Command = (state, dispatch) => {
+  const $from = state.selection.$from
+  for (let depth = $from.depth; depth > 0; depth -= 1) {
+    if ($from.node(depth).type.name === 'quote') return lift(state, dispatch)
+  }
+  return wrapIn(state.schema.nodes.quote)(state, dispatch)
 }
 
 /** Shift+Enter: a soft break, and nothing else. Never continues a list. */

@@ -14,11 +14,13 @@ import {
   noteDelete,
   noteEnter,
   noteHardBreak,
+  convertRowToSection,
   setRowType,
   sliceForParsed,
   sliceForText,
   toggleCheckedAt,
   toggleCollapsedAt,
+  toggleQuote,
 } from '../frontend/src/components/applications/noteEditing.ts'
 
 const schema: Schema = noteSchema()
@@ -136,6 +138,15 @@ function run(state: EditorState, command: Command): EditorState {
 }
 
 const after = (specs: Spec[], command: Command) => show(run(build(specs), command))
+const check = (ok: boolean, what: string) => {
+  if (ok) {
+    passed += 1
+    console.log(`  ok    ${what}`)
+  } else {
+    failed += 1
+    console.log(`  FAIL  ${what}`)
+  }
+}
 
 // --- Enter ---
 
@@ -585,6 +596,77 @@ p "inside"
 bullet "listy"`,
   )
 }
+
+
+console.log('\nconverting a row to a section, the original bug')
+
+eq(
+  'a checkbox with text becomes the header, with its text as the title, and no second section appears',
+  after([['checked', `Plan${CARET}`], ['check', 'one'], ['p', 'two']], convertRowToSection),
+  `
+section[open]
+  sectionTitle "Plan|"
+  sectionBody
+    check[ ] "one"
+    p "two"`,
+)
+eq(
+  'adoption stops at the next section',
+  after([['p', `Head${CARET}`], ['p', 'mine'], ['section', 'Other', [['p', 'theirs']]]], convertRowToSection),
+  `
+section[open]
+  sectionTitle "Head|"
+  sectionBody
+    p "mine"
+section[open]
+  sectionTitle "Other"
+  sectionBody
+    p "theirs"`,
+)
+eq(
+  'a row with nothing after it gets a body of one empty paragraph',
+  after([['p', `Alone${CARET}`]], convertRowToSection),
+  `
+section[open]
+  sectionTitle "Alone|"
+  sectionBody
+    p ""`,
+)
+eq(
+  'a quote is adopted into the body, not stopped at',
+  after([['p', `Head${CARET}`], ['quote', [['p', 'said']]]], convertRowToSection),
+  `
+section[open]
+  sectionTitle "Head|"
+  sectionBody
+    quote
+      p "said"`,
+)
+{
+  // Sections cannot nest, so the command declines rather than moving content out of
+  // its container to make room. The toolbar shows the button disabled.
+  const inside = build([['section', 'T', [['p', `row${CARET}`]]]])
+  check(convertRowToSection(inside, undefined) === false, 'declines inside a section body')
+  const inQuote = build([['quote', [['p', `row${CARET}`]]]])
+  check(convertRowToSection(inQuote, undefined) === false, 'declines inside a quote')
+}
+
+console.log('\nquote')
+
+eq('a row wraps into a quote', after([['p', `said${CARET}`]], toggleQuote), `
+quote
+  p "said|"`)
+eq('and lifts back out', after([['quote', [['p', `said${CARET}`]]]], toggleQuote), `p "said|"`)
+eq(
+  'a row inside a section body can be quoted, since a body takes block+',
+  after([['section', 'T', [['p', `said${CARET}`]]]], toggleQuote),
+  `
+section[open]
+  sectionTitle "T"
+  sectionBody
+    quote
+      p "said|"`,
+)
 
 console.log('\nrow type on a transaction')
 

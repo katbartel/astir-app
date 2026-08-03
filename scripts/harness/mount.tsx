@@ -26,6 +26,8 @@ type VisualRow = {
 
 declare global {
   interface Window {
+    /** Hrefs the page tried to open. Instrumentation, so cmd click is assertable. */
+    OPENED: string[]
     SEED: unknown
     SAVED: StoredNote | null
     EDITOR: Editor | null
@@ -36,6 +38,14 @@ declare global {
 }
 
 const SEED_KEY = 'astir.harness.seed'
+
+// Record window.open rather than letting a popup appear: the assertion is that the
+// href was opened, and a real popup is noise in a headless run.
+window.OPENED = []
+window.open = ((url?: string | URL) => {
+  window.OPENED.push(String(url ?? ''))
+  return null
+}) as typeof window.open
 
 function readSeed(): unknown {
   const raw = window.sessionStorage.getItem(SEED_KEY)

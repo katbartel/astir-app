@@ -668,6 +668,10 @@ the same rule. This was agreed explicitly and it used to fail silently.
 
 ### 6.7 Type conversion
 
+Conversion is a `replaceWith`, never an insertion. That distinction is the whole of
+the original bug: converting a checkbox used to *insert* a section, leaving the
+checkbox behind as a second, empty one.
+
 Conversion always changes the current row. It never inserts a new one.
 
 1. **To check**: type `check`, `checked: false`. Text kept.
@@ -729,8 +733,21 @@ does not move the caret and does not toggle the card (section 10).
   the selection, on blur, and on Escape.
 - **Placement**: fixed, centered over the selection, offset above it, flipping
   below when there is no room. It never covers the row being edited.
-- **Contents**, in order, with separators: bold, italic, strike, link,
-  separator, check, bullet, quote, section. There is no underline button (3.2).
+- **Contents**, in order, with separators: bold, italic, strike, link, separator,
+  check, bullet, quote, section. Exactly those eight. No underline (3.2), and
+  nothing that is not in the schema.
+- **The three mark buttons are letterforms**, B, I, and S, not drawings of them.
+  AGENTS.md 4.6 bans punctuation standing in for icons; a letter naming its own
+  format is a label, and every editor uses these three. The five structural buttons
+  are real SVG.
+- **The section button is disabled inside a quote or a section body**, because a
+  section cannot exist there (3.1). The alternative would be to move the row out of
+  its container to make room, which is content moving on its own. Disabled and
+  visible beats silent and clever.
+- **Applying a link opens a URL field in the toolbar itself**, not a browser prompt.
+  While it is open the editor is deliberately not focused, so toolbar visibility
+  cannot be keyed on editor focus alone: doing that unmounts the field the moment it
+  is clicked into.
 - **Surface**: the menu recipe from section 5.
 - Buttons show active state for the marks under the caret using `--gold-soft`
   background and `--gold-deep` text.

@@ -4872,3 +4872,140 @@ textarea {
     transition: none;
   }
 }
+
+/* Notes selection toolbar and link popover. See docs/notes-editor.md 6.8 and 7.
+   Both use the menu recipe from AGENTS.md 4.7: card surface, r-md, menu shadow. */
+
+.note-toolbar,
+.note-popover {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: 0 6px 24px rgba(60, 50, 30, 0.12);
+}
+
+/* Above the selection, centred on it. */
+.note-toolbar {
+  transform: translate(-50%, calc(-100% - var(--space-2)));
+}
+
+/* Under the link it belongs to, so it never covers the text being read. */
+.note-popover {
+  transform: translate(-50%, var(--space-1));
+  padding: var(--space-1) var(--space-2);
+  gap: var(--space-2);
+}
+
+.note-toolbar button,
+.note-popover-action {
+  display: grid;
+  place-items: center;
+  min-width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--space-1);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+.note-toolbar button:hover,
+.note-popover-action:hover {
+  background: var(--tile-hover);
+}
+
+.note-toolbar button:focus-visible,
+.note-popover-action:focus-visible {
+  outline: var(--border-thin) solid var(--gold);
+  outline-offset: 1px;
+}
+
+/* Pressed formatting under the caret. */
+.note-toolbar button.active {
+  background: var(--gold-soft);
+  color: var(--gold-deep);
+}
+
+.note-toolbar button:disabled {
+  color: var(--line2);
+  cursor: default;
+}
+
+.note-toolbar button:disabled:hover {
+  background: transparent;
+}
+
+.note-toolbar button svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+/* The three mark buttons are letterforms rather than icons: B, I, S read faster
+   than any drawing of them, and every editor uses them. */
+.note-toolbar .note-tb-bold {
+  font-weight: 700;
+}
+
+.note-toolbar .note-tb-italic {
+  font-style: italic;
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.note-toolbar .note-tb-strike {
+  text-decoration: line-through;
+}
+
+.note-toolbar .note-tb-sep {
+  width: var(--border-thin);
+  align-self: stretch;
+  margin: var(--space-1) 0;
+  background: var(--line2);
+}
+
+.note-toolbar .note-tb-text {
+  padding: 0 var(--space-3);
+  color: var(--gold-deep);
+  font-weight: 500;
+}
+
+.note-link-input {
+  width: calc(var(--space-16) * 3);
+  height: var(--watch-title-action-size);
+  padding: 0 var(--space-2);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--space-1);
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--type-body);
+}
+
+.note-link-input:focus {
+  border-color: var(--gold);
+  outline: none;
+}
+
+.note-popover-url {
+  max-width: calc(var(--space-16) * 4);
+  overflow: hidden;
+  color: var(--ink2);
+  font-size: var(--type-meta);
+  white-space: nowrap;
+}
+
+.note-popover-action {
+  color: var(--gold-deep);
+}

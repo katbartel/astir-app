@@ -69,7 +69,12 @@ Tiptap 3.29.2 on ProseMirror. MIT. Peer range covers React 19.
 
 ```
 @tiptap/core  @tiptap/pm  @tiptap/react  @tiptap/starter-kit
+@tiptap/extension-link
 ```
+
+`extension-link` is a direct dependency rather than StarterKit's copy for one
+reason: the mark has to be trimmed to `href`, `target`, and `rel`, and only an
+extended extension can do that. See 3.2.
 
 That is the whole dependency list. **`@tiptap/extension-drag-handle` was
 evaluated and rejected**, so nobody adopts it later without rediscovering why: it
@@ -153,7 +158,14 @@ impossibility, not a rule anyone has to remember.
 
 ### 3.2 Marks
 
-`bold`, `italic`, `strike`, `link`. `link` carries `href`.
+`bold`, `italic`, `strike`, `link`.
+
+**`link` stores `href`, `target`, and `rel`, and nothing else.** Tiptap's default
+also stores `class` and `title`. Neither is ever set or read here (the class comes
+from the render options, nothing writes a title), so they would be stored surface,
+and every stored attribute is one more thing canonicalisation has to agree about for
+a note to round trip. That is why `extension-link` is a direct dependency: the mark
+is extended to trim it.
 
 **`underline` is cut.** One stored row used it, and that occurrence migrates to no
 mark (section 4.3). It went because an underline mark collides with the only
@@ -417,12 +429,56 @@ update applications a set note = b.note from applications_note_v1_<stamp> b wher
 
 `scripts/.note-migration/` is gitignored: it holds real note content.
 
+#### The cutover procedure, in this order
+
+Today's zero halts is a point-in-time result, and the editor being replaced keeps
+writing v1 until the moment it is switched off, so by the cutover there will be rows
+the mapping has never seen. The order is therefore not optional:
+
+1. Fresh snapshot and dump, from live data.
+2. Fresh dry run against live data.
+3. Halt on any unknown shape. Look at it by hand. There is still no fallback.
+4. Re-run the schema validity check against the **fresh** dump, not an older one.
+5. `--write`.
+
+**Earlier dumps are artifacts and the input to nothing.** The snapshot taken on
+3 August 2026 is kept as a recovery artifact from that date and must not be used as
+the source for a later verification: it was already four notes behind reality within
+a day.
+
 **The two stores are migrated two different ways, and only one of them by the
 script.** A script cannot read a browser's `localStorage`, so `astir.v1` task
 notes are not in its report and never will be. They migrate lazily on load,
 through `readNote()` in the same module, and are written back as `v: 2` on the
 next save of that task. The Postgres rows are migrated once, by the script, and
 the same lazy path protects them too if one is ever missed.
+
+### 4.5 The localStorage notes
+
+Home's weekly-goals task notes are the same v1 `Note` shape, stored per task inside
+the `astir.v1` object. Nothing in the migration script or the cutover touches them,
+because no script can reach a browser's `localStorage`. This is specified here so
+step 6 implements it rather than inventing it.
+
+1. **Version gate on read.** A stored note that is not `v: 2` goes through the same
+   `noteMigration.ts` mapping, then `canonicalDoc`, and is written back as `v: 2` on
+   the next save of that task. One mapping, no second implementation. A `v: 2` note
+   is used as-is.
+2. **The halt rule must not stop the app.** The script halts because a person is
+   watching it. Home is not a script. An unrecognised shape:
+   - leaves the stored value **untouched**, byte for byte;
+   - renders that one note **read-only**, with a quiet line saying it could not be
+     opened;
+   - logs the reason and the task id;
+   - and does not affect any other task, the goals card, or the rest of Home.
+   It never discards the value, and it never throws where a render can see it.
+3. **One task's bad shape is one task's problem.** The gate runs per note, not per
+   week, so a single unreadable note cannot take the card down with it.
+
+Before any of that is written, the same encoding table the Postgres rows got is
+produced against the real `astir.v1` notes, counted rather than assumed. See
+[`scripts/count-astir-notes.mts`](../scripts/count-astir-notes.mts) for how to
+export and count them.
 
 ---
 
@@ -807,6 +863,11 @@ to the notes editor, not just the one you were asked to make.
     rows; it never deletes them.
 14. A mark never outlives the text it was attached to.
 15. A notes container's expanded state changes only via its disclosure control.
+17. **Opening a note and not editing it writes nothing.** Autosave fires on user
+    edits only: never on load, never on focus or blur, and never because a
+    document was canonicalised on the way in. "My notes keep showing as edited"
+    has more than one possible cause, and this closes the ones that are not the
+    canonical-form gate in 4.1.
 16. **A NodeView holds no state.** It renders from the node's attributes and
     dispatches transactions. No React state mirroring a checkbox, no collapsed
     flag held beside the node, no DOM read to decide what to render. A NodeView
@@ -817,8 +878,8 @@ to the notes editor, not just the one you were asked to make.
 
 Only three of these were reworded from the block model brief, and only where they
 named the superseded implementation: 1 (ids to structural identity), 5 and 12
-(the array to the document). The obligations are unchanged. Invariant 16 was added
-during the rebuild.
+(the array to the document). The obligations are unchanged. Invariants 16 and 17
+were added during the rebuild.
 
 ---
 
@@ -881,8 +942,9 @@ someone has to remember to run by hand is how this list got long.
    no indentation jump.
 9. Select text in the notes field and drag the pointer outside the field. The
    note stays open.
-10. Backspace at the start of the first child of a section. The line leaves the
-    section. Nothing is deleted.
+10. Backspace at the start of a section's first child. On a marker row the first
+    press drops the marker and the second leaves the section; on a plain row it
+    leaves in one press. Nothing is deleted in any case.
 11. Backspace on a section header. The section dissolves. All children are still
     on screen.
 12. Do any of the above, then press cmd Z once. One step is undone, not seven.
@@ -900,14 +962,13 @@ rebuild introduced:
 - **d. A collapsed body survives.** Collapse, reload, reopen: the same rows in the
   same order with the same checked states.
 
-### 13.1 Reading step 10
+### 13.1 Why step 10 has two presses
 
-Step 10 says the line leaves the section, and 6.3 orders its cases with "has a
-marker" above "first row of a section body". Both are right: on a **checkbox** first
-child the first press drops the marker and the second leaves the section, and
-neither deletes anything. On a **plain** first child it leaves in one press. The
-automated step checks all three, because the wording alone reads as a contradiction
-and someone will otherwise "fix" 6.3's order to match it.
+6.3 orders its cases with "has a marker" above "first row of a section body", so a
+marker row drops its marker before it can leave. Step 10 is worded to match that
+order rather than against it, and the automated step checks all three outcomes.
+Both readings look reasonable from the wording alone, which is why this is written
+down: do not "fix" 6.3's order to make step 10 shorter.
 
 ---
 
@@ -942,6 +1003,12 @@ Three rules for the harness, each learned the hard way:
 - **Caret placement waits for focus.** `chain().focus()` does not land
   synchronously, so a keystroke sent immediately after it goes nowhere and the
   failure reads as "the command did nothing".
+- **A step asserts the document state it is about, never a keystroke count.** Step 1
+  is the example: "press Enter twice to leave two blank lines" actually needs three
+  presses, because the second leaves the caret on the second new row and typing
+  there consumes it. The step asserts six rows with both blanks surviving a reload,
+  which is what it is about. A test that counts keystrokes passes when the editor is
+  wrong in the same way the test is.
 - **A step that cannot be reached yet is reported as DEFERRED with its reason**, and
   the list is carried forward. It is never skipped quietly, because a silent skip
   reads as a pass.

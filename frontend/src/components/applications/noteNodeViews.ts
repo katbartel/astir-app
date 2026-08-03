@@ -19,6 +19,7 @@ import {
   NoteBullet,
   NoteCheck,
   NoteDocument,
+  NoteLink,
   NoteParagraph,
   NoteQuote,
   NoteSection,
@@ -248,6 +249,7 @@ const withView = (node: CoreNode, build: (node: PmNode, view: EditorView, getPos
  */
 export const noteEditorExtensions = [
   NoteStarterKit,
+  NoteLink,
   NoteDocument,
   NoteParagraph,
   withView(NoteCheck, checkView),

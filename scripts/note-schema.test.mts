@@ -131,6 +131,11 @@ allows('a link with an href', () =>
 allows('a hard break inside a row', () => node('paragraph', null, [t('a'), schema.nodes.hardBreak.create(), t('b')]))
 allows('a hard break inside a section title', () => node('sectionTitle', null, [t('a'), schema.nodes.hardBreak.create()]))
 is('the link mark is not inclusive, so typing after a link is unmarked', schema.marks.link.spec.inclusive, false)
+is(
+  'the link mark stores href, target and rel, and nothing else',
+  Object.keys(schema.marks.link.spec.attrs ?? {}).sort(),
+  ['href', 'rel', 'target'],
+)
 
 console.log('\nempty rows are real nodes')
 

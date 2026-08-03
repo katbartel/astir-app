@@ -452,6 +452,40 @@ async function main() {
     return 'same rows, same order, same checked states, across a real page load'
   })
 
+
+  // e
+  await step('e. opening a note and not editing it writes nothing', async () => {
+    // Seeded with a deliberately non-canonical document: separate adjacent text
+    // runs with the same marks, which the schema merges on the way in. If
+    // canonicalisation could trigger a save, this is where it would show.
+    await seed({
+      v: 2,
+      kind: 'blocks',
+      doc: {
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'a ' }, { type: 'text', text: 'b' }] },
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'kept' }] },
+        ],
+      },
+    })
+    check((await saved()) === null, 'nothing was saved on load')
+    await page.click('.note-editor')
+    await page.waitForFunction(() => !!window.EDITOR?.isFocused)
+    check((await saved()) === null, 'nothing was saved on focus')
+    await page.evaluate(() => window.EDITOR!.commands.blur())
+    check((await saved()) === null, 'nothing was saved on blur')
+    const canonical = JSON.stringify(await json())
+    check(canonical.includes('"a b"'), 'the document really was canonicalised on the way in')
+    // A programmatic blur leaves the page without focus, and chain().focus() does
+    // not always win it back. A real click does.
+    await page.click('.note-editor')
+    await caretAt(0)
+    await type('x')
+    check((await saved()) !== null, 'and a real edit does save')
+    return 'no write on load, focus, blur, or canonicalisation; a keystroke writes'
+  })
+
   await browser.close()
 
   // --- the report ---

@@ -17,6 +17,7 @@
 import { Node, getSchema, mergeAttributes } from '@tiptap/core'
 import type { Extensions } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import Link from '@tiptap/extension-link'
 import { Node as PmNode, type Schema } from '@tiptap/pm/model'
 
 /**
@@ -205,21 +206,41 @@ export const NoteStarterKit = StarterKit.configure({
   // real content when it is there and must not be conjured when it is not.
   trailingNode: false,
 
-  link: {
-    openOnClick: false, // clicking places the caret; cmd or ctrl click opens
-    autolink: false, // a link is applied deliberately, never guessed from typing
-    linkOnPaste: false,
-    HTMLAttributes: { class: 'note-link', rel: 'noreferrer noopener' },
-  },
+  // Replaced below, to cut the mark down to the attributes we actually use.
+  link: false,
 
   // Word-level undo, carried forward from the editor being replaced: same input
   // kind, roughly 700ms, breaking at spaces. See docs/notes-editor.md 9.
   undoRedo: { newGroupDelay: 700 },
 })
 
+/**
+ * The link mark, trimmed to `href`, `target`, and `rel`.
+ *
+ * Tiptap's default also stores `class` and `title`. Neither is ever set or read
+ * here: the class comes from the render options, and nothing writes a title. They
+ * would be stored surface, and every stored attribute is one more thing
+ * canonicalisation has to agree about for a note to round trip.
+ */
+export const NoteLink = Link.extend({
+  addAttributes() {
+    return {
+      href: { default: null },
+      target: { default: '_blank' },
+      rel: { default: 'noreferrer noopener' },
+    }
+  },
+}).configure({
+  openOnClick: false, // clicking places the caret; cmd or ctrl click opens
+  autolink: false, // a link is applied deliberately, never guessed from typing
+  linkOnPaste: false,
+  HTMLAttributes: { class: 'note-link' },
+})
+
 /** Schema only, no views and no key handling. What the schema tests assert against. */
 export const noteExtensions: Extensions = [
   NoteStarterKit,
+  NoteLink,
   NoteDocument,
   NoteParagraph,
   NoteCheck,

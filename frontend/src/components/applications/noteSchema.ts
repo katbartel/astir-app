@@ -17,7 +17,7 @@
 import { Node, getSchema, mergeAttributes } from '@tiptap/core'
 import type { Extensions } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
-import type { Schema } from '@tiptap/pm/model'
+import { Node as PmNode, type Schema } from '@tiptap/pm/model'
 
 /**
  * Groups:
@@ -231,6 +231,26 @@ export const noteExtensions: Extensions = [
 ]
 
 /** The schema, built without an editor, so it can be asserted against in tests. */
+let cached: Schema | null = null
 export function noteSchema(): Schema {
-  return getSchema(noteExtensions)
+  if (!cached) cached = getSchema(noteExtensions)
+  return cached
+}
+
+/**
+ * A document in the form the schema itself would produce.
+ *
+ * The migration mapping is deliberately dependency-free, so it cannot know three
+ * things the schema does: a mark's default attributes (Tiptap's link carries
+ * target, rel, class, and title beyond the href), that two adjacent text runs with
+ * identical marks are one text node, and that marked text serialises as
+ * `{type, marks, text}` in that order. Its output is therefore valid but not
+ * canonical, and comparing it to what comes back out of an editor would fail on
+ * form rather than on content.
+ *
+ * Everything written to a store goes through here, so what is stored is what the
+ * editor produces, and invariant 12 is an equality rather than an approximation.
+ */
+export function canonicalDoc(doc: unknown): Record<string, unknown> {
+  return PmNode.fromJSON(noteSchema(), doc).toJSON() as Record<string, unknown>
 }

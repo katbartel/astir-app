@@ -11,7 +11,8 @@
 // never converted still opens, and is written back as v2 on the next save.
 
 import { EditorContent, useEditor } from '@tiptap/react'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
+import type { Editor } from '@tiptap/core'
 import { NOTE_VERSION, readNote, type StoredNote } from '@/lib/noteMigration'
 import { noteEditorExtensions } from './noteNodeViews'
 
@@ -20,9 +21,15 @@ type Props = {
   note: unknown
   onChange: (note: StoredNote) => void
   ariaLabel?: string
+  /**
+   * Handed the editor once it exists. The regression harness uses it to place the
+   * caret by document position rather than by clicking at coordinates. It hands
+   * out the instance and nothing else: no state lives on this side of it.
+   */
+  onReady?: (editor: Editor) => void
 }
 
-export function NoteEditor({ note, onChange, ariaLabel = 'Note' }: Props) {
+export function NoteEditor({ note, onChange, ariaLabel = 'Note', onReady }: Props) {
   // Seeded once. The editor owns the document from then on, and React does not
   // re-render it while it is being edited.
   const seed = useRef<StoredNote | null>(null)
@@ -54,6 +61,14 @@ export function NoteEditor({ note, onChange, ariaLabel = 'Note' }: Props) {
       onChange(next)
     },
   })
+
+  // Held in a ref so the effect depends on the editor alone: onReady fires once per
+  // editor instance, not on every render that passes a new closure.
+  const ready = useRef(onReady)
+  ready.current = onReady
+  useEffect(() => {
+    if (editor) ready.current?.(editor)
+  }, [editor])
 
   return <EditorContent editor={editor} className="note-editor-shell" />
 }

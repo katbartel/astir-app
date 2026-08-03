@@ -11,3 +11,4 @@ docs/private-company-research.md
 
 # note migration snapshots (real note data, not for git)
 scripts/.note-migration/
+scripts/.harness/

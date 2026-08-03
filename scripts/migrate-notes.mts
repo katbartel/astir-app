@@ -27,6 +27,7 @@ import {
   type Encodings,
   type StoredNote,
 } from '../frontend/src/lib/noteMigration.ts'
+import { canonicalDoc } from '../frontend/src/components/applications/noteSchema.ts'
 
 type Row = { id: string; company: string; role: string; note: unknown }
 
@@ -160,7 +161,15 @@ for (const row of rows) {
   }
   try {
     const result = migrateNote(row.note)
-    converted.push({ row, note: result.note, encodings: result.encodings })
+    // The mapping is dependency-free and cannot know the schema's canonical form,
+    // so normalise here: what is stored is then exactly what an editor produces,
+    // and invariant 12 is an equality rather than an approximation.
+    const note = { ...result.note, doc: canonicalDoc(result.note.doc) as StoredNote['doc'] }
+    const twice = canonicalDoc(note.doc)
+    if (JSON.stringify(twice) !== JSON.stringify(note.doc)) {
+      throw new UnknownNoteShape('normalising is not idempotent for this row', note.doc)
+    }
+    converted.push({ row, note, encodings: result.encodings })
     addEncodings(totals, result.encodings)
   } catch (error) {
     if (error instanceof UnknownNoteShape) failures.push({ row, reason: error.message, at: error.at })

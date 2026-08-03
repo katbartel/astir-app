@@ -240,6 +240,16 @@ Rules:
   (section 4.3) and never writes HTML in either direction.
 - The save path writes `v: 2` only.
 - Save and reload produce an identical `doc`. Invariant 12.
+- **Everything written to a store is canonical**, meaning the form the schema itself
+  produces. `canonicalDoc()` in `noteSchema.ts` is the single gate. The migration
+  mapping is dependency-free and so cannot know three things the schema does: a
+  mark's default attributes (Tiptap's link carries `target`, `rel`, `class`, and
+  `title` beyond the `href`), that two adjacent text runs with identical marks are
+  one text node, and that marked text serialises as `{type, marks, text}` in that
+  order. Its output is valid but not canonical, and storing it would make the first
+  save after opening any migrated note produce a diff for no reason. The editor
+  canonicalises on load for free; the migration runner does it explicitly, and
+  asserts that doing it twice changes nothing.
 - **A null note is an empty document.** A `note` column holding JSON `null`, or
   missing entirely, loads as one empty paragraph with the placeholder showing. It
   is not an error and it is not a migration case. **The save path never writes
@@ -877,14 +887,64 @@ someone has to remember to run by hand is how this list got long.
     on screen.
 12. Do any of the above, then press cmd Z once. One step is undone, not seven.
 
+Four additions, because the twelve do not cover them and each one is a rule the
+rebuild introduced:
+
+- **a. The placeholder, both directions.** One empty paragraph shows `Add a note`.
+  Three empty paragraphs do not, and keep all three rows.
+- **b. Round trip.** Every migrated document from the snapshot loads into the editor
+  and reads back identical. This is invariant 12, and it catches any asymmetry
+  between the NodeViews and the parser.
+- **c. Each toggle is one undo step.** Check a checkbox, cmd Z, unchecked. Collapse
+  a section, cmd Z, open. One step, not zero and not two.
+- **d. A collapsed body survives.** Collapse, reload, reopen: the same rows in the
+  same order with the same checked states.
+
+### 13.1 Reading step 10
+
+Step 10 says the line leaves the section, and 6.3 orders its cases with "has a
+marker" above "first row of a section body". Both are right: on a **checkbox** first
+child the first press drops the marker and the second leaves the section, and
+neither deletes anything. On a **plain** first child it leaves in one press. The
+automated step checks all three, because the wording alone reads as a contradiction
+and someone will otherwise "fix" 6.3's order to match it.
+
 ---
 
 ## 14. Verification harness
 
-**jsdom is not enough.** It has no `execCommand` and no `Selection.modify`, and
-it diverges on caret behaviour. Notes changes are verified in **real Chrome via
-playwright-core** (`channel: 'chrome'`, headed by preference; headless diverges
-on caret placement).
+**jsdom is not enough.** It has no `execCommand` and no `Selection.modify`, and it
+diverges on caret behaviour. Notes changes are verified in **real Chrome via
+playwright-core** (`channel: 'chrome'`).
+
+```
+node scripts/harness/build.mjs && node scripts/note-regression.test.mts
+HEADED=1 node scripts/note-regression.test.mts     # watch it run
+```
+
+| File | What it is |
+|---|---|
+| [`scripts/harness/build.mjs`](../scripts/harness/build.mjs) | esbuild bundle, `@` aliased to `frontend/src`, one React copy |
+| [`scripts/harness/mount.tsx`](../scripts/harness/mount.tsx) | mounts the real component, exposes `ROWS()`, `PLACEHOLDER()`, `REMOUNT()`, `EDITOR` |
+| [`scripts/harness/harness.html`](../scripts/harness/harness.html) | the page, linking the real `tokens.css` and `app.css` |
+| [`scripts/note-regression.test.mts`](../scripts/note-regression.test.mts) | section 13, automated, one reported line per step |
+
+**Headless is the default now, and headed agrees with it.** The old preference for
+headed existed because `execCommand('insertHTML')` placed the caret differently
+without a window. `execCommand` is gone, so that divergence is gone with it. Both
+modes are run before a change lands; if they ever disagree again, that is a finding
+and not a reason to pick one.
+
+Three rules for the harness, each learned the hard way:
+
+- **It bundles the real component.** A workaround inside the harness is a lie about
+  the app.
+- **Caret placement waits for focus.** `chain().focus()` does not land
+  synchronously, so a keystroke sent immediately after it goes nowhere and the
+  failure reads as "the command did nothing".
+- **A step that cannot be reached yet is reported as DEFERRED with its reason**, and
+  the list is carried forward. It is never skipped quietly, because a silent skip
+  reads as a pass.
 
 The harness:
 

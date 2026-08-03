@@ -103,6 +103,12 @@ The section node is written by hand (section 3.3). It is not a customised
 
 ## 3. Schema
 
+The schema lives in
+[`frontend/src/components/applications/noteSchema.ts`](../frontend/src/components/applications/noteSchema.ts)
+and is asserted against in [`scripts/note-schema.test.mts`](../scripts/note-schema.test.mts),
+which also parses every migrated row through it. That file is this section,
+executed.
+
 ### 3.1 Nodes
 
 ```
@@ -181,6 +187,23 @@ section[collapsed]
 - **No nested quotes, no nested sections, no section inside a quote.**
 - **No hard break outside inline content.** `hardBreak` is the Shift+Enter soft
   break and nothing else.
+
+StarterKit ships several of those, so they are switched off by name in
+`noteExtensions`: `heading`, `blockquote` (replaced by `quote` with `row+`
+content), `bulletList`, `orderedList`, `listItem`, `listKeymap`, `code`,
+`codeBlock`, `horizontalRule`, `underline`, and `trailingNode`. `document` and
+`paragraph` are replaced rather than disabled, because sections and rows need
+different groups than the defaults give. What StarterKit is kept for: `text`,
+`hardBreak`, `bold`, `italic`, `strike`, `link`, dropcursor, gapcursor, and
+undo/redo.
+
+Switching an extension off matters as much as leaving a node out of the schema. An
+enabled extension brings its own input rules and shortcuts, so a live `heading`
+would let `## ` build a node the document cannot hold.
+
+`trailingNode` is off for a reason worth keeping: it appends an empty paragraph
+after a trailing block. An empty last row is real content when the user made one
+and must never be conjured, which is invariant 2 read from the other direction.
 
 ---
 

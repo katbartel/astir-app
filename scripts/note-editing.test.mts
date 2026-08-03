@@ -595,6 +595,82 @@ console.log('\nrow type on a transaction')
   eq('applyRowType works on a transaction, for chains and input rules', show(state.apply(tr)), `check[ ] "ab|c"`)
 }
 
+console.log('\ncrossing a container boundary: content never does, the caret always may')
+
+eq(
+  'a row with text after a section is a no-op: text would be absorbed',
+  after([['section', 'T', [['p', 'inside']]], ['p', `${CARET}after`]], noteBackspace),
+  `
+section[open]
+  sectionTitle "T"
+  sectionBody
+    p "inside"
+p "|after"`,
+)
+eq(
+  'an empty row after an open section is deleted, caret to the end of its last body row',
+  after([['section', 'T', [['p', 'one'], ['check', 'two']]], ['p', CARET]], noteBackspace),
+  `
+section[open]
+  sectionTitle "T"
+  sectionBody
+    p "one"
+    check[ ] "two|"`,
+)
+eq(
+  'an empty row after a CLOSED section puts the caret in the title, never in the hidden body',
+  after([['closed', 'Title', [['p', 'hidden']]], ['p', CARET]], noteBackspace),
+  `
+section[closed]
+  sectionTitle "Title|"
+  sectionBody
+    p "hidden"`,
+)
+eq(
+  'an empty row after a quote is deleted, caret to the end of its last row',
+  after([['quote', [['p', 'said'], ['p', 'again']]], ['p', CARET]], noteBackspace),
+  `
+quote
+  p "said"
+  p "again|"`,
+)
+eq(
+  'a row with text before a section is a no-op on Delete',
+  after([['p', `one${CARET}`], ['section', 'T', [['p', 'inside']]]], noteDelete),
+  `
+p "one|"
+section[open]
+  sectionTitle "T"
+  sectionBody
+    p "inside"`,
+)
+eq(
+  'an empty row before an open section is deleted, caret to the start of its first body row',
+  after([['p', CARET], ['section', 'T', [['p', 'one'], ['p', 'two']]]], noteDelete),
+  `
+section[open]
+  sectionTitle "T"
+  sectionBody
+    p "|one"
+    p "two"`,
+)
+eq(
+  'an empty row before a CLOSED section puts the caret in the title',
+  after([['p', CARET], ['closed', 'Title', [['p', 'hidden']]]], noteDelete),
+  `
+section[closed]
+  sectionTitle "|Title"
+  sectionBody
+    p "hidden"`,
+)
+eq(
+  'an empty row before a quote is deleted, caret to the start of its first row',
+  after([['p', CARET], ['quote', [['p', 'said']]]], noteDelete),
+  `
+quote
+  p "|said"`,
+)
+
 console.log('')
 console.log(`${passed} passed, ${failed} failed`)
 process.exit(failed > 0 ? 1 : 0)

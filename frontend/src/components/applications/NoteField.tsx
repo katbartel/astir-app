@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Note, type NoteBlock } from '@/lib/applications'
+import { type LineDragHost, type LineNode, createLineDrag } from './noteLineDrag'
 
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4.2 4.2 8.8-9.4"/></svg>'
 const TRIANGLE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 9.5l4 5 4-5z"/></svg>'
@@ -50,7 +51,7 @@ function blockHtml(block: NoteBlock): string {
   // where the caret should land and is removed right after (see reseedListLines).
   if ((block as { type: string }).type === 'caret') return '<span id="note-caret-sentinel"></span>'
   if (block.type === 'check') {
-    return `<span class="note-check" contenteditable="false" data-note-check="${block.checked ? 'true' : 'false'}" role="checkbox" aria-checked="${block.checked ? 'true' : 'false'}" tabindex="0"><span class="note-grip" draggable="true" aria-hidden="true">${GRIP_SVG}</span><span class="note-box" aria-hidden="true">${block.checked ? CHECK_SVG : ''}</span></span>`
+    return `<span class="note-check" contenteditable="false" data-note-check="${block.checked ? 'true' : 'false'}" role="checkbox" aria-checked="${block.checked ? 'true' : 'false'}" tabindex="0"><span class="note-grip" aria-hidden="true">${GRIP_SVG}</span><span class="note-box" aria-hidden="true">${block.checked ? CHECK_SVG : ''}</span></span>`
   }
   if (block.type === 'quote') {
     return `<blockquote class="note-quote">${blocksHtml(block.blocks) || '<br>'}</blockquote>`
@@ -271,34 +272,42 @@ function pruneBlankCheckLines(blocks: NoteBlock[]): NoteBlock[] {
   return linesToBlocks(pruned)
 }
 
-// Move the checkbox line at drag-source index `from` next to the checkbox at
-// index `to` (both counted among checkboxes in document order) — before it, or
-// after it when `after` is set. Only reorders when both lines are leading-
-// checkbox lines in the same contiguous group (no other content between them),
-// so a checkbox never jumps across a heading or paragraph. Returns whether the
-// DOM was changed.
-function reorderCheckLine(field: HTMLElement, from: number, to: number, after: boolean): boolean {
-  const lines = blocksToLines(serialize(field).blocks)
-  const checkToLine: number[] = []
-  lines.forEach((line, index) => {
-    line.forEach((block) => {
-      if (block.type === 'check') checkToLine.push(index)
-    })
+// The note as a tree of lines: a line's section is where it sits, so quotes and
+// collapse sections nest their own line lists. Used by the drag to reorder one
+// line without disturbing anything else (see noteLineDrag).
+function toLineTree(blocks: NoteBlock[]): LineNode[] {
+  return blocksToLines(blocks).map((line): LineNode => {
+    if (isBlockLevel(line)) {
+      const block = line[0]
+      if (block.type === 'quote') return { kind: 'quote', lines: toLineTree(block.blocks) }
+      if (block.type === 'collapse') {
+        return {
+          kind: 'collapse',
+          summary: block.summary,
+          open: block.open !== false,
+          lines: toLineTree(block.blocks),
+        }
+      }
+    }
+    return { kind: 'line', blocks: line }
   })
-  if (from >= checkToLine.length || to >= checkToLine.length) return false
-  const fromLine = checkToLine[from]
-  const toLine = checkToLine[to]
-  const isCheckLine = (line: NoteBlock[]) => line[0]?.type === 'check'
-  const [lo, hi] = fromLine < toLine ? [fromLine, toLine] : [toLine, fromLine]
-  for (let k = lo; k <= hi; k++) if (!isCheckLine(lines[k])) return false
-  const target = after ? toLine + 1 : toLine
-  // After the source is spliced out, everything past it shifts down one slot.
-  const dest = target > fromLine ? target - 1 : target
-  if (dest === fromLine) return false
-  const [moved] = lines.splice(fromLine, 1)
-  lines.splice(dest, 0, moved)
-  field.innerHTML = blocksHtml(linesToBlocks(lines))
-  return true
+}
+
+function fromLineTree(tree: LineNode[]): NoteBlock[] {
+  return linesToBlocks(
+    tree.map((node): NoteBlock[] => {
+      if (node.kind === 'line') return node.blocks
+      if (node.kind === 'quote') return [{ type: 'quote', blocks: fromLineTree(node.lines) }]
+      return [
+        {
+          type: 'collapse',
+          summary: node.summary,
+          open: node.open,
+          blocks: fromLineTree(node.lines),
+        },
+      ]
+    }),
+  )
 }
 
 // Find the first "[]" eligible to become a checkbox: real text (not inside a
@@ -503,9 +512,16 @@ function splitCaretLines(container: HTMLElement): CaretSplit | null {
   const beforeLines = blocksToLines(serializeRange(beforeRange))
   const afterLines = blocksToLines(serializeRange(afterRange))
   const prefix = beforeLines[beforeLines.length - 1] ?? []
-  const suffix = afterLines[0] ?? []
   const head = beforeLines.slice(0, -1)
-  const tail = afterLines.slice(1)
+  // The suffix is what follows the caret *on its own line*, so it is inline
+  // content only. A quote or collapse sitting right after the caret is a line in
+  // its own right — but blocksToLines opens its list with that block instead of
+  // with an empty line, so it reads as this line's suffix, and every edit that
+  // rewrites the caret's line then drops it. That is how Enter or Backspace on
+  // an empty checkbox row deleted the whole section below it.
+  const inlineSuffix = afterLines.length > 0 && !isBlockLevel(afterLines[0])
+  const suffix = inlineSuffix ? afterLines[0] : []
+  const tail = inlineSuffix ? afterLines.slice(1) : afterLines
   const lineBlocks = [...prefix, ...suffix]
   const lineText = lineBlocks.map((block) => (block.type === 'text' ? block.text : '')).join('')
   let marker: 'check' | 'bullet' | null = null
@@ -907,15 +923,11 @@ export function NoteField({
   // execCommand fires a nested "input" event; this guards handleInput against
   // re-entering while we are mid-conversion.
   const busy = useRef(false)
-  // Index (among checkboxes in document order) of the checkbox being dragged, or
-  // null when no checkbox drag is in progress.
-  const dragCheck = useRef<number | null>(null)
-  const dragContainer = useRef<HTMLElement | null>(null)
-  // Where the dragged row will drop: the target checkbox index and whether it
-  // lands after (vs before) that row. Kept in a ref so drop matches the hint.
-  const dropInfo = useRef<{ index: number; after: boolean } | null>(null)
-  // Viewport-space position of the drop indicator line (null hides it).
-  const [dropLine, setDropLine] = useState<{ top: number; left: number; width: number } | null>(null)
+  // Line drag: the host is rebuilt each render, the controller is not, so it
+  // reads its way in through this ref.
+  const hostRef = useRef<LineDragHost>(null as unknown as LineDragHost)
+  const lineDrag = useRef<ReturnType<typeof createLineDrag> | null>(null)
+  if (!lineDrag.current) lineDrag.current = createLineDrag(() => hostRef.current)
   // Undo history: states of the field, oldest first, with historyAt pointing at
   // the one currently shown. Entries after it are the redo tail.
   const history = useRef<HistoryEntry[]>([])
@@ -1063,6 +1075,25 @@ export function NoteField({
     onChange(serialize(field))
   }
 
+  // Nothing in the app pastes on its own, but a screenshot sent by an external
+  // tool arrives here as an image with no text alongside it, and the browser's
+  // default drops it straight into the field — over whatever is selected, which
+  // is how a paste can take a section with it. The note model has no image block
+  // (the serializer discards them), so an image paste can only ever damage the
+  // note. Refuse it and leave the note untouched; a paste carrying text is
+  // ordinary content and still pastes normally.
+  function handlePaste(event: React.ClipboardEvent) {
+    const data = event.clipboardData
+    if (!data) return
+    if (data.getData('text/plain')) return
+    const items = Array.from(data.items ?? [])
+    const files = Array.from(data.files ?? [])
+    const image =
+      items.some((item) => item.type.startsWith('image/')) ||
+      files.some((file) => file.type.startsWith('image/'))
+    if (image) event.preventDefault()
+  }
+
   function handleClick(event: React.MouseEvent) {
     const field = ref.current
     if (!field) return
@@ -1090,106 +1121,28 @@ export function NoteField({
     commitAndSave(field)
   }
 
-  function checkContainer(check: Element): HTMLElement {
-    return check.closest<HTMLElement>('.note-collapse-body') ?? ref.current!
+  // Drag a checkbox line to reorder it. The drag re-renders the field with one
+  // element per line for its duration (see noteLineDrag) and commits the moved
+  // note as a single undo step.
+  const dragHost: LineDragHost = {
+    field: () => ref.current,
+    // Unpruned: the drag has to line up with what is on screen, blank rows and
+    // all, or the nth checkbox in the DOM is not the nth in the model.
+    readTree: () => toLineTree(serializeContainer(ref.current as HTMLElement)),
+    writeTree: (tree) => {
+      const field = ref.current
+      if (!field) return
+      field.innerHTML = blocksHtml(fromLineTree(tree))
+      commitAndSave(field)
+    },
+    restore: (html) => {
+      const field = ref.current
+      if (field) field.innerHTML = html
+    },
+    renderLine: blocksHtml,
+    renderCollapse: (summary, open, body) => collapseMarkup(summary, open, body),
   }
-
-  // Position of a checkbox among all checkboxes in its editing container.
-  function checkIndex(container: HTMLElement, check: Element): number {
-    return Array.from(container.querySelectorAll('.note-check')).indexOf(check)
-  }
-
-  // Reset all drag affordances (dimmed source, drop line, stored intent).
-  function clearDrag(field: HTMLElement | null) {
-    field?.querySelectorAll('.note-check-dragging').forEach((el) => el.classList.remove('note-check-dragging'))
-    dragCheck.current = null
-    dragContainer.current = null
-    dropInfo.current = null
-    setDropLine(null)
-  }
-
-  // Read the label text of a checkbox row (the run after the box up to the line
-  // break), used to build a drag image that shows what is being moved.
-  function checkRowLabel(check: Element): string {
-    let label = ''
-    let node = check.nextSibling
-    while (node) {
-      if (node.nodeType === Node.TEXT_NODE) {
-        const text = node.textContent ?? ''
-        const br = text.indexOf('\n')
-        if (br !== -1) return (label + text.slice(0, br)).trim()
-        label += text
-      } else if (node.nodeName === 'BR' || (node as HTMLElement).classList?.contains('note-check')) {
-        break
-      } else {
-        label += node.textContent ?? ''
-      }
-      node = node.nextSibling
-    }
-    return label.trim()
-  }
-
-  function handleDragStart(event: React.DragEvent) {
-    const field = ref.current
-    const check = (event.target as HTMLElement).closest('.note-check')
-    if (!field || !check) return
-    const container = checkContainer(check)
-    dragContainer.current = container
-    dragCheck.current = checkIndex(container, check)
-    // Some browsers require data to be set for a drag to begin.
-    event.dataTransfer.setData('text/plain', '')
-    event.dataTransfer.effectAllowed = 'move'
-    check.classList.add('note-check-dragging')
-    // A floating ghost showing the row's checkbox + label under the cursor.
-    const ghost = document.createElement('div')
-    ghost.className = 'note-drag-ghost'
-    ghost.innerHTML = `<span class="note-box"></span><span>${escapeHtml(checkRowLabel(check))}</span>`
-    document.body.appendChild(ghost)
-    event.dataTransfer.setDragImage(ghost, 12, 12)
-    // setDragImage snapshots synchronously, so the node can go on the next tick.
-    setTimeout(() => ghost.remove(), 0)
-  }
-
-  function handleDragOver(event: React.DragEvent) {
-    const field = ref.current
-    const container = dragContainer.current
-    if (!field || !container || dragCheck.current === null) return
-    const check = (event.target as HTMLElement).closest('.note-check')
-    if (!check || checkContainer(check) !== container || check.classList.contains('note-check-dragging')) {
-      dropInfo.current = null
-      setDropLine(null)
-      return
-    }
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    // Drop before the row if the cursor is in its top half, after it otherwise —
-    // so the last slot is reachable. The indicator line spans the row's width.
-    const rect = check.getBoundingClientRect()
-    const fieldRect = field.getBoundingClientRect()
-    const after = event.clientY > rect.top + rect.height / 2
-    dropInfo.current = { index: checkIndex(container, check), after }
-    setDropLine({
-      top: after ? rect.bottom : rect.top,
-      left: rect.left,
-      width: Math.max(0, fieldRect.right - rect.left - 12),
-    })
-  }
-
-  function handleDrop(event: React.DragEvent) {
-    const field = ref.current
-    const container = dragContainer.current
-    const from = dragCheck.current
-    const info = dropInfo.current
-    if (field && container && from !== null && info) {
-      event.preventDefault()
-      if (reorderCheckLine(container, from, info.index, info.after)) commitAndSave(field)
-    }
-    clearDrag(field)
-  }
-
-  function handleDragEnd() {
-    clearDrag(ref.current)
-  }
+  hostRef.current = dragHost
 
   function runFormat(command: 'bold' | 'italic' | 'underline' | 'strikeThrough') {
     runEdit(() => {
@@ -1375,18 +1328,9 @@ export function NoteField({
         onInput={handleInput}
         onClick={handleClick}
         onKeyDown={handleKeyDown}
-        onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        onDragEnd={handleDragEnd}
+        onPaste={handlePaste}
+        {...lineDrag.current}
       />
-      {dropLine ? (
-        <div
-          className="note-drop-line"
-          aria-hidden="true"
-          style={{ top: dropLine.top, left: dropLine.left, width: dropLine.width }}
-        />
-      ) : null}
       {toolbar ? (
         <div
           className="note-toolbar"

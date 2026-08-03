@@ -244,6 +244,59 @@ function liftRowOut(
   transaction.setSelection(TextSelection.create(transaction.doc, target + 1))
 }
 
+
+// --- crossing a container boundary ---
+//
+// One principle governs both keys: **content never crosses a container boundary
+// by keystroke, the caret always may.** Merging a row that holds text into a
+// section or a quote would absorb that text into the container, which is what the
+// Delete asymmetry (6.4) exists to prevent. An empty row holds nothing to absorb,
+// so it is deleted and the caret travels, which is what stops an empty row next to
+// a section from being undeletable: there is no row-delete affordance to fall back
+// on.
+//
+// The caret never lands inside a hidden body. Against a collapsed section it goes
+// to the title.
+
+/** End of the inline content of the last row inside a container, descending. */
+function endOfLastRow(node: PmNode, nodeStart: number): number {
+  if (isRow(node)) return nodeStart + 1 + node.content.size
+  const last = node.lastChild
+  if (!last) return nodeStart + 1
+  return endOfLastRow(last, nodeStart + 1 + (node.content.size - last.nodeSize))
+}
+
+/** Start of the inline content of the first row inside a container, descending. */
+function startOfFirstRow(node: PmNode, nodeStart: number): number {
+  if (isRow(node)) return nodeStart + 1
+  const first = node.firstChild
+  if (!first) return nodeStart + 1
+  return startOfFirstRow(first, nodeStart + 1)
+}
+
+/** Where the caret goes when it travels backwards into a container. */
+function caretIntoEndOf(node: PmNode, nodeStart: number): number {
+  if (node.type.name === 'section') {
+    const title = node.child(0)
+    // Never inside a hidden body.
+    if (node.attrs.collapsed === true) return nodeStart + 2 + title.content.size
+    const bodyStart = nodeStart + 1 + title.nodeSize
+    return endOfLastRow(node.child(1), bodyStart)
+  }
+  return endOfLastRow(node, nodeStart)
+}
+
+/** Where the caret goes when it travels forwards into a container. */
+function caretIntoStartOf(node: PmNode, nodeStart: number): number {
+  if (node.type.name === 'section') {
+    const title = node.child(0)
+    if (node.attrs.collapsed === true) return nodeStart + 2
+    const bodyStart = nodeStart + 1 + title.nodeSize
+    return startOfFirstRow(node.child(1), bodyStart)
+  }
+  return startOfFirstRow(node, nodeStart)
+}
+
 // --- Backspace ---
 
 export const noteBackspace: Command = (state, dispatch) => {
@@ -300,11 +353,18 @@ export const noteBackspace: Command = (state, dispatch) => {
     return false // first row of the note: no-op
   }
 
-  // Merge into the previous row of the same container. If the previous sibling is
-  // a section or a quote it is left alone: being absorbed into a container is not
-  // something a keystroke should do by accident (section 6.4).
   const previous = container.node.child(container.indexInParent - 1)
-  if (!isRow(previous)) return true
+  if (!isRow(previous)) {
+    // Text would be absorbed into the container, so it stays put.
+    if (row.node.content.size > 0) return true
+    // An empty row has nothing to absorb: delete it and let the caret travel.
+    if (!dispatch) return true
+    const tr = state.tr.delete(rowPos, rowPos + row.node.nodeSize)
+    const target = caretIntoEndOf(previous, rowPos - previous.nodeSize)
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(target)))
+    dispatch(tr.scrollIntoView())
+    return true
+  }
   if (!dispatch) return true
   const joinAt = rowPos - 1
   const tr = state.tr.delete(rowPos - 1, rowPos + 1)
@@ -333,7 +393,18 @@ export const noteDelete: Command = (state, dispatch) => {
   if (container.indexInParent === container.node.childCount - 1) return true // last row of its container
 
   const next = container.node.child(container.indexInParent + 1)
-  if (!isRow(next)) return true // never pulls a container's contents out, or itself in
+  if (!isRow(next)) {
+    // The mirror of Backspace, on the same principle: text never crosses into a
+    // container, an empty row is deleted and the caret travels in.
+    if (row.node.content.size > 0) return true
+    if (!dispatch) return true
+    const rowPos = $from.before(row.depth)
+    const tr = state.tr.delete(rowPos, rowPos + row.node.nodeSize)
+    const target = caretIntoStartOf(next, rowPos + row.node.nodeSize)
+    tr.setSelection(TextSelection.create(tr.doc, tr.mapping.map(target)))
+    dispatch(tr.scrollIntoView())
+    return true
+  }
 
   if (!dispatch) return true
   const rowEnd = $from.end(row.depth)

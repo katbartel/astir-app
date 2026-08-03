@@ -96,6 +96,17 @@ Non-negotiable, both banned outright:
 - No operation reads structure (order, type, nesting, checked, collapsed) or
   inline content out of the DOM. The document is the only source of truth.
 
+And one that looks like a style preference and is not:
+
+- **The keys are a raw ProseMirror `keymap` plugin at priority 1000, not
+  `addKeyboardShortcuts`.** Do not "simplify" it back. These handlers are
+  ProseMirror commands that build and dispatch their own transaction. Tiptap's
+  command wrapper maintains a transaction of its own and dispatches that too, so
+  routing them through it turns one operation into two dispatches: two undo steps
+  where the spec promises one (invariant 11), and the second one silently empty.
+  The priority puts the plugin ahead of everything StarterKit brings, so these
+  handlers see each key first and no default ever gets to modify structure.
+
 The section node is written by hand (section 3.3). It is not a customised
 `details` extension.
 
@@ -456,6 +467,25 @@ The toolbar surface uses the menu recipe: card surface, `--r-md`, menu shadow
 `0 6px 24px rgba(60,50,30,.12)`. The shipped toolbar uses
 `0 6px 20px rgba(0,0,0,.18)`, which is drift; the rebuild uses the token recipe.
 
+### 5.1 Component tokens
+
+Three values are the field's own geometry and nothing else uses them, so they are
+declared on `.note-editor-shell` rather than added to the global table:
+`--note-disclosure-icon`, `--note-quote-rule`, `--note-underline-offset`. Control
+radius is **not** among them: it uses `--r-sm`, because radius is a system scale
+and a one-off 6px beside an existing 8px is exactly the drift AGENTS.md 7.1 exists
+to prevent.
+
+> **The system has no icon size scale.** That is the only reason
+> `--note-disclosure-icon` needs to exist at all: there is no `--icon-md` to reach
+> for. Adding that scale is a foundations task and deliberately not part of this
+> rebuild. Do not fix it here; do not take this token as a licence to keep adding
+> per-component icon sizes either.
+
+Partial opacity comes from `color-mix` on the token, never a hardcoded `rgba` and
+never a new `--something-soft` token: the link underline is
+`color-mix(in srgb, var(--gold-text) 40%, transparent)`. See AGENTS.md.
+
 ---
 
 ## 6. Semantics
@@ -473,6 +503,7 @@ always arrives unchecked.
 | Non-empty row, mid-text | Split. The text after the caret moves to a new row below, same type. Marks split with the text. Caret at the start of the new row |
 | Empty `check` or `bullet` | No new row. Convert to `paragraph`. Section membership and position unchanged. Caret stays |
 | Empty `paragraph` inside a `sectionBody` | No new row. Lift it out of the section and place it immediately after the section. Caret stays in it. This is how you leave a section |
+| Empty `paragraph` inside a `quote` | The same: lift it out and place it after the quote. This is how you leave a quote |
 | Empty `paragraph` at top level | New empty `paragraph` below. Caret in it |
 | `sectionTitle`, at offset 0, title non-empty | The whole section moves down and a plain paragraph opens above it. Caret on that paragraph |
 | `sectionTitle`, mid-text | The title keeps the text before the caret. The rest becomes the body's first row |
@@ -505,6 +536,7 @@ list, never converts a marker, never enters or leaves a section.
 | Has a marker (`check` or `bullet`) | Convert to `paragraph`. Text and section membership kept. **Nothing is deleted, including on a non-empty row** |
 | `paragraph`, a previous row exists in the same container | Append this row's content to the previous row. Delete this row. Caret at the join point |
 | `paragraph`, first row of a `sectionBody` | Lift it out and place it immediately before the section. No merge |
+| `paragraph`, first row of a `quote` | The same: lift it out and place it before the quote |
 | `sectionTitle` | Dissolve the section: its body rows are lifted to where the section was, in order, and the title becomes a `paragraph` keeping its text. Content is never destroyed |
 | First row of the note | No-op |
 
@@ -523,7 +555,27 @@ keystroke should do by accident.
 | A `sectionTitle` | No-op. It never merges a title with its body |
 | Last row of the note | No-op |
 
-Delete never crosses a container boundary in either direction.
+### 6.4a Crossing a container boundary
+
+One principle governs both keys, and it is what the tables above are applying:
+
+> **Content never crosses a container boundary by keystroke. The caret always may.**
+
+Merging a row that holds text into a section or a quote would absorb that text into
+the container, which is what 6.4's asymmetry exists to prevent. An empty row holds
+nothing to absorb, so it is deleted and the caret travels. Without that second
+half, an empty row sitting next to a section is undeletable: there is no
+row-delete affordance to fall back on.
+
+| Situation | Result |
+|---|---|
+| Backspace at offset 0, row has text, previous sibling is a `section` or `quote` | No-op |
+| Backspace at offset 0, row is empty, previous sibling is a `section` or `quote` | Delete the row. Caret to the end of the last row inside that container |
+| Delete at the end, row has text, next sibling is a `section` or `quote` | No-op |
+| Delete at the end, row is empty, next sibling is a `section` or `quote` | Delete the row. Caret to the start of the first row inside that container |
+
+**Against a collapsed section the caret goes to its title instead.** It is never
+placed inside a hidden body, in either direction.
 
 ### 6.5 Tab
 

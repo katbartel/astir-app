@@ -184,7 +184,9 @@ Corrected August 2026. The "plain HTML, CSS, and JavaScript, no build step" desc
 2. SVG geometry (viewBox, path coordinates, arc gauge angles) in components is geometry, not styling, and is exempt from the tokens rule. Colors inside SVG are NOT exempt: they reference tokens.
 3. Archive table column minimum width is the named token `--table-column-min`.
 4. Inline links inside a note render `--gold-text` with a solid 1px underline at 40% opacity. No new token. See amendment 3 below.
-5. Anything else outside the scales still requires a named token before use.
+5. **A token at partial opacity uses `color-mix`, not a hardcoded `rgba` and not a new token.** `color-mix(in srgb, var(--gold-text) 40%, transparent)` is the sanctioned form. Hardcoding the rgba forks the color from its token, and adding a `--something-soft` for every opacity anyone needs grows the table without adding a decision. The existing `--gold-soft` and similar tokens stay: they are named states that components share, not one-off opacities.
+6. A value that belongs to exactly one component, and that nothing else uses, may be a component token declared on that component's own root rather than in the global table. It still gets a name. This is not an escape hatch for values that belong to a scale: radius, spacing, and type come from the scales, always.
+7. Anything else outside the scales still requires a named token before use.
 
 ---
 

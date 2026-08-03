@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import {
   type Application,
   fetchApplications,
@@ -13,6 +13,7 @@ import {
   type StageRecord,
   useStageConfig,
 } from '@/lib/stages'
+import { useSortableList } from '@/lib/sortable'
 import { MinusIcon, PlusIcon } from '../icons'
 import { StageRing } from '../applications/StageRing'
 
@@ -20,13 +21,13 @@ type Editing = Record<StageId, string>
 
 function GripIcon() {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="9" cy="7" r="1.2" />
-      <circle cx="15" cy="7" r="1.2" />
-      <circle cx="9" cy="12" r="1.2" />
-      <circle cx="15" cy="12" r="1.2" />
-      <circle cx="9" cy="17" r="1.2" />
-      <circle cx="15" cy="17" r="1.2" />
+    <svg viewBox="0 0 12 16" aria-hidden="true">
+      <circle cx="3.4" cy="2.8" r="1.2" />
+      <circle cx="8.6" cy="2.8" r="1.2" />
+      <circle cx="3.4" cy="8" r="1.2" />
+      <circle cx="8.6" cy="8" r="1.2" />
+      <circle cx="3.4" cy="13.2" r="1.2" />
+      <circle cx="8.6" cy="13.2" r="1.2" />
     </svg>
   )
 }
@@ -52,14 +53,22 @@ export function StagesPreferences() {
     renameStage,
     addProgressStage,
     removeProgressStage,
-    moveProgressStage,
     reorderProgressStage,
   } = useStageConfig()
   const [editing, setEditing] = useState<Editing>({})
   const [applications, setApplications] = useState<Application[]>([])
   const [pendingRemove, setPendingRemove] = useState<StageRecord | null>(null)
-  const [draggingId, setDraggingId] = useState<StageId | null>(null)
   const focusId = useRef<StageId | null>(null)
+
+  const sortable = useSortableList({
+    ids: catalog.progress.map((stage) => stage.id),
+    labelOf: (id) => catalog.progress.find((stage) => stage.id === id)?.name || 'Stage',
+    onReorder: (from, to) => {
+      const moved = catalog.progress[from]
+      const target = catalog.progress[to]
+      if (moved && target) reorderProgressStage(moved.id, target.id)
+    },
+  })
 
   useEffect(() => {
     void fetchApplications().then(setApplications).catch(() => setApplications([]))
@@ -145,14 +154,8 @@ export function StagesPreferences() {
     }
   }
 
-  function dropOn(stageId: StageId) {
-    if (draggingId && draggingId !== stageId) {
-      reorderProgressStage(draggingId, stageId)
-    }
-    setDraggingId(null)
-  }
-
   function bucket(stageBucket: StageBucket, stages: StageRecord[]) {
+    const sortableBucket = stageBucket === 'progress'
     return (
       <section className="stage-bucket" aria-labelledby={`stageBucket-${stageBucket}`}>
         <div className="stage-bucket-head">
@@ -172,87 +175,85 @@ export function StagesPreferences() {
             </button>
           ) : null}
         </div>
-        <div className="stage-bucket-list">
-          {stages.map((stage) => {
+        <div className="stage-bucket-list" ref={sortableBucket ? sortable.listRef : undefined}>
+          {stages.map((stage, index) => {
             const removable = stageBucket === 'progress'
             const removeDisabled = removable && stages.length <= 1
             const visual = visualFor(stage.id)
+            const lifted = sortableBucket && sortable.liftedId === stage.id
             return (
-              <div
-                className={`stage-settings-row ${draggingId === stage.id ? 'dragging' : ''}`.trim()}
-                key={stage.id}
-                draggable={stageBucket === 'progress'}
-                onDragStart={() => setDraggingId(stage.id)}
-                onDragOver={(event) => {
-                  if (draggingId) event.preventDefault()
-                }}
-                onDrop={() => dropOn(stage.id)}
-                onDragEnd={() => setDraggingId(null)}
-              >
-                <span className="stage-grid-cell">
-                  {stageBucket === 'progress' ? (
+              <Fragment key={stage.id}>
+                {lifted && sortable.placeholder ? (
+                  <div
+                    className="stage-row-placeholder"
+                    ref={sortable.placeholderRef}
+                    aria-hidden="true"
+                    style={{ height: sortable.placeholder.height }}
+                  />
+                ) : null}
+                <div
+                  className={[
+                    'stage-settings-row',
+                    removable ? '' : 'no-actions',
+                    lifted ? 'lifted' : '',
+                    sortableBucket && sortable.pickedId === stage.id ? 'picked' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  ref={sortableBucket ? sortable.rowRef(stage.id) : undefined}
+                >
+                  {sortableBucket ? (
                     <button
                       className="stage-drag-handle"
                       type="button"
-                      aria-label={`Move ${stage.name || 'stage'}`}
-                      draggable
-                      data-tooltip="Reorder"
-                      onKeyDown={(event) => {
-                        if (event.key === 'ArrowUp') {
-                          event.preventDefault()
-                          moveProgressStage(stage.id, -1)
-                        }
-                        if (event.key === 'ArrowDown') {
-                          event.preventDefault()
-                          moveProgressStage(stage.id, 1)
-                        }
-                      }}
+                      aria-label={`Reorder ${stage.name || 'stage'}`}
+                      {...sortable.handleProps(stage.id, index)}
                     >
                       <GripIcon />
                     </button>
                   ) : null}
-                </span>
-                <span className="stage-settings-icon" data-stage={colorFor(stage.id)}>
-                  <StageRing status={stage.id} {...visual} />
-                </span>
-                <input
-                  data-stage-name={stage.id}
-                  value={valueFor(stage)}
-                  aria-label={`${stage.name || 'Stage'} name`}
-                  placeholder={stageBucket === 'progress' ? 'Stage name' : undefined}
-                  onChange={(event) => updateDraft(stage, event.target.value)}
-                  onBlur={() => commit(stage)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter') event.currentTarget.blur()
-                    if (event.key === 'Escape') {
-                      setEditing((current) => {
-                        const next = { ...current }
-                        delete next[stage.id]
-                        return next
-                      })
-                      event.currentTarget.blur()
-                    }
-                  }}
-                />
-                <span className="stage-grid-cell stage-action-cell">
-                  {removable ? (
-                    <button
-                      className="round-icon small stage-action"
-                      type="button"
-                      aria-label="Delete"
-                      data-tooltip={
-                        removeDisabled ? 'In progress needs at least one stage.' : 'Delete'
+                  <span className="stage-settings-icon" data-stage={colorFor(stage.id)}>
+                    <StageRing status={stage.id} {...visual} />
+                  </span>
+                  <input
+                    data-stage-name={stage.id}
+                    value={valueFor(stage)}
+                    aria-label={`${stage.name || 'Stage'} name`}
+                    placeholder={stageBucket === 'progress' ? 'Stage name' : undefined}
+                    onChange={(event) => updateDraft(stage, event.target.value)}
+                    onBlur={() => commit(stage)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') event.currentTarget.blur()
+                      if (event.key === 'Escape') {
+                        setEditing((current) => {
+                          const next = { ...current }
+                          delete next[stage.id]
+                          return next
+                        })
+                        event.currentTarget.blur()
                       }
-                      aria-disabled={removeDisabled}
-                      onClick={() => {
-                        if (!removeDisabled) requestRemove(stage)
-                      }}
-                    >
-                      <MinusIcon />
-                    </button>
+                    }}
+                  />
+                  {removable ? (
+                    <span className="stage-grid-cell stage-action-cell">
+                      <button
+                        className="round-icon small stage-action"
+                        type="button"
+                        aria-label="Delete"
+                        data-tooltip={
+                          removeDisabled ? 'In progress needs at least one stage.' : 'Delete'
+                        }
+                        aria-disabled={removeDisabled}
+                        onClick={() => {
+                          if (!removeDisabled) requestRemove(stage)
+                        }}
+                      >
+                        <MinusIcon />
+                      </button>
+                    </span>
                   ) : null}
-                </span>
-              </div>
+                </div>
+              </Fragment>
             )
           })}
         </div>
@@ -277,6 +278,9 @@ export function StagesPreferences() {
         {bucket('offer', catalog.offer)}
         {bucket('closed', [catalog.closed])}
       </div>
+      <p className="sr-only" role="status" aria-live="polite">
+        {sortable.announcement}
+      </p>
 
       {pendingRemove && pendingTarget ? (
         <div

@@ -6,6 +6,10 @@ const SIZE = 15
 const CENTER = SIZE / 2
 const RADIUS = 6
 const CIRC = 2 * Math.PI * RADIUS
+// The closed ring is dotted. The dash period has to divide the circumference
+// exactly, otherwise the pattern closes on a part dash and the ring reads as a
+// smudge instead of an even circle of marks.
+const CLOSED_PERIOD = CIRC / 8
 
 export function StageRing({
   status,
@@ -23,10 +27,16 @@ export function StageRing({
   if (state === 'closed') {
     return (
       <svg className="stage-ring" viewBox={`0 0 ${SIZE} ${SIZE}`} width={SIZE} height={SIZE} aria-hidden="true">
-        <circle cx={CENTER - 3.8} cy={CENTER - 2.8} r={1} fill="var(--st-dot, currentColor)" opacity={0.75} />
-        <circle cx={CENTER + 1.2} cy={CENTER - 4.3} r={0.9} fill="var(--st-dot, currentColor)" opacity={0.55} />
-        <circle cx={CENTER + 4.1} cy={CENTER + 0.3} r={1.1} fill="var(--st-dot, currentColor)" opacity={0.7} />
-        <circle cx={CENTER - 1.4} cy={CENTER + 3.5} r={0.8} fill="var(--st-dot, currentColor)" opacity={0.5} />
+        <circle
+          cx={CENTER}
+          cy={CENTER}
+          r={RADIUS}
+          fill="none"
+          stroke="var(--st-dot, currentColor)"
+          strokeDasharray={`${CLOSED_PERIOD / 2} ${CLOSED_PERIOD / 2}`}
+          strokeWidth={1.8}
+          transform={`rotate(-90 ${CENTER} ${CENTER})`}
+        />
       </svg>
     )
   }

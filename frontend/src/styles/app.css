@@ -4656,6 +4656,17 @@ textarea {
    in the gutter for exactly that reason, so its width can never shift a row.
    --------------------------------------------------------------------------- */
 
+/* Component tokens, scoped to the field rather than added to the global table:
+   they describe this component's geometry and nothing else uses them.
+
+   --note-disclosure-icon exists only because the system has no icon size scale.
+   Adding one is a foundations task, not this job's. */
+.note-editor-shell {
+  --note-disclosure-icon: 18px;
+  --note-quote-rule: 3px;
+  --note-underline-offset: 2px;
+}
+
 .note-editor-shell .note-editor {
   min-height: calc(var(--input-height) * 3);
   padding: var(--space-3) var(--space-3) var(--space-3)
@@ -4770,7 +4781,7 @@ textarea {
 .note-editor .note-blockquote {
   margin: var(--space-2) 0;
   padding: var(--space-1) 0 var(--space-1) var(--space-3);
-  border-left: 3px solid var(--line2);
+  border-left: var(--note-quote-rule) solid var(--line2);
 }
 
 /* Section. The disclosure control is the only thing that opens or closes it
@@ -4791,7 +4802,8 @@ textarea {
   width: var(--space-6);
   height: calc(var(--type-body) * 1.5);
   border: none;
-  border-radius: 6px;
+  /* The radius scale, not a one-off 6 next to an existing 8. */
+  border-radius: var(--r-sm);
   background: transparent;
   color: var(--placeholder);
   cursor: pointer;
@@ -4804,8 +4816,8 @@ textarea {
 }
 
 .note-editor .note-disclosure svg {
-  width: 18px;
-  height: 18px;
+  width: var(--note-disclosure-icon);
+  height: var(--note-disclosure-icon);
   fill: currentColor;
 }
 
@@ -4839,7 +4851,7 @@ textarea {
   text-decoration-line: underline;
   text-decoration-thickness: var(--border-thin);
   text-decoration-color: color-mix(in srgb, var(--gold-text) 40%, transparent);
-  text-underline-offset: 2px;
+  text-underline-offset: var(--note-underline-offset);
   cursor: text;
 }
 

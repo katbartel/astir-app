@@ -29,14 +29,18 @@ Build to this spec. For anything visual this spec does not name, follow AGENTS.m
 4. Clicking the card, except on the open-posting icon, dropdown, or note field, toggles expansion.
 5. Expansion contains one meta line: `Posted: [date] · Applied: [date] · Location: [city] · Type: [Remote/Hybrid/On-site]`. Omit the Posted pair when there is no posting object.
 6. Expansion also contains the notes field.
+7. Notes autosave. No save button. A card never shows a save affordance for its note.
 
 ## 4. Notes field
 
-1. Use a contenteditable area styled like the standard input: paper background, line2 border, input radius, gold focus border.
-2. Placeholder: `Add a note`.
-3. Notes autosave. No save button.
-4. Store rich notes as structured data so checkbox notes can be reliable.
-5. Typing `[]` converts in place to a checkbox that can be ticked and unticked.
+The notes field has its own document model, so it has its own spec:
+[`docs/notes-editor.md`](notes-editor.md). That file is the source of truth for
+everything the field does, including its styling recipe, its keyboard behaviour,
+its invariants, and its regression script.
+
+Only the card-level rules stay here, and they are in section 3: the note field is
+inside the card expansion (3.6), clicking it never toggles the card (3.4), and
+notes autosave (3.7).
 
 ## 5. Stage dropdown
 

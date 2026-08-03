@@ -111,6 +111,7 @@ Motion: eases, never snaps. Micro-transitions .2-.3s. Rail mini-orb flare ~1.4s 
 12. **Rail**: 200px, rail bg, active item = card bg + soft shadow. Brand = mini orb + "Astir" in display font.
 13. **Goal tile**: line border, r-md, centered column, minimum height uses `--goal-tile-height` so the visual bottom space below the label is about 16px, padding 12px top and sides, 16px bottom. Goals render five tiles per row on desktop. Gauge is a 96x56 SVG semicircle with line track and activity-deep sweep, with 16px space below it before the label row. Selected active goals show `current/target`, including over-target progress such as `7/5`; empty-state and unselected placeholder tiles show arcs and labels without counts. Labels are stable across empty, in-progress, and met states: Applications, Networking, Prep, Paperwork, Rest. Rest is the last tile. The label and info icon sit in one full-width centered row, so the combined visible label cluster remains centered when label text or spacing changes. The info icon box is the icon size, not a larger control box, with only the goal title gap between label and icon. Met state is shown by the completed arc only, with no tile background change. The info icon sits beside the label and matches the label color in every tile state, using the standard dark tooltip plus a small triangle pointing to the icon. Disabled placeholder tiles show the icon without hover tooltip behavior. Editable goal tiles show a subtle split hover control behind the tile content: a vertical line through the tile, minus on the left, plus on the right, and tokenized grey tint states for base hover, side hover, and active. The editable hover surface keeps its existing height, extends below the gauge arc, and does not cover the label. Applications do not have tile controls because they come from application records.
 14. **Week setup row**: row border line, r-md, 10px 14px padding. Tapping toggles selection. Selected state uses gold-soft bg and gold-text label. Numeric selected rows show 22px round steppers.
+15. **Note field**: input recipe (paper bg, line2 border, input radius, gold focus border, no glow), placeholder `Add a note`, with checkboxes, bullets, quotes, collapsible sections, inline marks, and drag-to-reorder rows. It has its own document model, so its full recipe, invariants, and regression script live in [`docs/notes-editor.md`](docs/notes-editor.md), not here. Used on Pipeline cards and in Home's weekly-goals task detail.
 
 Open surfaces own interaction. When a modal, dropdown, select, or date picker is open, tooltips are hidden and hover states below that surface do not respond until it closes. Tooltips and hover labels never extend over the rail or beyond the screen edge. They wrap at 40 characters or sooner without breaking words. Info-icon tooltips use a small triangle pointing to the icon. Icon-button hover labels do not use a triangle and sit 4px closer to the control than info-icon tooltips. If space is tight for an info-icon tooltip, move the tooltip body sideways while keeping the triangle centered with the icon it explains.
 
@@ -156,15 +157,17 @@ Astir no longer has a living sphere or whisper line. Home's middle is made of tw
 
 ## AGENTS.md amendment, July 2026: stack and build state
 
-Replace all stack references in this file with the following. Where older sections mention Next.js, TypeScript, Tailwind, or shadcn/ui, this section wins.
+Replace all stack references in this file with the following. Where older sections describe a different stack, this section wins.
+
+Corrected August 2026. The "plain HTML, CSS, and JavaScript, no build step" description below was accurate for the prototype and has been stale since the full-stack app landed. It described `prototype/`, not the app.
 
 ### Stack (actual)
 
-1. Plain HTML, CSS, and JavaScript. No framework, no build step, no package.json.
-2. Files: `index.html` (shell), `app.js` (logic and screens), `styles.css` (components), `tokens.css` (all values). Screens are hash routes (`#today`, `#watchlist`, `#pipeline`, `#applications`).
-3. State persists in localStorage under the key `astir.v1`. No backend exists. Sample data lives in `app.js` (`defaultWatchlist`, `sampleRolesForCompany()`, `makeDemoPreset()`, `presetApplications()`).
+1. An npm workspace with two packages. `frontend/` is Next.js 16 (App Router), React 19, and TypeScript. `backend/` is NestJS 11 with Prisma over Postgres. Docker Compose runs all three (`npm run dev`).
+2. Frontend files: routes under `frontend/src/app/` (`/`, `/pipeline`, `/watchlist`, `/applications`, `/preferences`, `/job-boards`, `/remote-job-board`), components under `frontend/src/components/`, model and API helpers under `frontend/src/lib/`, and `frontend/src/styles/tokens.css` plus `app.css` for all values and components. These are real routes, not hash routes.
+3. Persistence is split and both halves are real. Applications, watchlist, and job boards live in Postgres and are reached only through the backend API (`/api/...`); the frontend helpers in `frontend/src/lib/` are the only place that talks to it. Home's weekly goals and visit state stay in localStorage under the key `astir.v1`.
 4. The rule "use shadcn components, never hand-roll" is retired. Components are hand-rolled on tokens. In exchange, every interactive component must meet this bar: full keyboard operation, visible focus states, Escape closes overlays, focus returns to the trigger on close, aria labels match tooltips.
-5. Prototype files (`experiments/astir-*.html`, `astir-components.svg`) are design reference only. They define look and behavior, never implementation. Do not copy their raw values into the app.
+5. Reference-only files, look and behavior but never implementation: `experiments/astir-*.html`, `astir-components.svg`, and `prototype/`. **`prototype/` is frozen.** It is the old plain HTML, CSS, and JavaScript app, kept for reference, and it is not a build target. Do not change it and do not copy its raw values into the app.
 
 ### Screen status (keep current)
 
@@ -178,6 +181,21 @@ Replace all stack references in this file with the following. Where older sectio
 ### Token exceptions (named, closed list)
 
 1. Breakpoint: the app has exactly one breakpoint, 760px. CSS media queries cannot read custom properties, so the value stays raw, but it is documented at the top of tokens.css as `/* breakpoint: narrow = 760px (raw in media queries by necessity) */`. Any change to the breakpoint updates that comment and every media query together. No second breakpoint without a decision.
-2. SVG geometry (viewBox, path coordinates, arc gauge angles) in `app.js` is geometry, not styling, and is exempt from the tokens rule. Colors inside SVG are NOT exempt: they reference tokens.
+2. SVG geometry (viewBox, path coordinates, arc gauge angles) in components is geometry, not styling, and is exempt from the tokens rule. Colors inside SVG are NOT exempt: they reference tokens.
 3. Archive table column minimum width is the named token `--table-column-min`.
-4. Anything else outside the scales still requires a named token before use.
+4. Inline links inside a note render `--gold-text` with a solid 1px underline at 40% opacity. No new token. See amendment 3 below.
+5. Anything else outside the scales still requires a named token before use.
+
+---
+
+## AGENTS.md amendment, August 2026: notes editor
+
+The notes editor has one spec, [`docs/notes-editor.md`](docs/notes-editor.md). Read it before touching the note field. These five rules are the parts that bind the rest of the system.
+
+1. **Notes editor architecture.** Notes are one component, `frontend/src/components/applications/NoteField.tsx`, on a Tiptap (ProseMirror) schema, and that document is the single source of truth. Document structure is never stored in or read from the DOM. `execCommand` is banned in notes code. The component takes a value and an `onChange` and knows nothing about storage: the Pipeline caller persists to Postgres, the Home weekly-goals caller persists to localStorage under `astir.v1`. There is one notes editor. A second one is not an acceptable way to avoid a migration.
+2. **Sections do not nest.** One level of nesting exists in notes, no more, and the schema enforces it rather than a guard clause.
+3. **Link styling exception.** Inline links in notes render `--gold-text` with a solid 1px underline at 40% opacity. Notes have no underline mark to collide with it: underline was cut from the notes editor for exactly this reason. Strike stays. No new token. Blue is not in the palette and must not be introduced for links.
+4. **Notes container state.** The expanded state of a notes area is toggled only by its disclosure control, never by focus, blur, pointer, or selection events. This rule applies to any future disclosure component.
+5. **Invariants discipline.** Any component with its own document model carries an invariants list, a regression script, and a failure log in this repo. All three are re-checked after every change to that component, and the regression script is automated rather than run by hand.
+
+Section 4's icon rule applies here with no exception: a note's bullet and a section's disclosure triangle are real SVG, not `•` and `⌄` characters.

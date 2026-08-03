@@ -45,7 +45,7 @@ Use a full-stack monorepo with npm workspaces.
 │   │   ├── companies.service.ts
 │   │   └── types.ts
 │   └── package.json
-├── specs/
+├── docs/
 ├── docker-compose.yml
 ├── package.json
 └── README.md
@@ -55,7 +55,7 @@ Keep ownership boundaries explicit:
 
 - Frontend code belongs under `frontend/`.
 - Backend code belongs under `backend/`.
-- Product and implementation notes belong under `specs/`.
+- Product and implementation notes belong under `docs/`.
 - Root files should provide workspace, Docker, and documentation glue.
 
 ## Root Workspace Setup

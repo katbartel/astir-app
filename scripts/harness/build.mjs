@@ -10,15 +10,26 @@ const out = resolve(repo, 'scripts/.harness')
 
 mkdirSync(out, { recursive: true })
 
+const processShim = 'globalThis.__harnessProcess = { env: {} };'
+
 await build({
-  entryPoints: [resolve(here, 'mount.tsx')],
-  outfile: resolve(out, 'bundle.js'),
+  entryPoints: [resolve(here, 'mount.tsx'), resolve(here, 'card.tsx')],
+  outdir: out,
   bundle: true,
   format: 'iife',
   jsx: 'automatic',
   target: 'es2022',
   logLevel: 'warning',
-  define: { 'process.env.NODE_ENV': '"development"' },
+  define: {
+    'process.env.NODE_ENV': '"development"',
+    // The card pulls in server-side helpers that read process.env for the API target.
+    // They are never called here (the harness fakes the save), but the reference has
+    // to resolve or the bundle throws on load.
+    'process.env.API_TARGET': '"http://localhost:3000"',
+    // A whole-object literal is not a valid define value, so shim the global instead.
+    process: 'globalThis.__harnessProcess',
+  },
+  banner: { js: processShim },
   alias: {
     // Same alias Next resolves, so the component's own imports work unchanged.
     '@': resolve(repo, 'frontend/src'),
@@ -33,5 +44,6 @@ await build({
 copyFileSync(resolve(repo, 'frontend/src/styles/tokens.css'), resolve(out, 'tokens.css'))
 copyFileSync(resolve(repo, 'frontend/src/styles/app.css'), resolve(out, 'app.css'))
 copyFileSync(resolve(here, 'harness.html'), resolve(out, 'harness.html'))
+copyFileSync(resolve(here, 'card.html'), resolve(out, 'card.html'))
 
-console.log('harness built: scripts/.harness/harness.html')
+console.log('harness built: scripts/.harness/harness.html and card.html')

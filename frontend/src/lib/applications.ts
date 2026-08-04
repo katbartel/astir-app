@@ -3,6 +3,7 @@
 // (/api/applications). The backend persists; these helpers are the only place
 // the frontend talks to it.
 
+import { isV2, type StoredNote } from './noteMigration'
 import {
   DEFAULT_STAGE_CATALOG,
   DEFAULT_STAGE_IDS,
@@ -38,7 +39,17 @@ export type NoteBlock =
   | { type: 'quote'; blocks: NoteBlock[] }
   | { type: 'collapse'; summary: string; open: boolean; blocks: NoteBlock[] }
 
-export type Note = { kind: string; text?: string; blocks: NoteBlock[] }
+/**
+ * A v1 note: a flat block list. Still the shape of most stored rows, and read through
+ * noteMigration.ts. See docs/notes-editor.md section 4.
+ */
+export type NoteV1 = { kind: string; text?: string; blocks: NoteBlock[] }
+
+/**
+ * What the editor writes now. The column holds a mix of both for as long as it takes
+ * to open every note, which is the expected state and not a transition to survive.
+ */
+export type Note = NoteV1 | StoredNote
 
 export type Posting = {
   url: string
@@ -127,9 +138,18 @@ function blockPlainText(block: NoteBlock): string {
   return block.text || ''
 }
 
-// Blocks -> flat text, used to seed the modal textarea.
+// A note -> flat text, used to seed the modal textarea. Reads either version: the
+// column holds a mix until every note has been opened once.
 export function noteText(note: Note | null | undefined): string {
   if (!note) return ''
+  if (isV2(note)) {
+    const walk = (nodes: { type?: string; text?: string; content?: unknown[] }[]): string =>
+      nodes
+        .map((node) => (node.type === 'text' ? (node.text ?? '') : walk((node.content ?? []) as never)))
+        .join('')
+    const doc = note.doc as { content?: unknown[] }
+    return walk((doc.content ?? []) as never)
+  }
   if (Array.isArray(note.blocks) && note.blocks.length > 0) {
     return note.blocks.map(blockPlainText).join('')
   }

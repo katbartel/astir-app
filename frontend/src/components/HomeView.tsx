@@ -20,6 +20,7 @@ import {
   taskInviteCopy,
   taskTileIds,
 } from '@/lib/goals'
+import { noteHasContent } from '@/lib/noteMigration'
 import { Greeting } from './Greeting'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { LogApplicationModal } from './applications/LogApplicationModal'
@@ -186,7 +187,7 @@ function GoalsPlaceholder() {
 }
 
 function hasDetail(task: Task): boolean {
-  return task.steps.length > 0 || Boolean(task.note?.blocks?.length)
+  return task.steps.length > 0 || noteHasContent(task.note)
 }
 
 // The private detail of a task: a note (the same rich editor as the pipeline

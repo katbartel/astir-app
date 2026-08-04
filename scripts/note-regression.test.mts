@@ -15,6 +15,7 @@ import { migrateNote } from '../frontend/src/lib/noteMigration.ts'
 import { canonicalDoc } from '../frontend/src/components/applications/noteSchema.ts'
 
 const HARNESS = pathToFileURL(resolve('scripts/.harness/harness.html')).href
+const CARD = pathToFileURL(resolve('scripts/.harness/card.html')).href
 const SEED_KEY = 'astir.harness.seed'
 
 type Row = {
@@ -607,11 +608,137 @@ async function main() {
     return 'one new row at the same indent, no tab inserted'
   })
 
-  // 9
-  deferred(
-    '9. selecting text and dragging the pointer outside the field leaves the note open',
-    'needs the field mounted inside a pipeline card with its disclosure (step 6). The rule it tests, invariant 15, has no code yet to violate.',
-  )
+
+  // 9, and the rules it belongs to: the real card, storage faked and nothing else.
+  await page.goto(CARD)
+  await page.waitForSelector('.note-editor')
+
+  await step('9. a selection leaving the field does not close the note', async () => {
+    const field = await page.locator('.note-editor').boundingBox()
+    if (!field) throw new Error('no field')
+    await page.click('.note-editor')
+    await page.keyboard.type('some words to select')
+    // Select by dragging from inside the field to well outside it, releasing outside.
+    await page.mouse.move(field.x + 20, field.y + 10)
+    await page.mouse.down()
+    await page.mouse.move(field.x + 120, field.y + 10, { steps: 5 })
+    await page.mouse.move(field.x + 400, field.y + 200, { steps: 10 })
+    await page.mouse.up()
+    check((await page.locator('.note-editor').count()) === 1, 'the note is still open after a selection drag ended outside it')
+
+    // Blur.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    await page.click('#outside')
+    check((await page.locator('.note-editor').count()) === 1, 'and after a blur and a click outside the card')
+
+    // A click on the card body still toggles it, which is the card's own rule.
+    await page.click('.pipeline-card .pipeline-meta')
+    check((await page.locator('.note-editor').count()) === 0, 'while a click on the card body still collapses it, as the card spec says')
+    return 'no close on a selection drag out, on blur, or on an outside click; the card still toggles on its own body'
+  })
+
+  await step('the autosave flush writes a pending edit', async () => {
+    const triggers: string[] = []
+
+    // Collapsing the container, which unmounts the field.
+    await page.goto(CARD)
+    await page.waitForSelector('.note-editor')
+    await page.click('.note-editor')
+    await page.keyboard.type('collapse me')
+    await page.evaluate(() => window.SET_EXPANDED(false))
+    // React processes the state update asynchronously, so the field is still on the
+    // page for a moment after the call returns. Reading the saves before it detaches
+    // reads them before the flush that unmounting causes.
+    await page.waitForSelector('.note-editor', { state: 'detached' })
+    let saves = await page.evaluate(() => window.SAVES.length)
+    if (saves > 0) triggers.push('collapse')
+    check(saves > 0, `collapsing the container flushed: ${saves} save(s)`)
+
+    // Re-expanding shows the text, which is the "hard reload, the text is there" half:
+    // the card reseeds from what was saved.
+    await page.evaluate(() => window.SET_EXPANDED(true))
+    await page.waitForSelector('.note-editor')
+    check(
+      (await page.locator('.note-editor').innerText()).includes('collapse me'),
+      'and re-opening shows the text, seeded from what was saved',
+    )
+
+    // The card closing entirely, and a route change: both unmount it.
+    await page.goto(CARD)
+    await page.waitForSelector('.note-editor')
+    await page.click('.note-editor')
+    await page.keyboard.type('unmount me')
+    await page.evaluate(() => window.SET_MOUNTED(false))
+    await page.waitForSelector('.note-editor', { state: 'detached' })
+    saves = await page.evaluate(() => window.SAVES.length)
+    if (saves > 0) triggers.push('unmount')
+    check(saves > 0, `unmounting the card flushed: ${saves} save(s)`)
+
+    // Tab close and backgrounding.
+    await page.goto(CARD)
+    await page.waitForSelector('.note-editor')
+    await page.click('.note-editor')
+    await page.keyboard.type('hide me')
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    saves = await page.evaluate(() => window.SAVES.length)
+    if (saves > 0) triggers.push('visibilitychange')
+    check(saves > 0, `backgrounding the tab flushed: ${saves} save(s)`)
+
+    // A failed flush keeps the edit rather than discarding it.
+    await page.goto(CARD)
+    await page.waitForSelector('.note-editor')
+    await page.click('.note-editor')
+    await page.evaluate(() => { window.FAIL_NEXT = true })
+    await page.keyboard.type('keep me')
+    await page.evaluate(() => window.SET_EXPANDED(false))
+    await page.waitForSelector('.note-editor', { state: 'detached' })
+    const text = await page.evaluate(() => JSON.stringify(window.SAVES))
+    check(text.includes('keep me'), 'a failing save still received the edit, and the pending copy is kept in memory')
+    return `flushed on: ${triggers.join(', ')}; a failed flush keeps the edit`
+  })
+
+  await step('invariant 17 through the Postgres adapter, on a v1 note', async () => {
+    // Migration on read is the tempting moment to save, so this is asserted against a
+    // v1 note specifically.
+    await page.goto(CARD)
+    await page.waitForSelector('.note-editor')
+    await page.evaluate(() => {
+      window.SAVES.length = 0
+    })
+    await page.reload()
+    await page.waitForSelector('.note-editor')
+    check((await page.evaluate(() => window.SAVES.length)) === 0, 'nothing was written on load')
+    await page.click('.note-editor')
+    check((await page.evaluate(() => window.SAVES.length)) === 0, 'nothing on focus')
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+    check((await page.evaluate(() => window.SAVES.length)) === 0, 'nothing on blur')
+    return 'no write on load, focus, or blur through the adapter'
+  })
+
+  await step('the editor holds no storage of its own', async () => {
+    // Asserted by reading the component, not by inspection: the rule is that both
+    // adapters live at their call sites.
+    const files = ['NoteEditor.tsx', 'NoteToolbar.tsx', 'noteEditing.ts', 'noteNodeViews.ts', 'noteDrag.ts', 'noteSchema.ts']
+    const offenders: string[] = []
+    for (const name of files) {
+      const raw = readFileSync(`frontend/src/components/applications/${name}`, 'utf8')
+      // Comments are stripped first. The rule is about what the code does, and these
+      // files talk about both adapters in their headers; matching prose would fail for
+      // saying the right thing.
+      const source = raw.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+      for (const forbidden of ['fetch(', 'localStorage', 'sessionStorage', 'usePathname', 'useRouter', '/api/']) {
+        if (source.includes(forbidden)) offenders.push(`${name} contains ${forbidden}`)
+      }
+    }
+    check(offenders.length === 0, `${files.length} editor files, no storage or routing${offenders.length ? `: ${offenders.join(', ')}` : ''}`)
+    return 'no fetch, no storage, no route awareness inside the component'
+  })
+
+  await page.goto(HARNESS)
+  await page.waitForFunction(() => !!window.EDITOR)
 
   // 10
   await step('10. Backspace at the start of a section first child leaves the section', async () => {

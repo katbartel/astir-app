@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Application,
   type Status,
@@ -12,7 +12,8 @@ import { compactLocationLabel, displayLocationParts } from '@/lib/location-displ
 import { HeardBackModal } from './applications/HeardBackModal'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal } from './applications/LogApplicationModal'
-import { NoteField } from './applications/NoteField'
+import { NoteEditor } from './applications/NoteEditor'
+import { useNoteAutosave } from './applications/useNoteAutosave'
 import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
 import { useLoadingPlaceholder, useRememberedCount } from './applications/usePlaceholder'
@@ -36,7 +37,39 @@ function ApplicationMeta({ application }: { application: Application }) {
   return <>{parts.join(' · ')}</>
 }
 
-function PipelineCard({
+/**
+ * The note field and its autosave, mounted only while the card is expanded.
+ *
+ * The autosave lives here rather than in the card on purpose. Collapsing the
+ * container removes the field but leaves the card mounted, so a hook in the card
+ * would never see the unmount and the pending edit would sit in memory until
+ * something else flushed it. Here, one mechanism covers all three of the container
+ * collapsing, the card closing, and a route change: they all unmount this.
+ */
+function CardNote({
+  application,
+  onNote,
+}: {
+  application: Application
+  onNote: (note: NonNullable<Application['note']>) => void
+}) {
+  const autosave = useNoteAutosave({ save: onNote })
+  return (
+    <NoteEditor
+      note={application.note}
+      onChange={autosave.onChange}
+      ariaLabel={`Note for ${application.company}`}
+    />
+  )
+}
+
+/**
+ * Exported for the regression harness, which mounts the real card rather than a
+ * stand-in: the rules being asserted (the note not closing the card, the autosave
+ * flush) are properties of this component, and a copy of it in a test would prove
+ * nothing about the app.
+ */
+export function PipelineCard({
   application,
   expanded,
   onToggle,
@@ -53,9 +86,24 @@ function PipelineCard({
 }) {
   const openUrl = application.link || application.posting?.url || ''
 
+  // Whether the gesture that produced this click began inside the note field. A text
+  // selection that starts in the note and ends outside it releases the pointer on the
+  // card, which the browser reports as a click on the card. Toggling on that is what
+  // closed the note "intermittently": it was not intermittent, it was every selection
+  // drag that left the field. Invariant 15.
+  const fromNote = useRef(false)
+
+  function onCardPointerDown(event: React.PointerEvent) {
+    fromNote.current = !!(event.target as HTMLElement).closest('.note-editor-shell')
+  }
+
   // Expand only when the click landed on the card body, not on a control.
   function onCardClick(event: React.MouseEvent) {
-    if ((event.target as HTMLElement).closest('button, a, .select-shell, .note-field')) return
+    if (fromNote.current) {
+      fromNote.current = false
+      return
+    }
+    if ((event.target as HTMLElement).closest('button, a, .select-shell, .note-editor-shell')) return
     onToggle()
   }
 
@@ -67,6 +115,7 @@ function PipelineCard({
       aria-expanded={expanded}
       aria-label={`${application.company}, ${application.role}`}
       onClick={onCardClick}
+      onPointerDown={onCardPointerDown}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault()
@@ -105,7 +154,7 @@ function PipelineCard({
           <div className="pipeline-meta">
             <ApplicationMeta application={application} />
           </div>
-          <NoteField note={application.note} onChange={onNote} />
+          <CardNote application={application} onNote={onNote} />
         </div>
       ) : null}
     </article>

@@ -144,6 +144,23 @@ export function isV2(raw: unknown): raw is StoredNote {
   return isRecord(raw) && raw.v === NOTE_VERSION
 }
 
+/**
+ * True when a stored note still has content of some kind, in either version. Used by
+ * callers that only need to know "is there a note here", so they do not have to know
+ * which version it is.
+ */
+export function noteHasContent(raw: unknown): boolean {
+  if (!isRecord(raw)) return false
+  if (isV2(raw)) {
+    const doc = raw.doc as { content?: { content?: unknown[] }[] } | undefined
+    const rows = doc?.content ?? []
+    if (rows.length === 0) return false
+    // One empty paragraph is the empty document, the same as no note at all.
+    return rows.length > 1 || (rows[0]?.content?.length ?? 0) > 0
+  }
+  return Array.isArray(raw.blocks) && raw.blocks.length > 0
+}
+
 /** A note with nothing in it. Not an error, and not something to migrate. */
 export function isEmptyV1(raw: unknown): boolean {
   if (raw === null || raw === undefined) return true

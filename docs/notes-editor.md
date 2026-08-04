@@ -429,6 +429,18 @@ update applications a set note = b.note from applications_note_v1_<stamp> b wher
 
 `scripts/.note-migration/` is gitignored: it holds real note content.
 
+#### The order the call sites move, and why
+
+Pipeline first, then Home, then the deletion of the old editor, as three revertible
+commits.
+
+**Not because Home is riskier.** That was the original reasoning and it is false:
+Home's notes were all empty at cutover (4.5), so there is nothing there to lose.
+Pipeline goes first because it is the surface in daily use and the one holding real
+content, so it is the surface that should be exercised first and longest. The old
+editor stays mounted on Home while pipeline is proven, and is deleted only once both
+call sites pass.
+
 #### Mixed versions are the expected state
 
 From the moment the new editor is mounted, a v1 note migrates on read and the next
@@ -449,8 +461,13 @@ Three consequences, all of them load-bearing:
 #### The sweep procedure, in this order
 
 By the time the sweep runs, most rows will already be v2 and the remainder will be
-rows nobody has opened in weeks, which is exactly the population most likely to hold
-a shape the mapping has never seen. The order is therefore not optional:
+rows nobody has opened in weeks. **Those are also the oldest notes, written by the
+oldest version of the editor.** Every row the mapping has already handled was handled
+because someone opened it recently; what is left is the least-tested content in the
+column, produced by code that no longer exists. That is why the halt is
+non-negotiable here specifically: a fallback conversion at the sweep would guess at
+exactly the shapes nobody has looked at in the longest time. The order is therefore
+not optional:
 
 1. Fresh snapshot and dump, from live data.
 2. Fresh dry run against live data, with v1 and v2 counted separately.
@@ -499,6 +516,16 @@ Before any of that is written, the same encoding table the Postgres rows got is
 produced against the real `astir.v1` notes, counted rather than assumed. See
 [`scripts/count-astir-notes.mts`](../scripts/count-astir-notes.mts) for how to export
 and count them.
+
+> **The `astir.v1` population was empty at cutover.** Exported and counted on
+> 4 August 2026, immediately before the new editor was mounted: six task notes across
+> three weeks, three of them `null` and three of them `{kind:'blocks', blocks:[]}`.
+> Not one contained a checkbox, bullet, mark, section, or quote.
+>
+> This is written down because the next reader will otherwise assume the mapping was
+> proven against real Home data. **It was not.** Nothing on Home exercised the version
+> gate or the read-only fallback, so their synthetic tests are their only proof and
+> are load-bearing rather than a formality. Treat them that way.
 
 > **`astir.v1` has no snapshot and cannot be given one.** Postgres has a backup table
 > and a dump taken by a script; a browser's `localStorage` can only be exported by
@@ -580,6 +607,38 @@ to prevent.
 Partial opacity comes from `color-mix` on the token, never a hardcoded `rgba` and
 never a new `--something-soft` token: the link underline is
 `color-mix(in srgb, var(--gold-text) 40%, transparent)`. See AGENTS.md.
+
+### 5.2 What is deliberately not asserted
+
+A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.
+Six belong to the adapters and are covered in step 6. Five are behaviour and are
+asserted directly: the toolbar's flip and clamp, its exact contents and order, that
+the grip's width never shifts a row, that markers are SVG elements rather than text
+nodes, and that every toolbar button is keyboard reachable with an aria label matching
+its tooltip and focus returning to the selection on close. Two of those had shipped
+unimplemented and were caught by a click failing, which is not a test noticing.
+
+**The remaining rules are deliberately not asserted, and this is the list**: the field
+recipe's colours, the toolbar surface recipe, the active-state colours, the
+`--space-6` indent step, `white-space: pre-wrap`, an empty row's full line height, the
+150ms grip fade, the letterforms' rendered format and size, the 5.1 component tokens,
+and the `color-mix` rule.
+
+The reason is that a test asserting a computed style equals its own custom property
+tests that the CSS says what the CSS says. It passes for the wrong reason, fails on
+every legitimate change, and teaches nobody anything.
+
+What those rules were actually protecting against is drift: a raw hex, an `rgba`, or a
+stray pixel value appearing in the notes CSS. That is caught at the moment someone
+writes it by **a lint rule over the notes editor's CSS scope, which fails on any raw
+hex, any `rgba`, and any `px` value that is not one of the named component tokens**.
+One guard instead of twelve cases, on the same principle as the undo loop in the
+harness: cover the class, not the instances.
+
+Anything genuinely visual that survives both mechanisms, meaning it is neither a
+behaviour nor a value, is a screenshot-diff task. **That is out of scope for this
+rebuild and is not covered by anything here.** Saying so is the point: an unasserted
+visual rule should read as a known gap, not as an oversight.
 
 ---
 
@@ -899,9 +958,14 @@ wrong; one user action was often several steps.
    control.** Never on focus, blur, pointerleave, outside click, selection
    change, or drag. This is what caused the intermittent closing. The rule
    applies to any future disclosure component.
-2. **Clicking the note field never toggles the pipeline card.** The card toggles
-   on clicks outside the open-posting icon, the stage dropdown, and the note
-   field.
+2. **Clicking the note field never toggles the pipeline card.** The card toggles on
+   clicks outside the open-posting icon, the stage dropdown, and the note field.
+   **A gesture that begins in the note field never toggles it either**, which is a
+   separate rule and the one that matters: a text selection started in the note and
+   released outside it makes the browser report a click on the card. Toggling on that
+   is what closed the note "intermittently". It was not intermittent, it was every
+   selection drag that left the field. The card records, on pointerdown, whether the
+   gesture began inside the field, and ignores the click if it did.
 3. **Notes autosave. There is no save button.** `onChange` fires with the v2
    envelope; the adapter debounces and persists. The pipeline adapter updates
    local state optimistically so re-opening a card shows the edit immediately.
@@ -922,6 +986,14 @@ For the last one, `visibilitychange` to `hidden` is the reliable signal and
 `beforeunload` is the backstop; `beforeunload` alone is not dependable on mobile
 Safari, and neither fires reliably after a crash, which is why the flush is not the
 only protection.
+
+**The autosave lives with the field, not with the card.** On Pipeline it sits in a
+small `CardNote` component that mounts only while the card is expanded, so one
+mechanism covers all three of the container collapsing, the card closing, and a route
+change: each of them unmounts it. A hook placed on the card instead never sees the
+collapse, because collapsing removes the field and leaves the card mounted, and the
+pending edit then waits in memory for something else to flush it. That was written
+the wrong way round first and the harness caught it.
 
 Two rules about the flush itself:
 
@@ -1226,6 +1298,15 @@ Each of these was a consequence of the DOM being the model.
   so a blank line above or below a collapse worked while you typed in it and was
   dropped on reload. Resolved: invariant 2 and regression step 3 now require it
   to survive, and the separator rule is gone with the line model.
+- **"Empty notes appear on their own."** Three of the six Home task notes were
+  `{kind:'blocks', blocks:[]}` rather than `null`, which looks like an editor saving
+  on load. It is not: the editor being replaced calls `onChange` from exactly three
+  places, `commitAndSave`, `travelHistory`, and its input handler, and none of them
+  runs at mount. Those notes are the residue of typing and deleting. Checked on
+  4 August 2026, which means invariant 17 was not being violated before it was
+  written, something nobody actually knew until it was looked at. Recorded so the
+  question is answered rather than repeated as folklore.
+
 - **`pruneBlankCheckLines` deliberately dropped content.** A blank unchecked
   checkbox row stayed in the DOM while you were on it and was never saved.
   Deleted: invariant 2 wins, and the Enter ladder (6.1) makes stray blank

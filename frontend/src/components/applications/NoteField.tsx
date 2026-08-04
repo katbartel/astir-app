@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { type Note, type NoteBlock } from '@/lib/applications'
+import { isV2 } from '@/lib/noteMigration'
 import { type LineDragHost, type LineNode, createLineDrag } from './noteLineDrag'
 
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4.2 4.2 8.8-9.4"/></svg>'
@@ -72,7 +73,11 @@ function blockHtml(block: NoteBlock): string {
 }
 
 function noteHtml(note: Note | null): string {
-  return blocksHtml(pruneBlankCheckLines(note?.blocks ?? []))
+  // This editor speaks v1 only and is deleted once both call sites have moved. A v2
+  // note reaching it renders as empty rather than throwing; it cannot be reached from
+  // Pipeline, which has already moved, and Home has no v2 notes until it moves too.
+  const blocks = note && !isV2(note) ? (note.blocks ?? []) : []
+  return blocksHtml(pruneBlankCheckLines(blocks))
 }
 
 // HTML for an unchecked checkbox, inserted via execCommand so the browser keeps

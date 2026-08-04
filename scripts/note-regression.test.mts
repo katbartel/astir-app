@@ -86,6 +86,7 @@ async function remount(note: unknown) {
 
 const rows = () => page.evaluate(() => window.ROWS() as Row[])
 const json = () => page.evaluate(() => window.EDITOR!.getJSON())
+const json2 = json
 const saved = () => page.evaluate(() => window.SAVED)
 const placeholder = () => page.evaluate(() => window.PLACEHOLDER())
 
@@ -1259,8 +1260,10 @@ async function main() {
       { name: 'the checkbox toggle', seed: marker, act: async () => { await page.click('.note-check-row .note-box') } },
       { name: 'the collapse toggle', seed: inSection, act: async () => { await page.click('.note-disclosure') } },
       {
+        // A check row, because that is the draggable unit. This case used to drag a
+        // paragraph, which no longer offers a grip at all.
         name: 'a drag',
-        seed: plain,
+        seed: marker,
         act: async () => {
           const list = visible(await rows())
           await dragRowTo(0, list[1].top + list[1].height + 2)
@@ -1348,20 +1351,28 @@ async function main() {
     return 'the grip is beside the box, not on top of it'
   })
 
-  await step('5.2/3b. the grip is in the same place whether the row has a box, a bullet, or nothing', async () => {
+
+  await step('5.2/3b. only a check row offers a grip', async () => {
     await seed(gripDoc)
-    const para = await gripOverRow(0)
-    const checkbox = await gripOverRow(1)
-    const bullet = await gripOverRow(2)
-    check(
-      Math.abs(para.grip.x - checkbox.grip.x) <= 1 && Math.abs(para.grip.x - bullet.grip.x) <= 1,
-      `grip x matches across markers: paragraph ${Math.round(para.grip.x)}, checkbox ${Math.round(checkbox.grip.x)}, bullet ${Math.round(bullet.grip.x)}`,
-    )
-    check(
-      para.grip.x + para.grip.width <= para.row.left + 1,
-      'and it is in the gutter on a paragraph, which has no marker at all',
-    )
-    return 'the marker does not move the grip'
+    // The recovered rule, literally: in the deleted editor the grip lived inside the
+    // checkbox span, so it belonged to a check row and to nothing else. This step used
+    // to assert the opposite, that a paragraph and a bullet got one in the same place,
+    // which was the rebuild's behaviour rather than the editor's.
+    const offered = async (rowIndex: number) => {
+      const list = visible(await rows())
+      const row = list[rowIndex]
+      await page.mouse.move(row.left + 20, row.top + row.height / 2)
+      await page.waitForTimeout(120)
+      return (await page.locator(".note-grip[data-on='true']").count()) > 0
+    }
+    check(await offered(1), 'a check row offers a grip')
+    check(!(await offered(0)), 'a paragraph does not')
+    check(!(await offered(2)), 'a bullet does not')
+    check(await offered(4), 'a check row inside a section body does')
+    // An empty check row still offers one: the old rule was the marker, not the text.
+    await seed(v2({ type: 'doc', content: [{ type: 'check', attrs: { checked: false } }] }))
+    check(await offered(0), 'and an empty check row still does, because the rule is the marker')
+    return 'the grip belongs to a check row, empty or not, and to nothing else'
   })
 
   await step('5.2/3c. the grip follows the section indent and stays in that row’s gutter', async () => {
@@ -1395,6 +1406,68 @@ async function main() {
     await page.waitForSelector('.note-toolbar')
     return { from: row.start, to: row.end }
   }
+
+  await step('5.3/1. an empty section header shows its own placeholder', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'section',
+            attrs: { collapsed: false },
+            content: [
+              { type: 'sectionTitle' },
+              { type: 'sectionBody', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'body' }] }] },
+            ],
+          },
+        ],
+      }),
+    )
+    const empty = await page.locator('.note-section-title.note-placeholder').count()
+    check(empty === 1, `the empty header carries the placeholder decoration (${empty})`)
+    check(
+      (await page.locator('.note-section-title').getAttribute('data-placeholder')) === 'Toggle title',
+      'with the deleted editor\'s own wording',
+    )
+    // And a filled header does not.
+    await page.click('.note-section-title')
+    await type('Named')
+    check(
+      (await page.locator('.note-section-title.note-placeholder').count()) === 0,
+      'and it goes as soon as the header has text',
+    )
+    return 'the empty header placeholder is back, on the document rather than :empty'
+  })
+
+  await step('5.3/2. every shortcut the tooltips name is bound', async () => {
+    // The tooltips claim six. Each is pressed here, because a tooltip naming a
+    // shortcut that does nothing is worse than no hint.
+    const worked: string[] = []
+    const tryKey = async (name: string, keys: string, expect: (json: string) => boolean) => {
+      await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'shortcut me' }] }] }))
+      await selectRow(0)
+      await page.keyboard.press(keys)
+      await page.waitForTimeout(120)
+      const json = JSON.stringify(await json2())
+      const ok = expect(json)
+      check(ok, `${name} (${keys}) works`)
+      if (ok) worked.push(name)
+    }
+    await tryKey('Bold', 'Meta+b', (j) => j.includes('"bold"'))
+    await tryKey('Italic', 'Meta+i', (j) => j.includes('"italic"'))
+    await tryKey('Strikethrough', 'Meta+Shift+s', (j) => j.includes('"strike"'))
+    await tryKey('Quote', 'Meta+Shift+e', (j) => j.includes('"quote"'))
+    await tryKey('Section', 'Meta+Shift+o', (j) => j.includes('"section"'))
+    // Cmd+K opens the URL field rather than changing the document.
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'link me' }] }] }))
+    await selectRow(0)
+    await page.keyboard.press('Meta+k')
+    await page.waitForSelector('.note-link-input')
+    check(true, 'Link (Meta+k) opens the URL field')
+    worked.push('Link')
+    return `${worked.length} shortcuts bound: ${worked.join(', ')}`
+  })
+
 
   await step('5.2/1. the toolbar flips below near the top edge, sits above with room, and clamps to the screen', async () => {
     await seed(

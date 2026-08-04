@@ -201,6 +201,28 @@ export function NoteToolbar({
     return () => window.removeEventListener('keydown', onKey)
   }, [close])
 
+  /**
+   * Cmd+K opens the URL field, which is the deleted editor's binding restored.
+   *
+   * It lives here rather than in the keymap because the field it opens is this
+   * component's state. The listener is on the editor's DOM and is registered whenever
+   * the editor exists: this component renders null when there is nothing to show, but
+   * it stays mounted, so the shortcut works before the toolbar is visible.
+   */
+  useEffect(() => {
+    if (!editor) return
+    const dom = editor.view.dom
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key.toLowerCase() !== 'k' || !(event.metaKey || event.ctrlKey)) return
+      if (event.shiftKey || event.altKey) return
+      event.preventDefault()
+      setDraft(editor.isActive('link') ? String(editor.getAttributes('link').href ?? '') : '')
+      setLinkFieldOpen(true)
+    }
+    dom.addEventListener('keydown', onKey)
+    return () => dom.removeEventListener('keydown', onKey)
+  }, [editor])
+
   if (!editor) return null
 
   const { state } = editor
@@ -347,20 +369,20 @@ export function NoteToolbar({
    * `data-tooltip`, not the browser's native `title`, and it showed the shortcut
    * beside the name.
    *
-   * Only the three that actually work are advertised. The deleted editor bound its own
-   * Cmd+K, Shift+Cmd+E and Shift+Cmd+O; this one does not, and binding them is
-   * behaviour rather than polish. A tooltip claiming a shortcut that does nothing is
-   * worse than no hint. The two text triggers are shown instead, because those do work.
+   * Every shortcut named here is bound and was verified by pressing it: Cmd+B, Cmd+I
+   * and Shift+Cmd+S come from StarterKit, Shift+Cmd+E and Shift+Cmd+O are in the
+   * keymap, and Cmd+K is bound in this file. The checkbox and bullet name their text
+   * triggers, which is what the deleted editor's tooltips did.
    */
   const hint: Record<string, string> = {
     Bold: 'Bold  \u2318B',
     Italic: 'Italic  \u2318I',
     Strikethrough: 'Strikethrough  \u21e7\u2318S',
-    Link: 'Link',
+    Link: 'Link  \u2318K',
     Checkbox: 'Checkbox  []',
     Bullet: 'Bullet  - ',
-    Quote: 'Quote',
-    Section: 'Section',
+    Quote: 'Quote  \u21e7\u2318E',
+    Section: 'Section  \u21e7\u2318O',
   }
   const sectionAvailable = convertRowToSection(state, undefined)
 

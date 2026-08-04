@@ -655,6 +655,12 @@ export const NoteEditing = Extension.create({
         // whitespace and never change indent, because indent is section membership
         // and nothing else sets it. Returning false hands the key back to the
         // browser, which moves focus, so the field cannot trap it.
+        // The shortcuts the deleted editor declared, now actually bound. Quote and
+        // section are plain commands; the link needs the toolbar's URL field, so it is
+        // bound there (section 7). A tooltip claiming a shortcut that does nothing is
+        // worse than no hint, so these exist because the tooltips name them.
+        'Mod-Shift-e': toggleQuote,
+        'Mod-Shift-o': convertRowToSection,
         Tab: () => false,
         'Shift-Tab': () => false,
       }),

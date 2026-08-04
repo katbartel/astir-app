@@ -145,7 +145,10 @@ const slotFor = (slots: Slot[], y: number) => {
  */
 export function moveRow(state: EditorState, from: number, insert: number): Transaction | null {
   const node = state.doc.nodeAt(from)
-  if (!node || !isRow(node)) return null
+  // Rows in general can be moved by a transaction, but the pointer drag only offers a
+  // grip on a check row, and this is the command behind that grip. Keeping the guard
+  // here as well means a stray call cannot drag something the affordance never offered.
+  if (!node || node.type.name !== 'check') return null
   if (insert >= from && insert <= from + node.nodeSize) return null
 
   const $from = state.doc.resolve(from)
@@ -271,11 +274,15 @@ export const NoteDrag = Extension.create({
           const rowUnder = (x: number, y: number) => {
             const at = view.posAtCoords({ left: x, top: y })
             if (!at) return null
-            // Recovered rule: a row with nothing in it offers no grip. In the deleted
-            // editor the grip lived inside the checkbox, so an empty line never had
-            // one; the rebuild put a grip beside every blank line the pointer passed.
-            // There is also nothing to drag: an empty row carries no content.
-            const offersGrip = (node: PmNode) => isRow(node) && node.content.size > 0
+            // The recovered rule, literally: in the deleted editor the grip lived
+            // inside the checkbox span, so a grip belonged to a check row and to
+            // nothing else. An empty check row did have one; a plain line never did,
+            // full or empty. The rebuild gave every row a grip, which is what put one
+            // beside every blank line the pointer crossed.
+            //
+            // The draggable unit is therefore a check row. See docs/notes-editor.md
+            // section 8.
+            const offersGrip = (node: PmNode) => node.type.name === 'check'
             const $pos = view.state.doc.resolve(at.pos)
             for (let depth = $pos.depth; depth > 0; depth -= 1) {
               const node = $pos.node(depth)

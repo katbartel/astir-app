@@ -4590,6 +4590,13 @@ textarea {
 /* "Add a note" shows on exactly one condition: the document is a single empty
    paragraph. The decoration that carries this class is applied on that condition
    and no other. */
+/* Recovered from .note-collapse-summary:empty::before: the placeholder in an empty
+   section header reads at normal weight against the header's 600, so it does not look
+   like a filled-in title. */
+.note-editor .note-title-placeholder::before {
+  font-weight: 400;
+}
+
 .note-editor .note-placeholder::before {
   content: attr(data-placeholder);
   position: absolute;

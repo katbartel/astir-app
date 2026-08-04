@@ -727,21 +727,23 @@ cannot repeat the loss.
 **The five that were visibly worse, and what each was:**
 
 1. **The grip appeared on empty rows.** In the deleted editor the grip lived *inside*
-   the checkbox span, so `.note-check:hover .note-grip` meant a grip appeared only on
-   hover of a row that had a marker. The rebuild placed one floating grip on whatever
-   row the pointer was over, keyed to the *field* being hovered, which put a grip
-   beside every blank line the pointer crossed. Recovered rule: **a grip is offered on
-   hover of a row that has content, never on an empty row**, fading in over 120ms,
-   `--placeholder` at rest and `--ink2` on hover. There is also nothing to drag on an
-   empty row.
+   the checkbox span, so `.note-check:hover .note-grip` could only ever mean a check
+   row. The rebuild placed one floating grip on whatever row the pointer was over,
+   keyed to the *field* being hovered, which put a grip beside every blank line the
+   pointer crossed. Recovered rule: **a grip belongs to a check row and to nothing
+   else, empty or not**, fading in over 120ms, `--placeholder` at rest and `--ink2` on
+   hover. "Not on empty rows" was the first reading of the symptom and it was wrong:
+   the rule is the marker, not the text. See section 8 for the consequence.
 2. **Tooltips were the browser's.** The deleted toolbar used the app's own tooltip
    layer, `data-tooltip` with `data-tooltip-above`, and showed the shortcut beside the
    name (`Bold  ⌘B`). The rebuild used native `title`, which is unstyled, slow, and
    placed by the browser. Recovered, with one honesty constraint: **only shortcuts that
    exist are advertised.** ⌘B, ⌘I and ⇧⌘S come from StarterKit and work. The deleted
-   editor bound its own ⌘K, ⇧⌘E and ⇧⌘O; this one does not, so those buttons show their
-   name alone, and the checkbox and bullet show their text triggers (`[]` and `- `)
-   instead, which do work. A tooltip claiming a shortcut that does nothing is worse
+   editor declared ⌘K, ⇧⌘E and ⇧⌘O and they are now bound and working: ⇧⌘E and ⇧⌘O in
+   the keymap, ⌘K in the toolbar, because the field it opens is the toolbar's own state.
+   The checkbox and bullet name their text triggers (`[]` and `- `) instead of a
+   shortcut, as the deleted tooltips did. **Every shortcut named in a tooltip is pressed
+   in the harness**, because a tooltip claiming a shortcut that does nothing is worse
    than no hint.
 3. **The disclosure arrow was the wrong glyph in the wrong resting state.** Recovered:
    the old path, a small filled triangle pointing **down** at rest, rotated a quarter
@@ -1059,8 +1061,23 @@ Two conditions on keeping our own drag, both structural rather than cosmetic:
 
 The behaviour, carried forward in full:
 
-- **The unit is exactly one row.** Never a group, never a section with its body.
-  Sections have no grip and cannot be dragged.
+- **The unit is exactly one check row.** Never a group, never a section with its body.
+  A grip belongs to a `check` row and to nothing else: not a paragraph, not a bullet,
+  not a section header. An **empty** check row still has one, because the rule is the
+  marker and not the text.
+
+  This is recovered, not designed. In the editor this replaced, the grip lived inside
+  the checkbox's own span, so `.note-check:hover .note-grip` could only ever mean a
+  check row. An earlier draft of this section said "exactly one row" and every row was
+  given a grip, which put one beside every blank line the pointer crossed. The unit was
+  always the checkbox.
+
+  > **Consequence, and it is a real one: a paragraph or a bullet cannot be reordered by
+  > any means.** There is no keyboard alternative. Alt+Up and Alt+Down are **not**
+  > bound: nothing in the editor moves a row by keyboard, and nothing ever did. Making
+  > non-check rows movable again means either giving them a grip (which reintroduces the
+  > blank-line grip) or binding a keyboard move, which is behaviour and has not been
+  > decided. Recorded here so it reads as a known gap rather than an oversight.
 - **Vertical only.** Indent is never set by dragging sideways. A row inherits the
   indent of the slot it lands in. The lifted card easing across to that indent
   (`translate`, 150ms) is the only horizontal movement in the drag.
@@ -1467,6 +1484,32 @@ resolved entries describe the code being deleted, not code that is already gone.
   than a general health check. What it cannot cover is the four editor suites, which
   are host-only by nature: 2.2 says so in the doc rather than leaving a green suite to
   be misread.
+
+- **The check ran against something other than what shipped.** Three times, in one
+  rebuild, and the third was caught by the person who owns the data rather than by any
+  test:
+
+  1. **The host is not the container.** Tiptap was installed on the host; four suites
+     and a production build were green; the container could not resolve `@tiptap/core`
+     on any route. A named volume over `/app/node_modules` is populated from the image
+     once and never again. Fixed by the smoke check, which runs in the container, runs
+     first, and asserts that package resolves *there* (2.1, 2.2).
+  2. **The bundle is not the source.** The recovered visual layer passed the regression
+     suite twice against an esbuild bundle built before the port existed. Fixed by the
+     suite runner building the bundles before it runs anything.
+  3. **An assertion outlived what it asserted.** Two instances. The toolbar
+     button-label check read the `title` attribute after the recovered treatment
+     replaced it with `data-tooltip`: it went from comparing two real values to
+     comparing a value against `null`, and a lenient `startsWith` then let an
+     `aria-label` of "Strike" pass against a tooltip of "Strikethrough". Separately,
+     "the grip's width never shifts a row" passed for the length of the rebuild while
+     the grip sat *over* the box, because a width check is blind to position.
+
+  The shared shape: **a green check is a claim about whatever it actually ran against.**
+  All three passed honestly and none of them was a claim about the app. The mitigations
+  are structural rather than diligence, because diligence had already been tried: run
+  the check where the thing runs, build before you test, and when a rule changes,
+  change the assertion with it rather than letting it drift into vacuity.
 
 - **A caret at a row start is an element offset, not a text-node offset.**
   Probing `nodeType === TEXT_NODE` to ask "is there text after the caret"

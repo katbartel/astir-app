@@ -209,25 +209,47 @@ export function isPlaceholderDocument(doc: PmNode): boolean {
   return !!only && only.type.name === 'paragraph' && only.content.size === 0
 }
 
-export const NotePlaceholder = Extension.create<{ text: string }>({
+export const NotePlaceholder = Extension.create<{ text: string; titleText: string }>({
   name: 'notePlaceholder',
   addOptions() {
-    return { text: 'Add a note' }
+    // "Toggle title" is the deleted editor's own wording for an empty section header,
+    // recovered rather than reinvented. See docs/notes-editor.md 5.3.
+    return { text: 'Add a note', titleText: 'Toggle title' }
   },
   addProseMirrorPlugins() {
-    const text = this.options.text
+    const { text, titleText } = this.options
     return [
       new Plugin({
         key: placeholderKey,
         props: {
           decorations: (state) => {
-            if (!isPlaceholderDocument(state.doc)) return DecorationSet.empty
-            return DecorationSet.create(state.doc, [
-              Decoration.node(0, state.doc.firstChild!.nodeSize, {
-                class: 'note-placeholder',
-                'data-placeholder': text,
-              }),
-            ])
+            const decorations: Decoration[] = []
+            if (isPlaceholderDocument(state.doc)) {
+              decorations.push(
+                Decoration.node(0, state.doc.firstChild!.nodeSize, {
+                  class: 'note-placeholder',
+                  'data-placeholder': text,
+                }),
+              )
+            }
+            // An empty section header gets its own placeholder. The old rule was
+            // `.note-collapse-summary:empty::before`, which cannot work here: every
+            // empty ProseMirror textblock holds a trailing <br>, so `:empty` never
+            // matches. A decoration asks the document instead of the DOM, which is
+            // what the rest of this editor does anyway.
+            state.doc.descendants((node, pos) => {
+              if (node.type.name !== 'sectionTitle') return true
+              if (node.content.size === 0) {
+                decorations.push(
+                  Decoration.node(pos, pos + node.nodeSize, {
+                    class: 'note-placeholder note-title-placeholder',
+                    'data-placeholder': titleText,
+                  }),
+                )
+              }
+              return false
+            })
+            return decorations.length > 0 ? DecorationSet.create(state.doc, decorations) : DecorationSet.empty
           },
         },
       }),

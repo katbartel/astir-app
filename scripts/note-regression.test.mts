@@ -165,15 +165,59 @@ async function dragRowTo(rowIndex: number, targetY: number) {
   const list = visible(await rows())
   const row = list[rowIndex]
   if (!row) throw new Error(`no visible row at ${rowIndex}`)
-  await page.mouse.move(row.left + 20, row.top + row.height / 2)
+
+  // Approach the grip the way a pointer does, across the row and then left into the
+  // gutter, rather than teleporting onto it. Jumping straight to a control skips the
+  // mouseleave/relatedTarget handoff that decides whether the control is still live,
+  // which is a whole class of "the affordance is visible but inert".
+  await page.mouse.move(row.left + 80, row.top + row.height / 2)
   await page.waitForSelector(".note-grip[data-on='true']")
   const grip = await page.locator('.note-grip').boundingBox()
   if (!grip) throw new Error('the grip has no box')
-  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
+  const gx = grip.x + grip.width / 2
+  const gy = grip.y + grip.height / 2
+  for (let x = row.left + 80; x > gx; x -= 8) await page.mouse.move(x, row.top + row.height / 2)
+  await page.mouse.move(gx, gy)
+
+  // The element under the pointer must BE the grip at the moment of pressing. A grip
+  // that is visible but not hittable, or that has just been hidden by a hover
+  // handoff, looks identical in a screenshot and swallows the gesture.
+  const hit = await page.evaluate(
+    ([x, y]) => {
+      const grip = document.querySelector('.note-grip')
+      const el = document.elementFromPoint(x as number, y as number)
+      if (!grip || !el) return 'nothing under the pointer'
+      if (el === grip || grip.contains(el)) return 'grip'
+      return `not the grip: ${String((el as HTMLElement).className).slice(0, 40)}`
+    },
+    [gx, gy],
+  )
+  if (hit !== 'grip') throw new Error(`the grip is not hittable at press time: ${hit}`)
+  const pressable = await page.evaluate(() => {
+    const g = document.querySelector('.note-grip') as HTMLElement
+    const cs = getComputedStyle(g)
+    return { on: g.dataset.on, opacity: cs.opacity, pointerEvents: cs.pointerEvents, rowPos: g.dataset.rowPos }
+  })
+  if (pressable.pointerEvents === 'none' || Number(pressable.opacity) === 0 || pressable.rowPos === undefined) {
+    throw new Error(`the grip is not pressable: ${JSON.stringify(pressable)}`)
+  }
+
   await page.mouse.down()
-  // Past the activation distance first, then to the target.
-  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2 + 12, { steps: 3 })
-  await page.mouse.move(grip.x + grip.width / 2, targetY, { steps: 12 })
+  // Past the activation distance, then assert the lift actually happened before
+  // travelling: a drop assertion alone cannot tell "never lifted" from "lifted and
+  // landed where it started".
+  await page.mouse.move(gx, gy + 12, { steps: 3 })
+  const lifted = await page.evaluate(() => ({
+    card: !!document.querySelector('.note-drag-card'),
+    gap: !!document.querySelector('.note-drag-gap'),
+    dragging: !!document.querySelector('.note-dragging'),
+  }))
+  if (!lifted.card || !lifted.gap || !lifted.dragging) {
+    await page.mouse.up()
+    throw new Error(`the drag did not lift: ${JSON.stringify(lifted)}`)
+  }
+
+  await page.mouse.move(gx, targetY, { steps: 12 })
   await page.mouse.up()
 }
 

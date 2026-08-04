@@ -19,6 +19,13 @@ import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import type { Node as PmNode } from '@tiptap/pm/model'
 
 const ACTIVATION_DISTANCE = 5
+/**
+ * Edge auto-scroll, restored from the deleted editor, which had both of these. The port
+ * dropped them, and without a scroll a target below the fold cannot be reached: the
+ * drag looks like it does nothing because the place you are aiming at never arrives.
+ */
+const EDGE_ZONE = 60
+const EDGE_SPEED = 16
 const ROW_TYPES = ['paragraph', 'check', 'bullet']
 
 const isRow = (node: PmNode | null | undefined) => !!node && ROW_TYPES.includes(node.type.name)
@@ -188,7 +195,42 @@ export const NoteDrag = Extension.create({
   addProseMirrorPlugins() {
     let grip: HTMLButtonElement | null = null
     let card: HTMLElement | null = null
-    let hovered: { pos: number; nodeSize: number } | null = null
+
+    let edgeTimer: ReturnType<typeof setInterval> | null = null
+
+    /** Stop scrolling. Safe to call when nothing is scrolling. */
+    const stopEdgeScroll = () => {
+      if (edgeTimer !== null) {
+        clearInterval(edgeTimer)
+        edgeTimer = null
+      }
+    }
+
+    /**
+     * Scroll the page while the pointer sits within EDGE_ZONE of the viewport's top or
+     * bottom, at EDGE_SPEED per tick. Thresholds were measured at lift and are in
+     * viewport coordinates, so they are re-measured as the page moves: otherwise the
+     * gap would drift away from the pointer as soon as a scroll started.
+     */
+    const runEdgeScroll = (y: number, onScroll: () => void) => {
+      const above = y < EDGE_ZONE
+      const below = y > window.innerHeight - EDGE_ZONE
+      if (!above && !below) {
+        stopEdgeScroll()
+        return
+      }
+      if (edgeTimer !== null) return
+      const step = above ? -EDGE_SPEED : EDGE_SPEED
+      edgeTimer = setInterval(() => {
+        const before = window.scrollY
+        window.scrollBy(0, step)
+        if (window.scrollY === before) {
+          stopEdgeScroll()
+          return
+        }
+        onScroll()
+      }, 16)
+    }
 
     return [
       new Plugin<Dragging | null>({
@@ -245,6 +287,11 @@ export const NoteDrag = Extension.create({
           grip.className = 'note-grip'
           grip.setAttribute('aria-label', 'Reorder row')
           grip.setAttribute('contenteditable', 'false')
+          // Belt and braces against a native HTML5 drag starting from the grip. CDP
+          // drag interception reports that Chrome would not start one here (a
+          // non-draggable button outside the editable), but the attribute removes the
+          // mechanism rather than relying on that staying true.
+          grip.setAttribute('draggable', 'false')
           grip.dataset.on = 'false'
           // The six-dot glyph recovered from the deleted editor's GRIP_SVG, rather
           // than six styled spans. Same viewBox and the same circles, so it is the
@@ -252,6 +299,7 @@ export const NoteDrag = Extension.create({
           const gripSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
           gripSvg.setAttribute('viewBox', '0 0 10 16')
           gripSvg.setAttribute('aria-hidden', 'true')
+          gripSvg.setAttribute('draggable', 'false')
           for (const [cx, cy] of [[3, 3], [3, 8], [3, 13], [7, 3], [7, 8], [7, 13]]) {
             const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
             dot.setAttribute('cx', String(cx))
@@ -296,10 +344,10 @@ export const NoteDrag = Extension.create({
           }
 
           const placeGrip = (row: { pos: number; nodeSize: number } | null) => {
-            hovered = row
             if (!grip) return
             if (!row) {
               grip.dataset.on = 'false'
+              delete grip.dataset.rowPos
               return
             }
             const parent = host()
@@ -318,6 +366,10 @@ export const NoteDrag = Extension.create({
             const rect = parent.getBoundingClientRect()
             // data-on rather than `hidden`: display:none cannot fade, and the recovered
             // rule is a fade in over 120ms.
+            // The row is recorded ON the grip, so a press reads it from the element it
+            // landed on rather than from a `hovered` variable that an intervening
+            // mousemove could have cleared. A visible grip is always pressable.
+            grip.dataset.rowPos = String(row.pos)
             grip.dataset.on = 'true'
             grip.style.top = `${edge.top - rect.top}px`
             grip.style.left = `${edge.left - rect.left}px`
@@ -350,16 +402,39 @@ export const NoteDrag = Extension.create({
           let start: { pos: number; nodeSize: number } | null = null
 
           const onPointerDown = (event: PointerEvent) => {
-            if (!hovered) return
+            const recorded = grip?.dataset.rowPos
+            const pos = recorded === undefined ? NaN : Number(recorded)
+            const node = Number.isNaN(pos) ? null : view.state.doc.nodeAt(pos)
+            if (!node || node.type.name !== 'check') return
             event.preventDefault()
             armed = false
             origin = { x: event.clientX, y: event.clientY }
-            start = hovered
+            start = { pos, nodeSize: node.nodeSize }
+            // Capture, so nothing between here and pointerup can take the sequence.
+            try {
+              grip?.setPointerCapture(event.pointerId)
+            } catch {
+              // Capture is an optimisation, not a requirement.
+            }
             window.addEventListener('pointermove', onPointerMove)
             window.addEventListener('pointerup', onPointerUp)
+            window.addEventListener('pointercancel', onPointerCancel)
           }
 
           const arm = () => {
+            try {
+              armNow()
+            } catch (error) {
+              // A drag that does nothing and says nothing is unreportable. Every
+              // geometry call below asks the view for coordinates, and a document shape
+              // that makes one of them invalid would otherwise kill the gesture in
+              // silence.
+              console.error('[notes] the drag could not start', error)
+              finish(false)
+            }
+          }
+
+          const armNow = () => {
             if (!start) return
             const node = view.state.doc.nodeAt(start.pos)
             if (!node) return
@@ -401,6 +476,20 @@ export const NoteDrag = Extension.create({
               card.style.top = `${event.clientY}px`
               card.style.left = `${event.clientX}px`
             }
+            runEdgeScroll(event.clientY, () => {
+              // Re-measure after the page moves. The rule "thresholds are measured once
+              // at lift" is about the gap not moving what decides where the gap goes;
+              // a scroll moves the rows themselves, so the measurements have to follow.
+              const current = noteDragKey.getState(view.state)
+              if (!current) return
+              const rebuilt = buildSlots(view, { from: current.from, to: current.to })
+              const tr = view.state.tr.setMeta(noteDragKey, {
+                type: 'start',
+                dragging: { ...current, slots: rebuilt },
+              } satisfies DragMeta)
+              tr.setMeta('addToHistory', false)
+              view.dispatch(tr)
+            })
             const active = slotFor(dragging.slots, event.clientY)
             if (active !== dragging.active) {
               const tr = view.state.tr.setMeta(noteDragKey, { type: 'move', active } satisfies DragMeta)
@@ -413,6 +502,8 @@ export const NoteDrag = Extension.create({
             const dragging = noteDragKey.getState(view.state)
             window.removeEventListener('pointermove', onPointerMove)
             window.removeEventListener('pointerup', onPointerUp)
+            window.removeEventListener('pointercancel', onPointerCancel)
+            stopEdgeScroll()
             card?.remove()
             card = null
             if (grip) grip.dataset.dragging = 'false'
@@ -440,7 +531,19 @@ export const NoteDrag = Extension.create({
             armed = false
           }
 
-          const onPointerUp = () => finish(true)
+          const onPointerUp = () => {
+            try {
+              finish(true)
+            } catch (error) {
+              console.error('[notes] the drop failed', error)
+              finish(false)
+            }
+          }
+          const onPointerCancel = () => {
+            // The browser took the sequence away: put everything back, record nothing.
+            console.warn('[notes] the drag was cancelled by the browser')
+            finish(false)
+          }
           const onKeyDown = (event: KeyboardEvent) => {
             // A cancelled drag dispatches nothing and records nothing.
             if (event.key === 'Escape' && noteDragKey.getState(view.state)) finish(false)
@@ -455,7 +558,9 @@ export const NoteDrag = Extension.create({
               view.dom.removeEventListener('mouseleave', onLeave)
               window.removeEventListener('pointermove', onPointerMove)
               window.removeEventListener('pointerup', onPointerUp)
+              window.removeEventListener('pointercancel', onPointerCancel)
               window.removeEventListener('keydown', onKeyDown)
+              stopEdgeScroll()
               grip?.remove()
               card?.remove()
               grip = null

@@ -1144,6 +1144,22 @@ Visual treatment: the lifted row is a card surface at `--r-md` with menu shadow
 it takes the indent of the target slot. Under `prefers-reduced-motion` the lift and
 the reorder still happen; only the durations go to zero.
 
+**Edge auto-scroll**, restored: while the pointer is within `EDGE_ZONE` (60px) of the
+viewport's top or bottom, the page scrolls at `EDGE_SPEED` (16) per tick. Both values are
+the deleted editor's; the port dropped them. Without a scroll, a target below the fold
+cannot be reached and the drag reads as doing nothing, because the place you are aiming
+at never arrives. The slot thresholds are re-measured as the page moves: "measured once
+at lift" is about the gap not moving what decides where the gap goes, and a scroll moves
+the rows themselves.
+
+**The press does not depend on hover bookkeeping.** The row being dragged is recorded on
+the grip element when it is placed, and read back at pointerdown, so an intervening
+mousemove cannot leave a visible grip that presses nothing. A visible grip is always
+pressable, the grip takes pointer capture for the gesture, and it carries
+`draggable="false"` so no native drag can start from it. A failure in the lift or the
+drop logs to the console instead of dying silently, because a drag that does nothing and
+says nothing cannot be reported.
+
 Two mistakes this cost, both worth keeping:
 
 1. **The host element is resolved on use, never captured.** React mounts the editor's
@@ -1437,6 +1453,21 @@ Three rules for the harness, each learned the hard way:
   there consumes it. The step asserts six rows with both blanks surviving a reload,
   which is what it is about. A test that counts keystrokes passes when the editor is
   wrong in the same way the test is.
+- **The browser cache is a verification surface, and it is not one of ours.** A tab
+  that has been open across a change can serve a page, a module, or an already-mounted
+  NodeView's DOM from before it. Every check can be correct and the person looking at
+  the app can be looking at older code. When a fix "did not land", the first question is
+  which artifact the browser fetched, and the check that answers it is reading the
+  served chunk and grepping it for the change: that is evidence, where a reload is a
+  hope. Incognito, or a hard reload, is the confirmation step before any code is
+  suspected.
+- **A synthetic pointer is not a pointer.** Playwright dispatches few, heavily coalesced
+  moves (two, for eight requested), never starts a native HTML5 drag, and can teleport
+  onto a control without ever crossing the boundary that decides whether the control is
+  still live. A drag helper therefore approaches a control the way a pointer does, and
+  asserts that the element under the pointer IS the control before pressing, and that
+  the lift happened before travelling. Without those, "the affordance is visible but
+  inert" is invisible to the suite.
 - **A step that cannot be reached yet is reported as DEFERRED with its reason**, and
   the list is carried forward. It is never skipped quietly, because a silent skip
   reads as a pass.
@@ -1518,8 +1549,8 @@ resolved entries describe the code being deleted, not code that is already gone.
   are host-only by nature: 2.2 says so in the doc rather than leaving a green suite to
   be misread.
 
-- **The check ran against something other than what shipped.** Three times, in one
-  rebuild, and the third was caught by the person who owns the data rather than by any
+- **The check ran against something other than what shipped.** Five times, in one
+  rebuild, and the last two were caught by the person using the app rather than by any
   test:
 
   1. **The host is not the container.** Tiptap was installed on the host; four suites
@@ -1537,6 +1568,17 @@ resolved entries describe the code being deleted, not code that is already gone.
      `aria-label` of "Strike" pass against a tooltip of "Strikethrough". Separately,
      "the grip's width never shifts a row" passed for the length of the rebuild while
      the grip sat *over* the box, because a width check is blind to position.
+
+  4. **The browser cache.** The arrow direction and the drag "did not land" after a
+     clean restart. Every link in the chain was correct: the commit was on the checked
+     out branch, the bind mount was the edited directory, the container read the new
+     source, and the served chunk contained the new glyph path and not the old one. The
+     tab was serving a page from before the change. Confirmed only when the same test
+     was run in incognito.
+  5. **A synthetic pointer.** The drag suite passed while a real press on a real grip
+     did nothing. Playwright delivered two coalesced pointermoves for eight requested,
+     never started a native drag, and teleported onto the grip without crossing the
+     hover handoff. The suite could not see the class of failure at all.
 
   The shared shape: **a green check is a claim about whatever it actually ran against.**
   All three passed honestly and none of them was a claim about the app. The mitigations

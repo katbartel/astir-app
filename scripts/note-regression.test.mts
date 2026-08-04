@@ -1295,6 +1295,87 @@ async function main() {
     return `${cases.length} operations: eight toolbar buttons, every key in section 6, both toggles, and a drag`
   })
 
+  // --- section 5.2: where the grip sits (three assertions replacing one) ---
+  //
+  // "The grip's width never shifts a row" passed for the length of the rebuild
+  // while the grip sat over the box instead of beside it: a width check is blind to
+  // horizontal position. These three pin the position it could not, and each was
+  // written to fail against the shipped grip. The bug was that its left came from
+  // coordsAtPos(row.pos + 1), the content edge after the marker, rather than
+  // row.pos, the row's own left edge.
+
+  const gripDoc = v2({
+    type: 'doc',
+    content: [
+      { type: 'paragraph', content: [{ type: 'text', text: 'plain row' }] },
+      { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'a checkbox' }] },
+      { type: 'bullet', content: [{ type: 'text', text: 'a bullet' }] },
+      {
+        type: 'section',
+        attrs: { collapsed: false },
+        content: [
+          { type: 'sectionTitle', content: [{ type: 'text', text: 'Section' }] },
+          {
+            type: 'sectionBody',
+            content: [
+              { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'inside' }] },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+
+  /** Hover a visible row so its grip appears, then read both boxes. */
+  const gripOverRow = async (rowIndex: number) => {
+    const list = visible(await rows())
+    const row = list[rowIndex]
+    if (!row) throw new Error(`no visible row at ${rowIndex}`)
+    await page.mouse.move(row.left + 20, row.top + row.height / 2)
+    await page.waitForSelector('.note-grip:not([hidden])')
+    const grip = await page.locator('.note-grip').boundingBox()
+    if (!grip) throw new Error('the grip has no box')
+    return { row, grip }
+  }
+
+  await step('5.2/3a. the grip sits in the gutter to the left of the box, never over it', async () => {
+    await seed(gripDoc)
+    const { row, grip } = await gripOverRow(1) // the checkbox row
+    check(
+      grip.x + grip.width <= row.left + 1,
+      `grip right edge ${Math.round(grip.x + grip.width)} is at or left of the row's left edge ${row.left}`,
+    )
+    return 'the grip is beside the box, not on top of it'
+  })
+
+  await step('5.2/3b. the grip is in the same place whether the row has a box, a bullet, or nothing', async () => {
+    await seed(gripDoc)
+    const para = await gripOverRow(0)
+    const checkbox = await gripOverRow(1)
+    const bullet = await gripOverRow(2)
+    check(
+      Math.abs(para.grip.x - checkbox.grip.x) <= 1 && Math.abs(para.grip.x - bullet.grip.x) <= 1,
+      `grip x matches across markers: paragraph ${Math.round(para.grip.x)}, checkbox ${Math.round(checkbox.grip.x)}, bullet ${Math.round(bullet.grip.x)}`,
+    )
+    check(
+      para.grip.x + para.grip.width <= para.row.left + 1,
+      'and it is in the gutter on a paragraph, which has no marker at all',
+    )
+    return 'the marker does not move the grip'
+  })
+
+  await step('5.2/3c. the grip follows the section indent and stays in that row’s gutter', async () => {
+    await seed(gripDoc)
+    const top = await gripOverRow(1) // a top-level row
+    const inner = await gripOverRow(4) // the checkbox inside the section body
+    check(inner.grip.x > top.grip.x + 4, `the grip moved in with the indent: ${Math.round(top.grip.x)} -> ${Math.round(inner.grip.x)}`)
+    check(
+      inner.grip.x + inner.grip.width <= inner.row.left + 1,
+      'and it is still in the indented gutter, not over the indented box',
+    )
+    return 'the grip tracks the row it belongs to, indent and all'
+  })
+
   await browser.close()
 
   // --- the report ---

@@ -282,11 +282,19 @@ export const NoteDrag = Extension.create({
             }
             const parent = host()
             if (grip.parentElement !== parent) parent.appendChild(grip)
-            const coords = view.coordsAtPos(row.pos + 1)
+            // Vertical from the first line of the row; horizontal from the row's
+            // own left edge — its node position, `row.pos`. coordsAtPos(row.pos + 1)
+            // is the content edge *after* any marker, so measuring left from it put
+            // the grip on top of the box and shifted it by the marker's width. The
+            // row's left edge is the shared edge a paragraph and a checkbox agree on
+            // (section 5, rule 1), and it already carries the section indent.
+            // See docs/notes-editor.md section 8, condition 2.
+            const line = view.coordsAtPos(row.pos + 1)
+            const edge = view.coordsAtPos(row.pos)
             const rect = parent.getBoundingClientRect()
             grip.hidden = false
-            grip.style.top = `${coords.top - rect.top}px`
-            grip.style.left = `${coords.left - rect.left}px`
+            grip.style.top = `${line.top - rect.top}px`
+            grip.style.left = `${edge.left - rect.left}px`
           }
 
           const onMove = (event: MouseEvent) => {

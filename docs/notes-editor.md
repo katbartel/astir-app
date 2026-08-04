@@ -115,6 +115,66 @@ And one that looks like a style preference and is not:
 The section node is written by hand (section 3.3). It is not a customised
 `details` extension.
 
+### 2.1 The app runs in Docker, and the host is not the app
+
+**`node_modules` on your machine is not the app's `node_modules`.** The frontend runs
+in a container, and `docker-compose.yml` mounts three things over it:
+
+```
+- .:/app                                        the repo, bind-mounted
+- root_node_modules:/app/node_modules           a NAMED VOLUME
+- frontend_node_modules:/app/frontend/node_modules
+```
+
+**A named volume is populated from the image only when it is first created.** After
+that it keeps what it has, for good. So `docker compose build` updates the image and
+changes nothing the running container reads. Adding a dependency on the host and
+running the suites proves nothing about whether the app can start.
+
+Adding or changing a dependency therefore needs one of these:
+
+```
+docker compose exec frontend npm install        # populate the mounted volume in place
+```
+
+or, to make the container match the image exactly:
+
+```
+docker compose stop frontend
+docker volume rm careerapp_july_root_node_modules
+docker compose up -d frontend
+```
+
+> **Never `docker compose down -v`.** It removes every volume in the project,
+> including `careerapp_july_astir_db`, which is where the notes live. If a
+> `node_modules` volume has to go, remove that volume **by name**. The database volume
+> is never part of a dependency fix.
+
+`@tiptap/*` is declared in `frontend/package.json` and npm workspace hoisting puts it
+at the repo root, so it lands in `/app/node_modules`: the `root_node_modules` volume,
+not the frontend one. `/app/frontend/node_modules` is empty in both the image and the
+container, which is why the frontend volume is not the one that goes stale.
+
+### 2.2 Which checks run where
+
+| Suite | Runs in | Proves |
+|---|---|---|
+| `container-smoke.test.mts` | **the container** | the app starts, the pages render, the editor mounts |
+| `migrate-notes.test.mts` | host | the mapping, as pure functions |
+| `note-schema.test.mts` | host | the schema, built without an editor |
+| `note-editing.test.mts` | host | section 6, against ProseMirror state with no DOM |
+| `note-regression.test.mts` | host | section 13, against an esbuild bundle in real Chrome |
+
+`node scripts/notes-suite.mts` runs all five, **smoke first**, and stops if the smoke
+check fails.
+
+**The four editor suites are host-only by nature, and that is a real limit.** They
+bundle the component with esbuild and drive it in Chrome on the host: they never touch
+the container, its `node_modules`, its Next build, or its module resolution. They are
+evidence about the editor's behaviour and **not** evidence that the app works. Only
+the smoke check is evidence of that. Do not read a green suite as a working app: that
+mistake has already been made once here, and it is recorded in the failure log.
+
 ---
 
 ## 3. Schema
@@ -1287,6 +1347,25 @@ While the rewrite is in progress the superseded editor is still what runs, so th
 resolved entries describe the code being deleted, not code that is already gone.
 
 ### 15.1 Active: still true of the current design
+
+- **Every suite passed, `next build` passed, and the app did not start.** Tiptap was
+  installed on the host, four suites and a production build were green, and the
+  container threw `Module not found: Can't resolve '@tiptap/core'` on every route. The
+  package was in the image. It was not in the running container, because a named volume
+  over `/app/node_modules`, created weeks earlier, is populated from the image only
+  once and never refreshed by a rebuild.
+
+  The bug was one stale volume. **The failure was verifying everything in a different
+  environment from the one that runs the app**, for the length of an entire rebuild,
+  while reporting each step as working. Every claim was true of the host and none of
+  them was a claim about the app.
+
+  Two things prevent the repeat, and neither is "remember to rebuild": the smoke check
+  runs in the container and runs first (2.2), and it asserts `@tiptap` resolves
+  *inside* the container specifically, which is the exact shape of this failure rather
+  than a general health check. What it cannot cover is the four editor suites, which
+  are host-only by nature: 2.2 says so in the doc rather than leaving a green suite to
+  be misread.
 
 - **A caret at a row start is an element offset, not a text-node offset.**
   Probing `nodeType === TEXT_NODE` to ask "is there text after the caret"

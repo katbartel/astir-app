@@ -25,6 +25,7 @@ const suites: Suite[] = [
   { name: 'schema', script: 'scripts/note-schema.test.mts', where: 'host', stopOnFail: false },
   { name: 'editing semantics', script: 'scripts/note-editing.test.mts', where: 'host', stopOnFail: false },
   { name: 'regression script', script: 'scripts/note-regression.test.mts', where: 'host', stopOnFail: false },
+  { name: 'CSS scope lint', script: 'scripts/note-css-lint.test.mts', where: 'host', stopOnFail: false },
 ]
 
 const results: { name: string; where: string; ok: boolean; tail: string }[] = []

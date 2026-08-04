@@ -21,6 +21,12 @@ const suites: Suite[] = [
     where: 'container',
     stopOnFail: true,
   },
+  {
+    name: 'note persistence: real API + real localStorage, no fakes',
+    script: 'scripts/note-persistence.test.mts',
+    where: 'container',
+    stopOnFail: false,
+  },
   { name: 'migration mapping', script: 'scripts/migrate-notes.test.mts', where: 'host', stopOnFail: false },
   { name: 'schema', script: 'scripts/note-schema.test.mts', where: 'host', stopOnFail: false },
   { name: 'editing semantics', script: 'scripts/note-editing.test.mts', where: 'host', stopOnFail: false },

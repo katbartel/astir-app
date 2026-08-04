@@ -160,14 +160,23 @@ container, which is why the frontend volume is not the one that goes stale.
 | Suite | Runs in | Proves |
 |---|---|---|
 | `container-smoke.test.mts` | **the container** | the app starts, the pages render, the editor mounts |
+| `note-persistence.test.mts` | **the container** + Chrome | a v2 note round-trips through the real API to Postgres, and through real `localStorage`, identical |
 | `migrate-notes.test.mts` | host | the mapping, as pure functions |
 | `note-schema.test.mts` | host | the schema, built without an editor |
 | `note-editing.test.mts` | host | section 6, against ProseMirror state with no DOM |
 | `note-regression.test.mts` | host | section 13, against an esbuild bundle in real Chrome |
 | `note-css-lint.test.mts` | host | the notes CSS scope: no raw hex, no rgba, no non-token px |
 
-`node scripts/notes-suite.mts` runs all six, **smoke first**, and stops if the smoke
-check fails.
+`node scripts/notes-suite.mts` runs all seven, **smoke first** then persistence, and
+stops if the smoke check fails.
+
+**The persistence check exists because every other suite fakes the save.** The four
+editor suites bundle the component and hand it an `onChange` that writes to a variable
+(`window.SAVED`) or an in-memory object, never to Postgres or `localStorage`. That is
+correct for testing the editor, and it is exactly why a real note had never once made
+the trip through the adapter, the API, Prisma, the column, and back — the gap that let
+a v2 note be silently saved as `{ kind: 'blocks' }` for the length of the rebuild
+(section 15). This suite makes that trip, with no fakes, for both stores.
 
 **The four editor suites are host-only by nature, and that is a real limit.** They
 bundle the component with esbuild and drive it in Chrome on the host: they never touch
@@ -663,6 +672,13 @@ stricter and it is load-bearing:
 Field recipe, the standard input recipe from AGENTS.md: **`--paper` background**,
 `--line2` border, input radius, gold focus border with no glow.
 `white-space: pre-wrap`.
+
+**The field carries a native resize handle** (`resize: vertical` with `overflow: auto`
+on `.note-editor`), bottom-right. It is intentional and inherited: the shipped
+`.note-field` had it, and the rebuild kept it — a long note is easier to work in when
+the field can be made taller, and the handle sits in the opposite corner from the grip
+gutter, so the two never meet. It is the one field affordance not in the input recipe,
+recorded here so it reads as a decision rather than a stray declaration.
 
 **The placeholder shows on exactly one condition**: the document has one child, it
 is a `paragraph`, and its content is empty. Keyed on that, explicitly, and not on
@@ -1357,6 +1373,28 @@ While the rewrite is in progress the superseded editor is still what runs, so th
 resolved entries describe the code being deleted, not code that is already gone.
 
 ### 15.1 Active: still true of the current design
+
+- **A v2 note was silently saved as `{ kind: 'blocks' }`, losing every edit on
+  reload.** The rebuilt editor emits a v2 envelope `{ v, kind, doc }`, but the
+  application update DTO still modelled only the v1 note (`kind`, `text`, `blocks`).
+  `ValidationPipe({ whitelist: true })` strips any property not on the DTO, so `v` and
+  `doc` were dropped before Prisma ever saw them: the write returned 200, the column
+  held `{ kind: 'blocks' }`, and the load path migrated that to one empty paragraph.
+  Type a word, reload, gone — deterministically, on every save.
+
+  It survived the whole rebuild because **every editor suite fakes the save** (2.2). The
+  harness hands the component an `onChange` that writes to a variable, so the
+  adapter → API → Prisma → column → read path had never run once, on either store. A
+  green editor suite is evidence about the editor, not about persistence — the same
+  shape of mistake as the stale-volume entry below: everything verified somewhere other
+  than where it runs.
+
+  Resolved by storing the note **opaquely** (the DTO takes the JSON verbatim; the
+  document is the source of truth and `readNote` validates and migrates on the way in),
+  and by `note-persistence.test.mts`, which round-trips a real v2 note through the real
+  API to Postgres and through real `localStorage`. The active lesson that stays: the
+  four editor suites still fake the save, by design, so persistence is only ever proven
+  by the one suite that does not.
 
 - **Every suite passed, `next build` passed, and the app did not start.** Tiptap was
   installed on the host, four suites and a production build were green, and the

@@ -50,8 +50,16 @@ function svg(viewBox: string, d: string, filled = false): SVGSVGElement {
 /** The app's check mark, same path as CheckIcon so the glyph matches everywhere. */
 const checkGlyph = () => svg('0 0 24 24', 'M5.5 12.5l4.2 4.2 8.8-9.4')
 
-/** A disclosure triangle, rotated by CSS rather than swapped for another glyph. */
-const triangleGlyph = () => svg('0 0 24 24', 'M9 5l8 7-8 7z', true)
+/**
+ * The disclosure triangle, recovered from the deleted editor's TRIANGLE_SVG: it points
+ * DOWN at rest. Expanded is the glyph's own orientation; collapsed rotates it a quarter
+ * turn anticlockwise, which points it right. That is the usual convention and it is
+ * what this replaced.
+ *
+ * An earlier commit claimed to have restored this and had only changed the rotation,
+ * leaving a right-pointing glyph: expanded pointed right and collapsed pointed up.
+ */
+const triangleGlyph = () => svg('0 0 24 24', 'M8 9.5l4 5 4-5z', true)
 
 /** A bullet: a small disc, not a "•" character. */
 const bulletGlyph = () => svg('0 0 8 8', 'M4 1.5A2.5 2.5 0 104 6.5 2.5 2.5 0 004 1.5z', true)

@@ -13,6 +13,8 @@ import type { Application, Note } from '@/lib/applications'
 
 declare global {
   interface Window {
+    /** Seed the card's note from the driver, so a test can choose the content. */
+    SET_NOTE: (note: Note | null) => void
     /** Every note handed to the adapter, in order. */
     SAVES: Note[]
     /** Make the next save reject, to prove a failed flush keeps the edit. */
@@ -22,6 +24,18 @@ declare global {
     SET_MOUNTED: (value: boolean) => void
     /** The note the card is currently seeded with. */
     CURRENT: Note | null
+  }
+}
+
+const SEED_KEY = 'astir.harness.card-note'
+
+function seededNote(): Note | null {
+  const raw = window.sessionStorage.getItem(SEED_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as Note
+  } catch {
+    return null
   }
 }
 
@@ -47,13 +61,24 @@ function Host() {
   const [mounted, setMounted] = useState(true)
   // A v1 note, deliberately: reading one runs the migration, which is the tempting
   // moment to write, and invariant 17 says nothing is written until the user edits.
-  const [note, setNote] = useState<Note | null>({
-    kind: 'blocks',
-    blocks: [{ type: 'text', text: 'seeded v1 line' }],
-  } as Note)
+  const [note, setNote] = useState<Note | null>(
+    () =>
+      seededNote() ??
+      // A v1 note by default, deliberately: reading one runs the migration, which is
+      // the tempting moment to write, and invariant 17 says nothing is written until
+      // the user edits.
+      ({ kind: 'blocks', blocks: [{ type: 'text', text: 'seeded v1 line' }] } as Note),
+  )
 
   window.SET_EXPANDED = setExpanded
   window.SET_MOUNTED = setMounted
+  window.SET_NOTE = (next) => {
+    // Through a reload, not a remount: the editor seeds once per instance by design,
+    // and a toggle in one batch is not a reliable unmount. A reload is what the app
+    // does anyway.
+    window.sessionStorage.setItem(SEED_KEY, JSON.stringify(next))
+    window.location.reload()
+  }
   window.CURRENT = note
 
   return (

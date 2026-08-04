@@ -771,6 +771,39 @@ cannot repeat the loss.
 expanded stage-2 card got a stage-2 focus ring. That is why the field read as part of
 its card rather than as a generic input, and the rebuild had flattened it to gold.
 
+### 5.4 Visual rules, round 1
+
+From using the rebuilt editor. Each is a stated rule here because the reason these
+were lost is that they lived in CSS and nowhere else.
+
+1. **One shared left edge, and it is the checkbox's.** Every row's content starts at
+   the left edge of the checkbox: a plain paragraph's text, a bullet's glyph, a
+   checkbox's box, and the `Add a note` placeholder. **Nothing sits inboard of it.** A
+   paragraph therefore takes no indent at all.
+
+   This closes an ambiguity that was flagged and left open: rule 1 of section 5 could be
+   read as aligning a paragraph to a checkbox's *text* or to its *box*. It is the box.
+   The same edge applies inside a section body, one edge per body, indented as a whole
+   from the level above.
+
+   Asserted by measuring, at top level and inside a body: the box's left, the bullet's
+   left, the paragraph's **text** left via a Range rather than its element box, and the
+   placeholder's left, all identical.
+
+2. **The grip centres on the box, not on the line box or the row box.** Measured from
+   the row's own top edge, because the box is centred in the row's marker cell and that
+   cell starts at the row's top. Centring on the first text line instead leaves the grip
+   sitting low. Asserted on a single-line row and on a row that wraps to two lines,
+   where the marker and the grip both stay on the first line.
+
+3. **The disclosure arrow points down when open and right when closed.** Down is the
+   glyph's own orientation, `M8 9.5l4 5 4-5z`; closed rotates it a quarter turn
+   anticlockwise. The usual convention, no invention. Asserted in both states, on the
+   settled transform rather than mid-transition.
+
+4. **No chip behind the arrow, in any state including hover.** The arrow alone: only
+   its colour answers the pointer. Asserted open, closed, and hovered.
+
 ### 5.2 What is deliberately not asserted
 
 A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.

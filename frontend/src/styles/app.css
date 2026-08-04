@@ -4461,10 +4461,13 @@ textarea {
   height: var(--watch-title-action-size);
 }
 
-/* A paragraph lines up with a marker row's text: the box plus the gap. This is
-   the shared left edge, measured from the box. */
+/* THE SHARED LEFT EDGE, and it is one edge, not two.
+   Every row's content starts at the left edge of the checkbox: a plain paragraph's
+   text, a bullet's glyph, a checkbox's box, and the placeholder. Nothing sits inboard
+   of it. A paragraph therefore takes no indent at all: aligning its text to a
+   checkbox's TEXT is the other reading of this rule and it is the wrong one. */
 .note-editor .note-para {
-  padding-left: calc(var(--space-4) + var(--space-1));
+  padding-left: 0;
 }
 
 .note-editor .note-box {
@@ -4534,16 +4537,15 @@ textarea {
   width: var(--space-6);
   height: calc(var(--type-body) * 1.5);
   border: none;
-  /* The radius scale, not a one-off 6 next to an existing 8. */
-  border-radius: var(--r-sm);
   background: transparent;
   color: var(--placeholder);
   cursor: pointer;
   transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
 }
 
+/* The arrow alone: no chip behind it, in any state including hover. Only the colour
+   answers the pointer. */
 .note-editor .note-disclosure:hover {
-  background: var(--hover-soft);
   color: var(--ink2);
 }
 

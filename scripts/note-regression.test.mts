@@ -423,6 +423,321 @@ async function main() {
     return 'no grip on a header, a grip on a row'
   })
 
+
+  // --- finding 5: the drag, inside a section body as well as loose ---
+  //
+  // The suite passed while dragging was broken because every drag assertion moved a
+  // row that was loose at top level, or moved one OUT of a section. Neither exercises
+  // a reorder WITHIN a container, which is where the slot model was wrong: any
+  // candidate position colliding with the dragged row's own range was discarded, so a
+  // two-row body offered no slot beside the row being dragged and the drag fell
+  // through to "above everything", i.e. the top of the document.
+
+  const inSectionDoc = v2({
+    type: 'doc',
+    content: [
+      {
+        type: 'section',
+        attrs: { collapsed: false },
+        content: [
+          { type: 'sectionTitle', content: [{ type: 'text', text: 'S' }] },
+          {
+            type: 'sectionBody',
+            content: [
+              { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'in1' }] },
+              { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'in2' }] },
+              { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'in3' }] },
+            ],
+          },
+        ],
+      },
+    ],
+  })
+
+  /** The rows of a section body, in order, as text. */
+  const bodyRows = () =>
+    page.evaluate(() => {
+      const out: string[] = []
+      window.EDITOR!.state.doc.descendants((node) => {
+        if (node.type.name !== 'sectionBody') return true
+        node.forEach((child) => out.push(child.textContent))
+        return false
+      })
+      return out
+    })
+
+  await step('5a. a check row reorders down WITHIN a section body', async () => {
+    await seed(inSectionDoc)
+    check(JSON.stringify(await bodyRows()) === JSON.stringify(['in1', 'in2', 'in3']), 'the body starts in1, in2, in3')
+    const list = visible(await rows())
+    // in1 is visible row 1 (0 is the header). Drop it just past in2's midpoint.
+    await dragRowTo(1, list[2].top + list[2].height / 2 + 2)
+    const after = await bodyRows()
+    check(
+      JSON.stringify(after) === JSON.stringify(['in2', 'in1', 'in3']),
+      `in1 moved down one place inside the body: ${JSON.stringify(after)}`,
+    )
+    const top = (await json()) as { content: { type: string }[] }
+    check(top.content.length === 1, `and nothing left the section: ${top.content.map((n) => n.type).join(', ')}`)
+    return 'a row reorders inside its own body'
+  })
+
+  await step('5b. a check row reorders up WITHIN a section body', async () => {
+    await seed(inSectionDoc)
+    const list = visible(await rows())
+    // in3 is visible row 3. Drop it above in2.
+    await dragRowTo(3, list[2].top + 1)
+    const after = await bodyRows()
+    check(
+      JSON.stringify(after) === JSON.stringify(['in1', 'in3', 'in2']),
+      `in3 moved up one place inside the body: ${JSON.stringify(after)}`,
+    )
+    return 'and it reorders upwards too'
+  })
+
+  await step('5c. a check row still leaves a section body when dropped past its end', async () => {
+    await seed(inSectionDoc)
+    const list = visible(await rows())
+    const last = list[list.length - 1]
+    await dragRowTo(1, last.top + last.height + 24)
+    const after = await bodyRows()
+    check(
+      JSON.stringify(after) === JSON.stringify(['in2', 'in3']),
+      `the body lost the row: ${JSON.stringify(after)}`,
+    )
+    const top = (await json()) as { content: { type: string }[] }
+    check(
+      top.content.length === 2 && top.content[1].type === 'check',
+      `and it is loose after the section: ${top.content.map((n) => n.type).join(', ')}`,
+    )
+    return 'out of the body when dropped past its end'
+  })
+
+  await step('5d. a check row reorders among loose rows at top level', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'one' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'two' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'three' }] },
+        ],
+      }),
+    )
+    const list = visible(await rows())
+    await dragRowTo(0, list[1].top + list[1].height / 2 + 2)
+    const after = shape(await rows())
+    check(
+      after === 'check[ ] "two" | check[ ] "one" | check[ ] "three"',
+      `one moved down exactly one place: ${after}`,
+    )
+    return 'a loose row moves one place, not to the top of the note'
+  })
+
+
+  await step('5e. a two-row section body reorders, which is where the slot model failed', async () => {
+    // The smallest body that can be reordered, and the case the suite never had. With
+    // three rows there is always a slot beside the dragged one; with two, the only
+    // candidate inside the body collides with the dragged row's own range and used to
+    // be discarded, leaving "above everything" as the nearest slot: the row jumped to
+    // the top of the document, out of its section.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'section',
+            attrs: { collapsed: false },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'S' }] },
+              {
+                type: 'sectionBody',
+                content: [
+                  { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'in1' }] },
+                  { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'in2' }] },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const list = visible(await rows())
+    await dragRowTo(1, list[2].top + list[2].height / 2 + 2)
+    const after = await bodyRows()
+    check(JSON.stringify(after) === JSON.stringify(['in2', 'in1']), `the two rows swapped inside the body: ${JSON.stringify(after)}`)
+    const top = (await json()) as { content: { type: string }[] }
+    check(top.content.length === 1, `and nothing escaped to the top of the document: ${top.content.map((n) => n.type).join(', ')}`)
+    check((await bodyRows()).length === 2, 'the body still has both rows')
+    return 'the smallest reorderable body works'
+  })
+
+
+  // --- findings 1 to 4: the visual rules, asserted ---
+
+  await step('f1. every row starts at one left edge, the checkbox\'s', async () => {
+    const edges = async () =>
+      page.evaluate(() => {
+        const editor = document.querySelector('.note-editor')!
+        const leftOf = (el: Element | null) => (el ? Math.round(el.getBoundingClientRect().left) : null)
+        // A paragraph's text edge is measured with a Range, not the element box: the
+        // element could be padded and still look aligned.
+        const textLeft = (el: Element | null) => {
+          if (!el || !el.firstChild) return null
+          const range = document.createRange()
+          range.selectNodeContents(el)
+          return Math.round(range.getBoundingClientRect().left)
+        }
+        const scope = (root: Element) => ({
+          box: leftOf(root.querySelector('.note-check-row .note-box')),
+          bullet: leftOf(root.querySelector('.note-bullet-row .note-bullet')),
+          para: textLeft(root.querySelector('.note-para:not(.note-placeholder)')),
+          placeholder: leftOf(root.querySelector('.note-para.note-placeholder')),
+        })
+        return {
+          top: scope(editor),
+          body: scope(editor.querySelector('.note-section-body') ?? editor),
+        }
+      })
+
+    // Top level, with a placeholder in play: an empty document plus rows cannot both
+    // exist, so the placeholder is checked on its own document below.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'paragraph', content: [{ type: 'text', text: 'plain' }] },
+          { type: 'bullet', content: [{ type: 'text', text: 'bulleted' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'boxed' }] },
+          {
+            type: 'section',
+            attrs: { collapsed: false },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'S' }] },
+              {
+                type: 'sectionBody',
+                content: [
+                  { type: 'paragraph', content: [{ type: 'text', text: 'plain in body' }] },
+                  { type: 'bullet', content: [{ type: 'text', text: 'bullet in body' }] },
+                  { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'box in body' }] },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const measured = await edges()
+    check(
+      measured.top.box !== null && measured.top.box === measured.top.bullet && measured.top.box === measured.top.para,
+      `top level: box ${measured.top.box}, bullet ${measured.top.bullet}, paragraph text ${measured.top.para}`,
+    )
+    check(
+      measured.body.box !== null && measured.body.box === measured.body.bullet && measured.body.box === measured.body.para,
+      `section body: box ${measured.body.box}, bullet ${measured.body.bullet}, paragraph text ${measured.body.para}`,
+    )
+    check(measured.body.box !== measured.top.box, 'and the body edge is indented from the top-level edge')
+
+    // The placeholder shares that edge too.
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph' }] }))
+    const empty = await edges()
+    await seed(v2({ type: 'doc', content: [{ type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'x' }] }] }))
+    const withBox = await edges()
+    check(
+      empty.top.placeholder === withBox.top.box,
+      `the placeholder starts at the box edge: ${empty.top.placeholder} vs ${withBox.top.box}`,
+    )
+    return 'paragraph, bullet, box and placeholder share one edge, at top level and in a body'
+  })
+
+  await step('f2. the grip is centred on the box, on one line and on two', async () => {
+    const centres = async (rowIndex: number) => {
+      const list = visible(await rows())
+      const row = list[rowIndex]
+      await page.mouse.move(row.left + 20, row.top + row.height / 2)
+      await page.waitForSelector(".note-grip[data-on='true']")
+      return page.evaluate((index) => {
+        const grip = document.querySelector('.note-grip')!.getBoundingClientRect()
+        const box = document.querySelectorAll('.note-check-row .note-box')[index].getBoundingClientRect()
+        return { grip: Math.round(grip.top + grip.height / 2), box: Math.round(box.top + box.height / 2) }
+      }, rowIndex)
+    }
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'one line' }] },
+          {
+            type: 'check',
+            attrs: { checked: false },
+            content: [
+              {
+                type: 'text',
+                text: 'a row long enough that it has to wrap onto a second line inside the field, which it does',
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    const single = await centres(0)
+    check(Math.abs(single.grip - single.box) <= 1, `single line: grip ${single.grip}, box ${single.box}`)
+    const wrapped = await centres(1)
+    check(Math.abs(wrapped.grip - wrapped.box) <= 1, `wrapped row: grip ${wrapped.grip}, box ${wrapped.box}`)
+    return 'the grip centre matches the box centre, wrapped or not'
+  })
+
+  await step('f3+f4. the arrow points down when open and right when closed, with no chip', async () => {
+    await seed(sectionWithChecks)
+    const arrow = () =>
+      page.evaluate(() => {
+        const el = document.querySelector('.note-disclosure') as HTMLElement
+        const style = getComputedStyle(el)
+        const svg = el.querySelector('path')!
+        return { transform: style.transform, background: style.backgroundColor, radius: style.borderRadius, d: svg.getAttribute('d') }
+      })
+    const open = await arrow()
+    check(open.d === 'M8 9.5l4 5 4-5z', `the glyph is the down-pointing triangle: ${open.d}`)
+    check(open.transform === 'none' || open.transform === 'matrix(1, 0, 0, 1, 0, 0)', `open is unrotated, so it points down: ${open.transform}`)
+    await page.click('.note-disclosure')
+    // Wait for the attribute, not for the click: the click resolves when the event is
+    // dispatched, and the NodeView draws from the transaction that follows it.
+    await page.waitForSelector(".note-section[data-collapsed='true']")
+    // And wait for the rotation to *settle*, not merely to start: the transform
+    // transitions over 120ms, so an early read catches it part-way round.
+    await page.waitForFunction(() => {
+      const el = document.querySelector('.note-disclosure')
+      if (!el) return false
+      const parts = getComputedStyle(el)
+        .transform.replace(/^matrix\(|\)$/g, '')
+        .split(',')
+        .map(Number)
+      // rotate(-90deg) is matrix(0, -1, 1, 0, 0, 0).
+      return parts.length === 6 && Math.abs(parts[0]) < 0.01 && Math.abs(parts[1] + 1) < 0.01
+    })
+    const closed = await arrow()
+    // rotate(-90deg) turns a down arrow to point right.
+    const closedParts = closed.transform.replace(/^matrix\(|\)$/g, '').split(',').map(Number)
+    check(
+      Math.abs(closedParts[0]) < 0.01 && Math.abs(closedParts[1] + 1) < 0.01,
+      `closed is rotated a quarter turn anticlockwise, pointing right: ${closed.transform}`,
+    )
+    // No chip, in either state, including hover.
+    for (const [name, state] of [['closed', closed], ['open', open]] as const) {
+      check(
+        state.background === 'rgba(0, 0, 0, 0)' || state.background === 'transparent',
+        `${name}: no background behind the arrow (${state.background})`,
+      )
+    }
+    await page.hover('.note-disclosure')
+    const hovered = await arrow()
+    check(
+      hovered.background === 'rgba(0, 0, 0, 0)' || hovered.background === 'transparent',
+      `hover: still no chip (${hovered.background})`,
+    )
+    return 'down when open, right when closed, and no chip in any state'
+  })
+
   // 4
   await step('4. the Enter ladder: continue, drop the marker, leave the section', async () => {
     await seed(sectionWithChecks)

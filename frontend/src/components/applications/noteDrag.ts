@@ -311,13 +311,15 @@ export const NoteDrag = Extension.create({
             // row's left edge is the shared edge a paragraph and a checkbox agree on
             // (section 5, rule 1), and it already carries the section indent.
             // See docs/notes-editor.md section 8, condition 2.
-            const line = view.coordsAtPos(row.pos + 1)
+            // Vertically from the row's own top edge, not from its first text line:
+            // the box is centred in the row's marker cell, which starts at the row top,
+            // and centring the grip on the line box instead left it sitting low.
             const edge = view.coordsAtPos(row.pos)
             const rect = parent.getBoundingClientRect()
             // data-on rather than `hidden`: display:none cannot fade, and the recovered
             // rule is a fade in over 120ms.
             grip.dataset.on = 'true'
-            grip.style.top = `${line.top - rect.top}px`
+            grip.style.top = `${edge.top - rect.top}px`
             grip.style.left = `${edge.left - rect.left}px`
           }
 

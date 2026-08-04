@@ -429,17 +429,37 @@ update applications a set note = b.note from applications_note_v1_<stamp> b wher
 
 `scripts/.note-migration/` is gitignored: it holds real note content.
 
-#### The cutover procedure, in this order
+#### Mixed versions are the expected state
 
-Today's zero halts is a point-in-time result, and the editor being replaced keeps
-writing v1 until the moment it is switched off, so by the cutover there will be rows
-the mapping has never seen. The order is therefore not optional:
+From the moment the new editor is mounted, a v1 note migrates on read and the next
+save writes v2, so the column converts **one note at a time, as the app is used**.
+That is deliberate and better than a big-bang conversion: it exercises the mapping on
+real data, one note at a time, with the person who owns the data watching, before any
+bulk write runs.
+
+Three consequences, all of them load-bearing:
+
+1. **The mapping is idempotent.** A v2 document passes through `readNote` unchanged,
+   for both stores. Asserted, not assumed.
+2. **The sweep reports v1 and v2 separately** and converts only what is still v1.
+   Unknown shapes still halt.
+3. **The sweep is not the cutover.** The cutover is the moment the new editor mounts.
+   The sweep is what picks up whatever was never opened.
+
+#### The sweep procedure, in this order
+
+By the time the sweep runs, most rows will already be v2 and the remainder will be
+rows nobody has opened in weeks, which is exactly the population most likely to hold
+a shape the mapping has never seen. The order is therefore not optional:
 
 1. Fresh snapshot and dump, from live data.
-2. Fresh dry run against live data.
+2. Fresh dry run against live data, with v1 and v2 counted separately.
 3. Halt on any unknown shape. Look at it by hand. There is still no fallback.
 4. Re-run the schema validity check against the **fresh** dump, not an older one.
-5. `--write`.
+5. `--write`, which touches only rows that are still v1.
+
+A snapshot is also taken immediately before the new editor is mounted, because that
+is the last moment the column is uniformly v1.
 
 **Earlier dumps are artifacts and the input to nothing.** The snapshot taken on
 3 August 2026 is kept as a recovery artifact from that date and must not be used as
@@ -477,8 +497,17 @@ step 6 implements it rather than inventing it.
 
 Before any of that is written, the same encoding table the Postgres rows got is
 produced against the real `astir.v1` notes, counted rather than assumed. See
-[`scripts/count-astir-notes.mts`](../scripts/count-astir-notes.mts) for how to
-export and count them.
+[`scripts/count-astir-notes.mts`](../scripts/count-astir-notes.mts) for how to export
+and count them.
+
+> **`astir.v1` has no snapshot and cannot be given one.** Postgres has a backup table
+> and a dump taken by a script; a browser's `localStorage` can only be exported by
+> the person sitting at the browser. An export of it is therefore Home's **only**
+> recovery artifact, and is kept alongside the Postgres dumps in the gitignored
+> `scripts/.note-migration/`, because it is real note content.
+
+4. **Idempotence, on the same terms as Postgres.** A `v: 2` task note is read and
+   returned unchanged. This is what makes the mixed-version period safe on Home too.
 
 ---
 
@@ -767,7 +796,13 @@ does not move the caret and does not toggle the card (section 10).
 
 ## 8. Drag
 
-The drag is our own code, `noteLineDrag.ts` and `sortable.ts`, kept and rewired.
+The drag is our own code, in
+[`noteDrag.ts`](../frontend/src/components/applications/noteDrag.ts).
+
+> **`sortable.ts` is not part of this.** It is a generic vertical-list reorder hook,
+> used by `ApplicationsView.tsx` and `StagesPreferences.tsx`. Nothing in this section
+> is licence to touch it: changing it changes two screens that have nothing to do
+> with notes. The note drag was written as its own file for exactly that reason.
 The Tiptap drag handle extension was rejected for its peer graph (section 2). A
 drop is one transaction, so it is one undo step. **It never moves DOM nodes and it
 never rebuilds the document from the DOM.**

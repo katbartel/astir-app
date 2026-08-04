@@ -179,6 +179,10 @@ for (const row of rows) {
 
 head(`Note migration, v1 to v2 ${WRITE ? '(WRITE)' : '(dry run)'}`)
 say(`rows with a note          ${rows.length}`)
+// v1 and v2 counted separately: from the moment the new editor mounts the column
+// converts one note at a time as the app is used, so a mix is the expected state and
+// this run is a sweep for whatever was never opened.
+say(`  still v1, to convert    ${rows.length - alreadyV2 - nullNotes}`)
 say(`  already v2, skipped     ${alreadyV2}`)
 say(`  note is JSON null       ${nullNotes}  (nothing to migrate, left alone)`)
 say(`  converted               ${converted.length}`)

@@ -6,6 +6,7 @@
 
 import {
   migrateNote,
+  readNote,
   UnknownNoteShape,
   type PmNode,
   type StoredNote,
@@ -248,6 +249,28 @@ halts('a note that is an array', [1, 2], 'expected an object')
 halts('an unknown type nested inside a collapse', v1([
   { type: 'collapse', summary: 'S', open: true, blocks: [{ type: 'table', text: '' }] },
 ]), 'unknown block type')
+
+console.log('\nidempotence, which is what makes the mixed-version period safe')
+
+{
+  // From the moment the new editor mounts, a v1 note migrates on read and the next
+  // save writes v2, so both stores hold a mix for a while. Reading a v2 note must be
+  // a no-op or that mix is not safe.
+  const v1 = { kind: 'blocks', text: 'plain', blocks: [{ type: 'text', text: 'a\nb' }] }
+  const once = readNote(v1)
+  const twice = readNote(once)
+  check('reading a v1 note produces a v2 note', once.v, 2)
+  check('reading it again changes nothing', JSON.stringify(twice), JSON.stringify(once))
+  check('and returns the same object rather than a rebuilt one', twice === once, true)
+
+  const v2 = { v: 2 as const, kind: 'blocks', doc: { type: 'doc', content: [{ type: 'paragraph' }] } }
+  const passed = readNote(v2)
+  check('a v2 note passes through untouched', passed === v2, true)
+  check('with its envelope intact', JSON.stringify(passed), JSON.stringify(v2))
+
+  // And migrateNote itself refuses v2 outright, so no caller can double-convert.
+  halts('migrating an already-v2 note', v2, 'already v2')
+}
 
 console.log('')
 console.log(`${passed} passed, ${failed} failed`)

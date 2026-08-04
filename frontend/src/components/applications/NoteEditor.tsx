@@ -13,9 +13,9 @@
 import { EditorContent, useEditor } from '@tiptap/react'
 import { useEffect, useRef } from 'react'
 import type { Editor } from '@tiptap/core'
-import { NOTE_VERSION, readNote, type StoredNote } from '@/lib/noteMigration'
+import { NOTE_VERSION, UnknownNoteShape, readNote, type StoredNote } from '@/lib/noteMigration'
 import { noteEditorExtensions } from './noteNodeViews'
-import { NoteToolbar } from './NoteToolbar'
+import { NOTE_TOOLS_FULL, NoteToolbar, type NoteTool } from './NoteToolbar'
 
 type Props = {
   /** A v2 note, an un-migrated v1 note, or null. */
@@ -28,20 +28,45 @@ type Props = {
    * out the instance and nothing else: no state lives on this side of it.
    */
   onReady?: (editor: Editor) => void
+  /** Which toolbar buttons to offer. The schema is the same either way. */
+  tools?: NoteTool[]
 }
 
-export function NoteEditor({ note, onChange, ariaLabel = 'Note', onReady }: Props) {
+export function NoteEditor({
+  note,
+  onChange,
+  ariaLabel = 'Note',
+  onReady,
+  tools = NOTE_TOOLS_FULL,
+}: Props) {
   // Seeded once. The editor owns the document from then on, and React does not
   // re-render it while it is being edited.
+  //
+  // A shape the mapping does not recognise must not take the screen down with it. The
+  // script halts because a person is watching it; a render is not a script. This note
+  // becomes read-only, the stored value is left exactly as it is, and every other note
+  // on the page keeps working. See docs/notes-editor.md 4.5.
   const seed = useRef<StoredNote | null>(null)
-  if (seed.current === null) seed.current = readNote(note)
+  const unreadable = useRef(false)
+  if (seed.current === null && !unreadable.current) {
+    try {
+      seed.current = readNote(note)
+    } catch (error) {
+      unreadable.current = true
+      if (error instanceof UnknownNoteShape) {
+        console.warn(`[notes] a stored note could not be read and was left untouched: ${error.message}`, error.at)
+      } else {
+        throw error
+      }
+    }
+  }
 
   // The envelope's kind and text ride along untouched, so a save never drops them.
-  const envelope = useRef({ kind: seed.current.kind, text: seed.current.text })
+  const envelope = useRef({ kind: seed.current?.kind ?? 'blocks', text: seed.current?.text })
 
   const editor = useEditor({
     extensions: noteEditorExtensions,
-    content: seed.current.doc,
+    content: seed.current?.doc,
     // Next renders this on the server first; Tiptap must not mount there.
     immediatelyRender: false,
     editorProps: {
@@ -71,10 +96,20 @@ export function NoteEditor({ note, onChange, ariaLabel = 'Note', onReady }: Prop
     if (editor) ready.current?.(editor)
   }, [editor])
 
+  if (unreadable.current) {
+    return (
+      <div className="note-editor-shell">
+        <p className="note-unreadable" role="status">
+          This note could not be opened. It is saved exactly as it was.
+        </p>
+      </div>
+    )
+  }
+
   return (
     <div className="note-editor-shell">
       <EditorContent editor={editor} />
-      <NoteToolbar editor={editor} />
+      <NoteToolbar editor={editor} tools={tools} />
     </div>
   )
 }

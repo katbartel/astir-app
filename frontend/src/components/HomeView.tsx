@@ -24,7 +24,9 @@ import { noteHasContent } from '@/lib/noteMigration'
 import { Greeting } from './Greeting'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { LogApplicationModal } from './applications/LogApplicationModal'
-import { NoteField } from './applications/NoteField'
+import { NoteEditor } from './applications/NoteEditor'
+import { NOTE_TOOLS_COMPACT } from './applications/NoteToolbar'
+import { useNoteAutosave } from './applications/useNoteAutosave'
 import { useApplications } from './applications/useApplications'
 import { GoalsSetupModal } from './home/GoalsSetupModal'
 import { useWeekGoals } from './home/useWeekGoals'
@@ -190,10 +192,36 @@ function hasDetail(task: Task): boolean {
   return task.steps.length > 0 || noteHasContent(task.note)
 }
 
+/**
+ * A task's note and its autosave.
+ *
+ * Mounted only while the task detail is open, so closing the detail, a week rollover,
+ * a route change, and the tab closing all flush the same way: they unmount this. The
+ * store is localStorage, so the write is synchronous and a flush cannot fail halfway.
+ *
+ * Same component and same schema as the pipeline field, with a reduced toolbar: a
+ * task note is a short scratchpad and the goals card has no room to render a section.
+ */
+function TaskNote({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
+  const autosave = useNoteAutosave({
+    // Scoped to this task by construction: setTaskNote takes the tile and the task id,
+    // so one task's note cannot reach another's.
+    save: (note) => ops.setNote(tile, task.id, note),
+  })
+  return (
+    <NoteEditor
+      note={task.note}
+      onChange={autosave.onChange}
+      tools={NOTE_TOOLS_COMPACT}
+      ariaLabel={`Note for ${task.text}`}
+    />
+  )
+}
+
 // The private detail of a task: a note (the same rich editor as the pipeline
 // card) and a flat step list. Neither ever touches the count — only the parent
 // checkbox does. Step-draft state is local so each open task keeps its own.
-function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
+export function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
   const [stepDraft, setStepDraft] = useState('')
 
   const submitStep = () => {
@@ -204,7 +232,7 @@ function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: Ta
 
   return (
     <div className="goal-tdetail">
-      <NoteField note={task.note} onChange={(note) => ops.setNote(tile, task.id, note)} />
+      <TaskNote tile={tile} task={task} ops={ops} />
       {task.steps.length > 0 ? (
         <div className="goal-steps">
           {task.steps.map((step) => (

@@ -15,6 +15,31 @@ import { convertRowToSection, setRowType, toggleQuote } from './noteEditing'
 
 type Rect = { top: number; left: number; bottom: number }
 
+/**
+ * Which tools a field offers. The schema is identical either way, so a note stays
+ * portable between the two surfaces and there is exactly one canonical form. Only the
+ * buttons differ.
+ *
+ * `compact` drops quote and section: a weekly-goal task note is a short scratchpad,
+ * and the goals card has no room to render a section's structure. The `[]` and `- `
+ * triggers still work, and paste flattening already means a section cannot arrive that
+ * way either.
+ */
+export type NoteTool = 'bold' | 'italic' | 'strike' | 'link' | 'check' | 'bullet' | 'quote' | 'section'
+
+export const NOTE_TOOLS_FULL: NoteTool[] = [
+  'bold',
+  'italic',
+  'strike',
+  'link',
+  'check',
+  'bullet',
+  'quote',
+  'section',
+]
+
+export const NOTE_TOOLS_COMPACT: NoteTool[] = ['bold', 'italic', 'strike', 'link', 'check', 'bullet']
+
 const SVG_PROPS = {
   viewBox: '0 0 24 24',
   'aria-hidden': true as const,
@@ -86,7 +111,13 @@ const TOOLBAR_CLEARANCE = 48
 /** Air kept between a floating surface and the screen edge. */
 const EDGE_MARGIN = 8
 
-export function NoteToolbar({ editor }: { editor: Editor | null }) {
+export function NoteToolbar({
+  editor,
+  tools = NOTE_TOOLS_FULL,
+}: {
+  editor: Editor | null
+  tools?: NoteTool[]
+}) {
   // A re-render per transaction, so everything below is read fresh. No mark state,
   // no selection state, nothing to fall out of step with the document.
   const [, bump] = useState(0)
@@ -262,11 +293,14 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
     )
   }
 
-  const marks: [string, string, string][] = [
-    ['bold', 'Bold', 'note-tb-bold'],
-    ['italic', 'Italic', 'note-tb-italic'],
-    ['strike', 'Strike', 'note-tb-strike'],
-  ]
+  const has = (tool: NoteTool) => tools.includes(tool)
+  const marks: [NoteTool, string, string][] = (
+    [
+      ['bold', 'Bold', 'note-tb-bold'],
+      ['italic', 'Italic', 'note-tb-italic'],
+      ['strike', 'Strike', 'note-tb-strike'],
+    ] as [NoteTool, string, string][]
+  ).filter(([name]) => has(name))
   const label: Record<string, string> = { bold: 'B', italic: 'I', strike: 'S' }
   const sectionAvailable = convertRowToSection(state, undefined)
 
@@ -296,6 +330,7 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
           {label[name]}
         </button>
       ))}
+      {has('link') ? (
       <button
         type="button"
         className={editor.isActive('link') ? 'active' : undefined}
@@ -308,7 +343,11 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       >
         <LinkGlyph />
       </button>
-      <span className="note-tb-sep" />
+      ) : null}
+      {(has('check') || has('bullet') || has('quote') || has('section')) && marks.length + (has('link') ? 1 : 0) > 0 ? (
+        <span className="note-tb-sep" />
+      ) : null}
+      {has('check') ? (
       <button
         type="button"
         className={editor.isActive('check') ? 'active' : undefined}
@@ -318,6 +357,8 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       >
         <CheckboxGlyph />
       </button>
+      ) : null}
+      {has('bullet') ? (
       <button
         type="button"
         className={editor.isActive('bullet') ? 'active' : undefined}
@@ -327,6 +368,8 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       >
         <BulletGlyph />
       </button>
+      ) : null}
+      {has('quote') ? (
       <button
         type="button"
         className={editor.isActive('quote') ? 'active' : undefined}
@@ -336,6 +379,8 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       >
         <QuoteGlyph />
       </button>
+      ) : null}
+      {has('section') ? (
       <button
         type="button"
         aria-label="Section"
@@ -345,6 +390,7 @@ export function NoteToolbar({ editor }: { editor: Editor | null }) {
       >
         <SectionGlyph />
       </button>
+      ) : null}
     </div>
   )
 }

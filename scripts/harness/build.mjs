@@ -13,7 +13,7 @@ mkdirSync(out, { recursive: true })
 const processShim = 'globalThis.__harnessProcess = { env: {} };'
 
 await build({
-  entryPoints: [resolve(here, 'mount.tsx'), resolve(here, 'card.tsx')],
+  entryPoints: [resolve(here, 'mount.tsx'), resolve(here, 'card.tsx'), resolve(here, 'goal.tsx')],
   outdir: out,
   bundle: true,
   format: 'iife',
@@ -45,5 +45,6 @@ copyFileSync(resolve(repo, 'frontend/src/styles/tokens.css'), resolve(out, 'toke
 copyFileSync(resolve(repo, 'frontend/src/styles/app.css'), resolve(out, 'app.css'))
 copyFileSync(resolve(here, 'harness.html'), resolve(out, 'harness.html'))
 copyFileSync(resolve(here, 'card.html'), resolve(out, 'card.html'))
+copyFileSync(resolve(here, 'goal.html'), resolve(out, 'goal.html'))
 
-console.log('harness built: scripts/.harness/harness.html and card.html')
+console.log('harness built: harness.html, card.html, goal.html')

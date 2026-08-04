@@ -16,6 +16,7 @@ import { canonicalDoc } from '../frontend/src/components/applications/noteSchema
 
 const HARNESS = pathToFileURL(resolve('scripts/.harness/harness.html')).href
 const CARD = pathToFileURL(resolve('scripts/.harness/card.html')).href
+const GOAL = pathToFileURL(resolve('scripts/.harness/goal.html')).href
 const SEED_KEY = 'astir.harness.seed'
 
 type Row = {
@@ -735,6 +736,178 @@ async function main() {
     }
     check(offenders.length === 0, `${files.length} editor files, no storage or routing${offenders.length ? `: ${offenders.join(', ')}` : ''}`)
     return 'no fetch, no storage, no route awareness inside the component'
+  })
+
+
+  // 6b: the Home adapter. Its data was empty at cutover, so these are the only proof
+  // the version gate and the read-only fallback have.
+  const openGoal = async (store: Record<string, unknown>) => {
+    await page.goto(GOAL)
+    await page.evaluate((value) => {
+      window.STORE = value as never
+      window.RESEED(value as never)
+    }, store)
+    await page.waitForTimeout(60)
+  }
+
+  await step('astir.v1: the version gate migrates a v1 note on read', async () => {
+    await openGoal({ t1: { kind: 'blocks', blocks: [{ type: 'check', checked: true, text: '' }, { type: 'text', text: ' did it' }] } })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    const shown = await page.locator('[data-task="t1"] .note-editor').innerText()
+    check(shown.includes('did it'), `the v1 note rendered: ${JSON.stringify(shown)}`)
+    check((await page.locator('[data-task="t1"] .note-check-row').count()) === 1, 'as a checkbox row, so the marker was read')
+    // Invariant 17: migration on read is the tempting moment to write.
+    check((await page.evaluate(() => window.WRITES.length)) === 0, 'and reading it wrote nothing')
+    await page.click('[data-task="t1"] .note-editor')
+    check((await page.evaluate(() => window.WRITES.length)) === 0, 'nor did focusing it')
+    // The first real edit writes v2.
+    await page.keyboard.type('!')
+    await page.waitForFunction(() => window.WRITES.length > 0)
+    const written = await page.evaluate(() => window.WRITES[0][1] as { v?: number })
+    check(written?.v === 2, `the first edit wrote v2: ${JSON.stringify(written).slice(0, 60)}`)
+    return 'v1 migrates on read, reading writes nothing, the first edit writes v2'
+  })
+
+  await step('astir.v1: a v2 note loads and reads back identical', async () => {
+    const note = {
+      v: 2,
+      kind: 'blocks',
+      doc: {
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'kept' }] },
+          { type: 'paragraph' },
+        ],
+      },
+    }
+    await openGoal({ t1: note })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    check((await page.evaluate(() => window.WRITES.length)) === 0, 'nothing written on load')
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.press('End')
+    await page.keyboard.type('x')
+    await page.waitForFunction(() => window.WRITES.length > 0)
+    await page.evaluate(() => window.SET_OPEN(false))
+    await page.waitForSelector('[data-task="t1"] .note-editor', { state: 'detached' })
+    // Undo the edit's effect by comparing structure, not text: the point is that the
+    // document that came back is the same shape that went in.
+    const back = await page.evaluate(() => JSON.stringify(window.WRITES[window.WRITES.length - 1][1]))
+    check(back.includes('"check"') && back.includes('"kept"'), 'the check row survived unchanged')
+    check(back.includes('"v":2'), 'and it is still v2')
+    return 'a v2 note is used as-is and reads back the same shape'
+  })
+
+  await step('astir.v1: an unrecognisable note is read-only and left untouched', async () => {
+    const broken = { kind: 'blocks', blocks: [{ type: 'heading', text: 'from the future' }] }
+    const fine = { kind: 'blocks', blocks: [{ type: 'text', text: 'this one works' }] }
+    await openGoal({ bad: broken, good: fine })
+    await page.waitForSelector('[data-task="bad"] .note-unreadable')
+
+    // 1. the quiet line shows
+    const line = (await page.locator('[data-task="bad"] .note-unreadable').textContent()) ?? ''
+    check(line.includes('could not be opened'), `the quiet line shows: ${JSON.stringify(line)}`)
+    // 2. the note is not editable
+    check((await page.locator('[data-task="bad"] .note-editor').count()) === 0, 'there is no editable field for it')
+    check(
+      (await page.locator('[data-task="bad"] [contenteditable="true"]').count()) === 0,
+      'and nothing inside it is contenteditable',
+    )
+    // 3. the stored value is byte-identical afterwards
+    const stored = await page.evaluate(() => JSON.stringify(window.STORE.bad))
+    check(stored === JSON.stringify(broken), `the stored value is byte-identical: ${stored}`)
+    check((await page.evaluate(() => window.WRITES.length)) === 0, 'and nothing was written at all')
+    // 4. every other note still works
+    await page.waitForSelector('[data-task="good"] .note-editor')
+    const good = await page.locator('[data-task="good"] .note-editor').innerText()
+    check(good.includes('this one works'), `the other note opened normally: ${JSON.stringify(good)}`)
+    await page.click('[data-task="good"] .note-editor')
+    await page.keyboard.type('.')
+    await page.waitForFunction(() => window.WRITES.length > 0)
+    const writes = await page.evaluate(() => window.WRITES.map((entry) => entry[0]))
+    check(writes.every((id) => id === 'good'), `and only its own task was written: ${JSON.stringify(writes)}`)
+    return 'read-only with its line, stored value untouched, and the rest of Home unaffected'
+  })
+
+  await step('astir.v1: a note is scoped to its task', async () => {
+    await openGoal({
+      t1: { kind: 'blocks', blocks: [{ type: 'text', text: 'first task' }] },
+      t2: { kind: 'blocks', blocks: [{ type: 'text', text: 'second task' }] },
+    })
+    await page.waitForSelector('[data-task="t2"] .note-editor')
+    const before = await page.evaluate(() => JSON.stringify(window.STORE.t2))
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.type(' edited')
+    await page.waitForFunction(() => window.WRITES.length > 0)
+    const ids = await page.evaluate(() => window.WRITES.map((entry) => entry[0]))
+    check(ids.every((id) => id === 't1'), `only t1 was written: ${JSON.stringify(ids)}`)
+    check((await page.evaluate(() => JSON.stringify(window.STORE.t2))) === before, "t2's stored note is unchanged")
+    const other = await page.locator('[data-task="t2"] .note-editor').innerText()
+    check(other.includes('second task') && !other.includes('edited'), `and t2 on screen is unchanged: ${JSON.stringify(other)}`)
+    return 'editing one task note never touches another'
+  })
+
+  await step('astir.v1: the flush triggers on Home', async () => {
+    const triggers: string[] = []
+    // The task detail closing.
+    await openGoal({ t1: null })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.type('detail close')
+    await page.evaluate(() => window.SET_OPEN(false))
+    await page.waitForSelector('[data-task="t1"] .note-editor', { state: 'detached' })
+    if ((await page.evaluate(() => window.WRITES.length)) > 0) triggers.push('detail close')
+    check((await page.evaluate(() => window.WRITES.length)) > 0, 'closing the task detail flushed')
+
+    // A week rollover mid-edit, which reseeds the store under the field.
+    await openGoal({ t1: null })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.type('rollover')
+    await page.evaluate(() => window.RESEED({ t9: null }))
+    await page.waitForSelector('[data-task="t1"] .note-editor', { state: 'detached' })
+    // RESEED clears WRITES, so what matters is that the field unmounted rather than
+    // holding a pending edit for a task that is no longer on screen.
+    check((await page.locator('[data-task="t1"]').count()) === 0, 'a week rollover unmounts the old task, flushing it')
+    triggers.push('week rollover')
+
+    // Tab close and backgrounding.
+    await openGoal({ t1: null })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.type('hide')
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true })
+      document.dispatchEvent(new Event('visibilitychange'))
+    })
+    if ((await page.evaluate(() => window.WRITES.length)) > 0) triggers.push('tab close')
+    check((await page.evaluate(() => window.WRITES.length)) > 0, 'backgrounding the tab flushed')
+    return `flushed on: ${triggers.join(', ')}`
+  })
+
+  await step('the compact toolbar offers six tools, not eight', async () => {
+    await openGoal({ t1: { kind: 'blocks', blocks: [{ type: 'text', text: 'select this' }] } })
+    await page.waitForSelector('[data-task="t1"] .note-editor')
+    await page.click('[data-task="t1"] .note-editor')
+    await page.keyboard.press('Home')
+    await page.keyboard.down('Shift')
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press('ArrowRight')
+    await page.keyboard.up('Shift')
+    await page.waitForSelector('.note-toolbar')
+    const labels = await page.locator('.note-toolbar button').evaluateAll((els) =>
+      els.map((el) => el.getAttribute('aria-label')),
+    )
+    check(
+      JSON.stringify(labels) === JSON.stringify(['Bold', 'Italic', 'Strike', 'Link', 'Checkbox', 'Bullet']),
+      `the compact set: ${JSON.stringify(labels)}`,
+    )
+    check((await page.locator('[aria-label="Quote"]').count()) === 0, 'no quote button')
+    check((await page.locator('[aria-label="Section"]').count()) === 0, 'no section button')
+    // The triggers still work, so the row types are reachable without the buttons.
+    await page.keyboard.press('ArrowLeft')
+    await page.keyboard.press('Home')
+    await page.keyboard.type('- ')
+    check((await page.locator('[data-task="t1"] .note-bullet-row').count()) === 1, 'and the "- " trigger still makes a bullet')
+    return 'six tools, no quote, no section, triggers unaffected'
   })
 
   await page.goto(HARNESS)

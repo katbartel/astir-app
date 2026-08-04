@@ -5106,3 +5106,14 @@ textarea {
 .note-drag-card[data-reduce-motion='true'] {
   transition-duration: 0s;
 }
+
+/* A note whose stored shape the mapping does not recognise. It is shown read-only
+   and the stored value is left byte-identical: the migration script halts because a
+   person is watching it, and a render is not a script. See docs/notes-editor.md 4.5. */
+.note-editor-shell .note-unreadable {
+  padding: var(--space-3);
+  border: var(--border-thin) dashed var(--line2);
+  border-radius: var(--input-radius);
+  color: var(--muted);
+  font-size: var(--type-body);
+}

@@ -490,6 +490,37 @@ through `readNote()` in the same module, and are written back as `v: 2` on the
 next save of that task. The Postgres rows are migrated once, by the script, and
 the same lazy path protects them too if one is ever missed.
 
+### 4.4a Step 9: deleting the version union
+
+The `Note` type is `NoteV1 | StoredNote`, and compatibility code with no death date is
+how "temporary" becomes permanent. This one has a trigger.
+
+**Precondition:** the sweep has run, so nothing writes v1 and no unopened v1 row
+remains.
+
+**Then, as its own change:**
+
+1. Narrow `Note` to the v2 envelope.
+2. Delete the v1 branches in `noteText` and `noteHasContent`.
+3. Keep `noteMigration.ts` on the read path only, for a stored value that predates the
+   sweep: a browser profile restored from backup, or an `astir.v1` copied from another
+   machine. The mapping stays; the union does not.
+
+Scheduled, with a precondition, so it is a deletion waiting on an event rather than a
+wish.
+
+### 4.4b Known leak: the card reaches server-only modules
+
+`PipelineCard` transitively imports helpers that read `process.env.API_TARGET`
+(`lib/auth.ts`, `lib/server-api.ts`). They are never called on the client, so nothing
+is broken, but a client component reaching server-only modules is a real leak.
+
+It surfaced because the harness had to shim `process` to load the card at all. **That
+shim, `__harnessProcess` in `scripts/harness/build.mjs`, is the thing to delete when
+this is fixed**, and it is named here so the fix is recognisable as the trigger for
+removing it. Not urgent, not part of this rebuild, and not to be "tidied" by widening
+the shim.
+
 ### 4.5 The localStorage notes
 
 Home's weekly-goals task notes are the same v1 `Note` shape, stored per task inside
@@ -830,9 +861,19 @@ does not move the caret and does not toggle the card (section 10).
   `translate(-50%)`: the toolbar is wider than a short selection, so centring alone
   puts it past the left edge where it cannot be clicked. AGENTS.md 4 already says no
   surface extends past a screen edge.
-- **Contents**, in order, with separators: bold, italic, strike, link, separator,
-  check, bullet, quote, section. Exactly those eight. No underline (3.2), and
-  nothing that is not in the schema.
+- **Contents** are a prop, not a second component, with two sets:
+  - **full** (Pipeline), in order with a separator: bold, italic, strike, link,
+    separator, check, bullet, quote, section. Exactly those eight.
+  - **compact** (Home task notes): bold, italic, strike, link, check, bullet. No quote
+    and no section: a weekly-goal task note is a short scratchpad and the goals card
+    has no room to render a section's structure.
+
+  No underline (3.2), and nothing that is not in the schema, in either set.
+
+  **The schema is identical for both**, which is the point: a note stays portable
+  between the two surfaces and there is exactly one canonical form. The `[]` and `- `
+  triggers work in both, so the row types are reachable without the buttons, and paste
+  flattening (6.11) already means a section cannot arrive that way either.
 - **The three mark buttons are letterforms**, B, I, and S, not drawings of them.
   AGENTS.md 4.6 bans punctuation standing in for icons; a letter naming its own
   format is a label, and every editor uses these three. The five structural buttons
@@ -966,6 +1007,23 @@ wrong; one user action was often several steps.
    is what closed the note "intermittently". It was not intermittent, it was every
    selection drag that left the field. The card records, on pointerdown, whether the
    gesture began inside the field, and ignores the click if it did.
+
+### 10.2 Gestures that begin in a nested region
+
+Generalised, because the note field is not the only case:
+
+> **A drag-capable region nested inside a clickable surface records, on pointerdown,
+> whether a gesture began inside it. The outer surface ignores the resulting click.**
+
+A click is the end of a gesture, not an event at a point. Any region where a drag is
+meaningful (a text selection, a slider, a reorder handle, a canvas) can have its
+pointerup land anywhere, and testing only the click's target attributes the gesture to
+wherever it happened to finish. Checking the target with `closest()` is not enough on
+its own: it is correct for a click that starts and ends inside the region, and wrong
+for every gesture that leaves it.
+
+This applies to any future card, row, or panel that both handles clicks and contains
+something draggable.
 3. **Notes autosave. There is no save button.** `onChange` fires with the v2
    envelope; the adapter debounces and persists. The pipeline adapter updates
    local state optimistically so re-opening a card shows the edit immediately.
@@ -1256,8 +1314,16 @@ Each of these was a consequence of the DOM being the model.
 - **Converting a checkbox to a section created a second, empty section.**
   Conversion was implemented as insertion because there was no block to convert.
   Now a wrap transaction (6.7).
-- **The note closed intermittently when a selection left the field.** State lived
-  in event handlers. Now invariant 15.
+- **"The note closes intermittently."** It never did. It closed on **every** selection
+  drag that ended outside the field, deterministically. A text selection started in
+  the note and released outside it makes the browser report the pointerup as a click
+  on the card, and the card toggled on it. The "sometimes" in the original report was
+  the drag sometimes ending inside the field, not the bug being flaky.
+  **This entry is kept for the word, not the fix.** "Intermittent" is why the person
+  reporting it distrusted their own observations for weeks, and a bug called
+  intermittent is a bug nobody looks for a mechanism behind. The next ambiguous report
+  deserves the opposite assumption: that it is deterministic and the trigger has not
+  been identified yet. Now invariant 15, and the generalised rule in 10.2.
 - **A block-level line was read as the caret line's suffix.** `splitCaretLines`
   serialized the range after the caret and took `afterLines[0]` as the rest of
   the caret's line, but when a quote or collapse sat immediately after the caret,

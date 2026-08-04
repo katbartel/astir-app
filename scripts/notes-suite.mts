@@ -34,6 +34,18 @@ const suites: Suite[] = [
   { name: 'CSS scope lint', script: 'scripts/note-css-lint.test.mts', where: 'host', stopOnFail: false },
 ]
 
+// The harness bundles the real component, so a stale bundle silently tests the code
+// as it was. Building here rather than remembering to: running a suite against an old
+// bundle is the same class of mistake as verifying on the host and shipping to a
+// container.
+console.log('building the harness bundles')
+const built = spawnSync('node', ['scripts/harness/build.mjs'], { encoding: 'utf8' })
+process.stdout.write(`${built.stdout ?? ''}${built.stderr ?? ''}`)
+if (built.status !== 0) {
+  console.log('the harness did not build, so nothing below would test the current code')
+  process.exit(1)
+}
+
 const results: { name: string; where: string; ok: boolean; tail: string }[] = []
 
 for (const suite of suites) {

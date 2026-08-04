@@ -165,7 +165,7 @@ async function dragRowTo(rowIndex: number, targetY: number) {
   const row = list[rowIndex]
   if (!row) throw new Error(`no visible row at ${rowIndex}`)
   await page.mouse.move(row.left + 20, row.top + row.height / 2)
-  await page.waitForSelector('.note-grip:not([hidden])')
+  await page.waitForSelector(".note-grip[data-on='true']")
   const grip = await page.locator('.note-grip').boundingBox()
   if (!grip) throw new Error('the grip has no box')
   await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2)
@@ -414,10 +414,10 @@ async function main() {
     await page.waitForTimeout(120)
     // Either absent or hidden: the grip is only added to the page once a row offers
     // one, so over a header there may be no element at all.
-    check((await page.locator('.note-grip:not([hidden])').count()) === 0, 'no grip is offered over a section header')
+    check((await page.locator(".note-grip[data-on='true']").count()) === 0, 'no grip is offered over a section header')
     const body = list[1]
     await page.mouse.move(body.left + 20, body.top + body.height / 2)
-    await page.waitForSelector('.note-grip:not([hidden])')
+    await page.waitForSelector(".note-grip[data-on='true']")
     check(true, 'and appears over a body row')
     return 'no grip on a header, a grip on a row'
   })
@@ -897,7 +897,7 @@ async function main() {
       els.map((el) => el.getAttribute('aria-label')),
     )
     check(
-      JSON.stringify(labels) === JSON.stringify(['Bold', 'Italic', 'Strike', 'Link', 'Checkbox', 'Bullet']),
+      JSON.stringify(labels) === JSON.stringify(['Bold', 'Italic', 'Strikethrough', 'Link', 'Checkbox', 'Bullet']),
       `the compact set: ${JSON.stringify(labels)}`,
     )
     check((await page.locator('[aria-label="Quote"]').count()) === 0, 'no quote button')
@@ -1210,7 +1210,7 @@ async function main() {
       // The eight toolbar buttons, each on a selection.
       { name: 'toolbar: bold', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Bold') } },
       { name: 'toolbar: italic', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Italic') } },
-      { name: 'toolbar: strike', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Strike') } },
+      { name: 'toolbar: strike', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Strikethrough') } },
       {
         name: 'toolbar: link',
         seed: plain,
@@ -1332,7 +1332,7 @@ async function main() {
     const row = list[rowIndex]
     if (!row) throw new Error(`no visible row at ${rowIndex}`)
     await page.mouse.move(row.left + 20, row.top + row.height / 2)
-    await page.waitForSelector('.note-grip:not([hidden])')
+    await page.waitForSelector(".note-grip[data-on='true']")
     const grip = await page.locator('.note-grip').boundingBox()
     if (!grip) throw new Error('the grip has no box')
     return { row, grip }
@@ -1429,7 +1429,7 @@ async function main() {
     const labels = await page.$$eval('.note-toolbar button', (els) => els.map((el) => el.getAttribute('aria-label')))
     check(
       JSON.stringify(labels) ===
-        JSON.stringify(['Bold', 'Italic', 'Strike', 'Link', 'Checkbox', 'Bullet', 'Quote', 'Section']),
+        JSON.stringify(['Bold', 'Italic', 'Strikethrough', 'Link', 'Checkbox', 'Bullet', 'Quote', 'Section']),
       `buttons in order: ${labels.join(', ')}`,
     )
     const sepIndex = await page.$$eval('.note-toolbar > *', (els) =>
@@ -1470,13 +1470,26 @@ async function main() {
     const buttons = await page.$$eval('.note-toolbar button', (els) =>
       els.map((el) => ({
         label: el.getAttribute('aria-label'),
-        title: el.getAttribute('title'),
+        tooltip: el.getAttribute('data-tooltip'),
+        native: el.getAttribute('title'),
         tag: el.tagName.toLowerCase(),
       })),
     )
     for (const button of buttons) {
       check(button.tag === 'button', `${button.label} is a <button>, so it is in the tab order`)
-      check(!!button.label && button.label === button.title, `${button.label} has an aria-label matching its tooltip (${button.title})`)
+      // The visible label is the app's own tooltip layer, not the browser's `title`
+      // (recovered treatment, section 7). The tooltip may add the shortcut after the
+      // name, as the deleted toolbar did, so it starts with the aria-label rather than
+      // equalling it.
+      // Equal, or the name followed by the two-space shortcut separator. A bare
+      // startsWith would let "Strikethrough" pass for an aria-label of "Strike",
+      // which is two different words for one button and exactly what it let through.
+      const named =
+        !!button.label &&
+        !!button.tooltip &&
+        (button.tooltip === button.label || button.tooltip.startsWith(`${button.label}  `))
+      check(named, `${button.label} is named identically by its tooltip (${JSON.stringify(button.tooltip)})`)
+      check(button.native === null, `${button.label} uses the styled tooltip, not the browser's title`)
     }
     // Focus returns to the selection: use a button and the editor is focused again
     // with the same range still selected.

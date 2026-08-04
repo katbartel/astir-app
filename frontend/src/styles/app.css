@@ -4406,7 +4406,10 @@ textarea {
 }
 
 .note-editor-shell .note-editor:focus {
-  border-color: var(--gold);
+  /* Recovered: the focus border takes the card's own stage colour, falling back to
+     gold. An expanded stage-2 card gets a stage-2 focus ring, which is why the field
+     looked like part of its card rather than a generic input. */
+  border-color: var(--st-dot, var(--gold));
   box-shadow: var(--focus-ring);
   outline: none;
 }
@@ -4416,14 +4419,20 @@ textarea {
    container, or every inline run becomes a flex item and text stops wrapping. */
 .note-editor .note-row {
   position: relative;
+  /* Recovered from .note-check: a marker row stood a control tall, not a line tall,
+     which is what gave the rows their air. The line box is the floor for a plain
+     paragraph; a marker row gets the control height below. */
   min-height: calc(var(--type-body) * 1.5);
 }
 
 .note-editor .note-check-row,
 .note-editor .note-bullet-row {
   display: flex;
+  /* Recovered: the marker sits on the row's first line and is centred against it,
+     so a wrapping row keeps its marker beside the first line rather than the middle. */
   align-items: flex-start;
   gap: var(--space-1);
+  min-height: var(--watch-title-action-size);
 }
 
 .note-editor .note-line {
@@ -4447,9 +4456,9 @@ textarea {
   display: grid;
   place-items: center;
   width: var(--space-4);
-  /* Match the line box (font-size x line-height) so a marker sits on the first
-     line of a row that wraps. */
-  height: calc(var(--type-body) * 1.5);
+  /* Match the row's control height so a marker sits on the first line of a row that
+     wraps, centred against it. */
+  height: var(--watch-title-action-size);
 }
 
 /* A paragraph lines up with a marker row's text: the box plus the gap. This is
@@ -4460,7 +4469,9 @@ textarea {
 
 .note-editor .note-box {
   height: var(--space-4);
-  margin-top: calc((var(--type-body) * 1.5 - var(--space-4)) / 2);
+  /* Recovered: the box is centred in the row's control height, which is what put it
+     on the text's optical centre instead of its cap line. */
+  margin-top: calc((var(--watch-title-action-size) - var(--space-4)) / 2);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--space-1);
   background: var(--tile);
@@ -4542,12 +4553,12 @@ textarea {
   fill: currentColor;
 }
 
+/* Recovered: the arrow points down at rest and rotates a quarter turn anticlockwise
+   when the section is closed. It is never rotated while open: the open state is the
+   glyph's own orientation, which is why open sections read as settled and closed ones
+   as pointing at their title. */
 .note-editor .note-section[data-collapsed='true'] .note-disclosure {
   transform: rotate(-90deg);
-}
-
-.note-editor .note-section[data-collapsed='false'] .note-disclosure {
-  transform: rotate(90deg);
 }
 
 .note-editor .note-section-title {
@@ -4750,40 +4761,54 @@ textarea {
   position: relative;
 }
 
+/* Recovered from .note-grip, .note-check:hover .note-grip and .note-grip:hover.
+   Subtle at rest, solid on hover, and absolutely placed in the gutter left of the
+   row's own left edge so its width can never shift the row.
+
+   The visibility rule is the recovered one and it matters: the grip appears on hover
+   of a row that HAS something to drag. It never appears on an empty row. Keying it to
+   the field being hovered, as the rebuild did, put a grip beside every blank line the
+   pointer passed. */
 .note-editor-shell .note-grip {
   position: absolute;
   z-index: 2;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--space-hairline);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: var(--space-2);
-  height: calc(var(--type-body) * 1.5);
-  padding: var(--space-1) 0;
-  /* In the gutter, left of the row's own left edge. */
+  height: var(--watch-title-action-size);
   margin-left: calc((var(--space-2) + var(--note-grip-gap)) * -1);
-  place-content: center;
   border: none;
   background: transparent;
+  color: var(--placeholder);
   cursor: grab;
   opacity: 0;
+  pointer-events: none;
   touch-action: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.12s ease, color 0.12s ease;
 }
 
-/* Fades in on row hover, over 150ms. */
-.note-editor-shell:hover .note-grip {
+.note-editor-shell .note-grip[data-on='true'] {
   opacity: 1;
+  pointer-events: auto;
 }
 
-.note-editor-shell .note-grip:hover {
-  opacity: 1;
+.note-editor-shell .note-grip[data-on='true']:hover {
+  color: var(--ink2);
 }
 
-.note-editor-shell .note-grip span {
-  width: var(--space-hairline);
-  height: var(--space-hairline);
-  border-radius: var(--r-pill);
-  background: var(--placeholder);
+/* Recovered: the six-dot glyph, as SVG, filled from currentColor so it follows the
+   colour above. */
+.note-editor-shell .note-grip svg {
+  width: var(--space-2);
+  height: var(--space-3);
+  fill: currentColor;
+}
+
+/* Recovered: the grip has done its job once the row is in the air, and the pointer is
+   still over it, so hover must not bring it back. */
+.note-editor-shell .note-grip[data-dragging='true'] {
+  opacity: 0;
 }
 
 /* The row being dragged stays in the document; this is only how it looks. */
@@ -4821,6 +4846,7 @@ textarea {
 @media (prefers-reduced-motion: reduce) {
   /* The lift and the reorder still happen. Only the durations go. */
   .note-editor-shell .note-grip,
+  .note-editor .note-disclosure,
   .note-drag-card {
     transition-duration: 0s;
   }

@@ -130,16 +130,52 @@ export function NoteToolbar({
   // edge of a short selection, where it cannot be clicked.
   const [surfaceWidth, setSurfaceWidth] = useState(0)
 
+  /**
+   * Where the surface sits, recomputed on selection changes only.
+   *
+   * Recovered behaviour: the deleted editor set its toolbar position when the
+   * selection changed and left it alone otherwise. The rebuild recomputed on every
+   * transaction, so collapsing a section, which moves the rows below it, moved the
+   * toolbar with them: the anchor was the current layout rather than the selection
+   * that summoned it. Marks still re-read on every transaction, because reading them
+   * does not move anything.
+   */
+  const [anchor, setAnchor] = useState<Rect | null>(null)
+
   useEffect(() => {
     if (!editor) return
     const rerender = () => bump((n) => n + 1)
+    const reanchor = () => {
+      const { from, to, empty } = editor.state.selection
+      const link = linkAtCaret(editor)
+      const showsPopover = empty && !!link
+      if (!editor.isFocused || (empty && !link)) {
+        setAnchor(null)
+        rerender()
+        return
+      }
+      try {
+        const start = editor.view.coordsAtPos(showsPopover && link ? link.from : from)
+        const end = editor.view.coordsAtPos(showsPopover && link ? link.to : to)
+        setAnchor({
+          top: Math.min(start.top, end.top),
+          bottom: Math.max(start.bottom, end.bottom),
+          left: (start.left + end.right) / 2,
+        })
+      } catch {
+        setAnchor(null)
+      }
+      rerender()
+    }
     editor.on('transaction', rerender)
-    editor.on('focus', rerender)
-    editor.on('blur', rerender)
+    editor.on('selectionUpdate', reanchor)
+    editor.on('focus', reanchor)
+    editor.on('blur', reanchor)
     return () => {
       editor.off('transaction', rerender)
-      editor.off('focus', rerender)
-      editor.off('blur', rerender)
+      editor.off('selectionUpdate', reanchor)
+      editor.off('focus', reanchor)
+      editor.off('blur', reanchor)
     }
   }, [editor])
 
@@ -177,16 +213,18 @@ export function NoteToolbar({
   const showPopover = editor.isFocused && empty && !!link && !linkFieldOpen
   if (!showToolbar && !showPopover) return null
 
-  const coords = (): Rect => {
-    const start = editor.view.coordsAtPos(showPopover && link ? link.from : from)
-    const end = editor.view.coordsAtPos(showPopover && link ? link.to : to)
-    return {
-      top: Math.min(start.top, end.top),
-      bottom: Math.max(start.bottom, end.bottom),
-      left: (start.left + end.right) / 2,
-    }
-  }
-  const rect = coords()
+  // The anchor from the last selection change, never the current layout.
+  const rect =
+    anchor ??
+    (() => {
+      const start = editor.view.coordsAtPos(showPopover && link ? link.from : from)
+      const end = editor.view.coordsAtPos(showPopover && link ? link.to : to)
+      return {
+        top: Math.min(start.top, end.top),
+        bottom: Math.max(start.bottom, end.bottom),
+        left: (start.left + end.right) / 2,
+      }
+    })()
   // Above the selection by default, flipped below when there is no room. Without
   // this a note near the top of the viewport puts its own toolbar off-screen, where
   // it cannot be clicked and looks like a button that does nothing.
@@ -240,6 +278,8 @@ export function NoteToolbar({
         role="group"
         aria-label="Link"
       >
+        {/* Native title here on purpose: this is the untruncated href behind an
+            ellipsis, not a control's name, and it can be far longer than a tooltip. */}
         <span className="note-popover-url" title={link.href}>
           {truncate(link.href)}
         </span>
@@ -298,10 +338,30 @@ export function NoteToolbar({
     [
       ['bold', 'Bold', 'note-tb-bold'],
       ['italic', 'Italic', 'note-tb-italic'],
-      ['strike', 'Strike', 'note-tb-strike'],
+      ['strike', 'Strikethrough', 'note-tb-strike'],
     ] as [NoteTool, string, string][]
   ).filter(([name]) => has(name))
   const label: Record<string, string> = { bold: 'B', italic: 'I', strike: 'S' }
+  /**
+   * Recovered: the deleted toolbar used the app's own tooltip layer through
+   * `data-tooltip`, not the browser's native `title`, and it showed the shortcut
+   * beside the name.
+   *
+   * Only the three that actually work are advertised. The deleted editor bound its own
+   * Cmd+K, Shift+Cmd+E and Shift+Cmd+O; this one does not, and binding them is
+   * behaviour rather than polish. A tooltip claiming a shortcut that does nothing is
+   * worse than no hint. The two text triggers are shown instead, because those do work.
+   */
+  const hint: Record<string, string> = {
+    Bold: 'Bold  \u2318B',
+    Italic: 'Italic  \u2318I',
+    Strikethrough: 'Strikethrough  \u21e7\u2318S',
+    Link: 'Link',
+    Checkbox: 'Checkbox  []',
+    Bullet: 'Bullet  - ',
+    Quote: 'Quote',
+    Section: 'Section',
+  }
   const sectionAvailable = convertRowToSection(state, undefined)
 
   return (
@@ -320,7 +380,8 @@ export function NoteToolbar({
           className={`${className}${editor.isActive(name) ? ' active' : ''}`}
           aria-label={title}
           aria-pressed={editor.isActive(name)}
-          title={title}
+          data-tooltip={hint[title] ?? title}
+          data-tooltip-above=""
           onMouseDown={run(() => {
             if (name === 'bold') editor.chain().focus().toggleBold().run()
             if (name === 'italic') editor.chain().focus().toggleItalic().run()
@@ -335,7 +396,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('link') ? 'active' : undefined}
         aria-label="Link"
-        title="Link"
+        data-tooltip={hint.Link}
+        data-tooltip-above=""
         onMouseDown={run(() => {
           setDraft(editor.isActive('link') ? String(editor.getAttributes('link').href ?? '') : '')
           setLinkFieldOpen(true)
@@ -352,7 +414,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('check') ? 'active' : undefined}
         aria-label="Checkbox"
-        title="Checkbox"
+        data-tooltip={hint.Checkbox}
+        data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(setRowType('check')))}
       >
         <CheckboxGlyph />
@@ -363,7 +426,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('bullet') ? 'active' : undefined}
         aria-label="Bullet"
-        title="Bullet"
+        data-tooltip={hint.Bullet}
+        data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(setRowType('bullet')))}
       >
         <BulletGlyph />
@@ -374,7 +438,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('quote') ? 'active' : undefined}
         aria-label="Quote"
-        title="Quote"
+        data-tooltip={hint.Quote}
+        data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(toggleQuote))}
       >
         <QuoteGlyph />
@@ -384,7 +449,8 @@ export function NoteToolbar({
       <button
         type="button"
         aria-label="Section"
-        title={sectionAvailable ? 'Section' : 'Sections only at the top level'}
+        data-tooltip={sectionAvailable ? hint.Section : 'Sections only at the top level'}
+        data-tooltip-above=""
         disabled={!sectionAvailable}
         onMouseDown={run(() => dispatchCommand(convertRowToSection))}
       >

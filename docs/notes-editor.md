@@ -716,6 +716,59 @@ Partial opacity comes from `color-mix` on the token, never a hardcoded `rgba` an
 never a new `--something-soft` token: the link underline is
 `color-mix(in srgb, var(--gold-text) 40%, transparent)`. See AGENTS.md.
 
+### 5.3 Recovered visual layer
+
+Commit `a885907` deleted the old editor and its 279 lines of `.note-*` CSS. The spec
+had captured the editor's **rules** and none of its **polish**, so the rebuild was
+made from rules alone and looked worse in ways no test could see. The polish is
+recovered here from `a885907^`, not re-derived, and written down so a future deletion
+cannot repeat the loss.
+
+**The five that were visibly worse, and what each was:**
+
+1. **The grip appeared on empty rows.** In the deleted editor the grip lived *inside*
+   the checkbox span, so `.note-check:hover .note-grip` meant a grip appeared only on
+   hover of a row that had a marker. The rebuild placed one floating grip on whatever
+   row the pointer was over, keyed to the *field* being hovered, which put a grip
+   beside every blank line the pointer crossed. Recovered rule: **a grip is offered on
+   hover of a row that has content, never on an empty row**, fading in over 120ms,
+   `--placeholder` at rest and `--ink2` on hover. There is also nothing to drag on an
+   empty row.
+2. **Tooltips were the browser's.** The deleted toolbar used the app's own tooltip
+   layer, `data-tooltip` with `data-tooltip-above`, and showed the shortcut beside the
+   name (`Bold  ⌘B`). The rebuild used native `title`, which is unstyled, slow, and
+   placed by the browser. Recovered, with one honesty constraint: **only shortcuts that
+   exist are advertised.** ⌘B, ⌘I and ⇧⌘S come from StarterKit and work. The deleted
+   editor bound its own ⌘K, ⇧⌘E and ⇧⌘O; this one does not, so those buttons show their
+   name alone, and the checkbox and bullet show their text triggers (`[]` and `- `)
+   instead, which do work. A tooltip claiming a shortcut that does nothing is worse
+   than no hint.
+3. **The disclosure arrow was the wrong glyph in the wrong resting state.** Recovered:
+   the old path, a small filled triangle pointing **down** at rest, rotated a quarter
+   turn anticlockwise when the section is closed, and **never rotated while open**. The
+   rebuild used a right-pointing triangle rotated +90° when open, so an open section's
+   arrow was a transform of a different mark. Sizes and states with it:
+   `--note-disclosure-icon`, a `--space-6` box the height of one line box,
+   `margin-left: calc(var(--space-1) * -1)`, `--placeholder` at rest, `--hover-soft`
+   and `--ink2` on hover, transitions on transform, background and colour at 120ms.
+4. **The toolbar jumped when a section collapsed.** The deleted editor set its position
+   when the selection changed and left it there. The rebuild recomputed on every
+   transaction, so anything that moved the rows moved the toolbar with them: its anchor
+   was the current layout rather than the selection that summoned it. Recovered: **the
+   position is recomputed on selection changes only.** Active marks still re-read on
+   every transaction, because reading them does not move anything.
+5. **Spacing and row height.** Recovered: a marker row stands `--watch-title-action-size`
+   tall rather than one line box, which is where the rows' air came from; the marker is
+   centred in that height rather than on the text's cap line; the gutter, marker and
+   text are separated by `--space-1`; the field's left padding carries the extra
+   `--note-grip-gap` so everything in it starts one gap further in and the grip keeps
+   its gutter.
+
+**One recovered detail worth naming on its own:** the field's focus border was
+`var(--st-dot, var(--gold))`, the card's own stage colour with gold as the fallback. An
+expanded stage-2 card got a stage-2 focus ring. That is why the field read as part of
+its card rather than as a generic input, and the rebuild had flattened it to gold.
+
 ### 5.2 What is deliberately not asserted
 
 A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.

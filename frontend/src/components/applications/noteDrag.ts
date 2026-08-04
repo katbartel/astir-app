@@ -242,11 +242,21 @@ export const NoteDrag = Extension.create({
           grip.className = 'note-grip'
           grip.setAttribute('aria-label', 'Reorder row')
           grip.setAttribute('contenteditable', 'false')
-          grip.hidden = true
-          for (let index = 0; index < 6; index += 1) {
-            const dot = document.createElement('span')
-            grip.appendChild(dot)
+          grip.dataset.on = 'false'
+          // The six-dot glyph recovered from the deleted editor's GRIP_SVG, rather
+          // than six styled spans. Same viewBox and the same circles, so it is the
+          // same mark at the same weight.
+          const gripSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+          gripSvg.setAttribute('viewBox', '0 0 10 16')
+          gripSvg.setAttribute('aria-hidden', 'true')
+          for (const [cx, cy] of [[3, 3], [3, 8], [3, 13], [7, 3], [7, 8], [7, 13]]) {
+            const dot = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+            dot.setAttribute('cx', String(cx))
+            dot.setAttribute('cy', String(cy))
+            dot.setAttribute('r', '1.3')
+            gripSvg.appendChild(dot)
           }
+          grip.appendChild(gripSvg)
 
           /**
            * Which row is under the pointer, asked of ProseMirror rather than the DOM.
@@ -261,14 +271,19 @@ export const NoteDrag = Extension.create({
           const rowUnder = (x: number, y: number) => {
             const at = view.posAtCoords({ left: x, top: y })
             if (!at) return null
+            // Recovered rule: a row with nothing in it offers no grip. In the deleted
+            // editor the grip lived inside the checkbox, so an empty line never had
+            // one; the rebuild put a grip beside every blank line the pointer passed.
+            // There is also nothing to drag: an empty row carries no content.
+            const offersGrip = (node: PmNode) => isRow(node) && node.content.size > 0
             const $pos = view.state.doc.resolve(at.pos)
             for (let depth = $pos.depth; depth > 0; depth -= 1) {
               const node = $pos.node(depth)
-              if (isRow(node)) return { pos: $pos.before(depth), nodeSize: node.nodeSize }
+              if (isRow(node)) return offersGrip(node) ? { pos: $pos.before(depth), nodeSize: node.nodeSize } : null
             }
             if (at.inside >= 0) {
               const node = view.state.doc.nodeAt(at.inside)
-              if (node && isRow(node)) return { pos: at.inside, nodeSize: node.nodeSize }
+              if (node && isRow(node)) return offersGrip(node) ? { pos: at.inside, nodeSize: node.nodeSize } : null
             }
             return null
           }
@@ -277,7 +292,7 @@ export const NoteDrag = Extension.create({
             hovered = row
             if (!grip) return
             if (!row) {
-              grip.hidden = true
+              grip.dataset.on = 'false'
               return
             }
             const parent = host()
@@ -292,7 +307,9 @@ export const NoteDrag = Extension.create({
             const line = view.coordsAtPos(row.pos + 1)
             const edge = view.coordsAtPos(row.pos)
             const rect = parent.getBoundingClientRect()
-            grip.hidden = false
+            // data-on rather than `hidden`: display:none cannot fade, and the recovered
+            // rule is a fade in over 120ms.
+            grip.dataset.on = 'true'
             grip.style.top = `${line.top - rect.top}px`
             grip.style.left = `${edge.left - rect.left}px`
           }
@@ -355,7 +372,7 @@ export const NoteDrag = Extension.create({
             if (reduceMotion()) card.dataset.reduceMotion = 'true'
             card.textContent = node.textContent
             document.body.appendChild(card)
-            if (grip) grip.hidden = true
+            if (grip) grip.dataset.dragging = 'true'
             armed = true
           }
 
@@ -389,6 +406,7 @@ export const NoteDrag = Extension.create({
             window.removeEventListener('pointerup', onPointerUp)
             card?.remove()
             card = null
+            if (grip) grip.dataset.dragging = 'false'
             if (!dragging) {
               start = null
               armed = false

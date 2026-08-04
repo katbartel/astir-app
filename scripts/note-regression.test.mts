@@ -1376,6 +1376,121 @@ async function main() {
     return 'the grip tracks the row it belongs to, indent and all'
   })
 
+  // --- section 5.2: the four remaining behaviour rules ---
+  //
+  // The toolbar's flip and clamp, its exact contents and order, that markers are
+  // SVG rather than text nodes, and that every button is keyboard reachable with an
+  // aria-label matching its tooltip and focus returning to the selection. Two of
+  // these had shipped unimplemented, caught only by a click failing.
+
+  /** Bring the toolbar up on a full range of the given row. */
+  const selectRow = async (index: number) => {
+    const list = await docRows()
+    const row = list[index]
+    if (!row) throw new Error(`no doc row at ${index}`)
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: row.start, to: row.end },
+    )
+    await page.waitForSelector('.note-toolbar')
+    return { from: row.start, to: row.end }
+  }
+
+  await step('5.2/1. the toolbar flips below near the top edge, sits above with room, and clamps to the screen', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: Array.from({ length: 12 }, (_, i) => ({
+          type: 'paragraph',
+          content: [{ type: 'text', text: `row ${i}` }],
+        })),
+      }),
+    )
+    await selectRow(0)
+    check((await page.locator('.note-toolbar').getAttribute('data-below')) === 'true', 'a selection at the top flips the toolbar below it')
+    await selectRow(8)
+    check((await page.locator('.note-toolbar').getAttribute('data-below')) === 'false', 'a selection with room above sits above it')
+
+    // Clamp: a one-character selection hard against the left edge. Centring a wide
+    // toolbar on it alone would push it off-screen; it must be clamped instead.
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'x' }] }] }))
+    await selectRow(0)
+    const box = await page.locator('.note-toolbar').boundingBox()
+    const viewport = await page.evaluate(() => window.innerWidth)
+    if (!box) throw new Error('the toolbar has no box')
+    check(box.x >= 7, `the left edge ${Math.round(box.x)} did not run off the screen`)
+    check(box.x + box.width <= viewport - 7, `the right edge ${Math.round(box.x + box.width)} stayed within ${viewport}`)
+    return 'flips below at the top, above with room, and never past a screen edge'
+  })
+
+  await step('5.2/2. the full toolbar is exactly the eight tools, in order, with the separator between marks and structure', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'select me' }] }] }))
+    await selectRow(0)
+    const labels = await page.$$eval('.note-toolbar button', (els) => els.map((el) => el.getAttribute('aria-label')))
+    check(
+      JSON.stringify(labels) ===
+        JSON.stringify(['Bold', 'Italic', 'Strike', 'Link', 'Checkbox', 'Bullet', 'Quote', 'Section']),
+      `buttons in order: ${labels.join(', ')}`,
+    )
+    const sepIndex = await page.$$eval('.note-toolbar > *', (els) =>
+      els.findIndex((el) => el.classList.contains('note-tb-sep')),
+    )
+    check(sepIndex === 4, `the separator sits after link and before checkbox (child index ${sepIndex})`)
+    return 'bold, italic, strike, link, | , checkbox, bullet, quote, section'
+  })
+
+  await step('5.2/4. every marker is a real SVG element, never a text glyph', async () => {
+    await seed(gripDoc)
+    const markers = await page.evaluate(() => {
+      const svgAt = (sel: string) => {
+        const el = document.querySelector(sel)
+        const svg = el?.querySelector('svg')
+        return { isSvg: !!svg && svg.namespaceURI === 'http://www.w3.org/2000/svg', text: (el?.textContent ?? '').trim() }
+      }
+      return {
+        box: svgAt('.note-check-row .note-box'),
+        bullet: svgAt('.note-bullet'),
+        disclosure: svgAt('.note-disclosure'),
+      }
+    })
+    check(
+      markers.box.isSvg && markers.bullet.isSvg && markers.disclosure.isSvg,
+      `checkbox, bullet, and disclosure are SVG: ${JSON.stringify(markers)}`,
+    )
+    check(
+      markers.box.text === '' && markers.bullet.text === '' && markers.disclosure.text === '',
+      'and none renders a "•" or "⌄" character',
+    )
+    return 'the checkbox, the bullet, and the disclosure triangle are all SVG'
+  })
+
+  await step('5.2/5. every toolbar button is labelled and keyboard reachable, and using one returns focus to the selection', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'format me' }] }] }))
+    const range = await selectRow(0)
+    const buttons = await page.$$eval('.note-toolbar button', (els) =>
+      els.map((el) => ({
+        label: el.getAttribute('aria-label'),
+        title: el.getAttribute('title'),
+        tag: el.tagName.toLowerCase(),
+      })),
+    )
+    for (const button of buttons) {
+      check(button.tag === 'button', `${button.label} is a <button>, so it is in the tab order`)
+      check(!!button.label && button.label === button.title, `${button.label} has an aria-label matching its tooltip (${button.title})`)
+    }
+    // Focus returns to the selection: use a button and the editor is focused again
+    // with the same range still selected.
+    await page.click('[aria-label="Bold"]')
+    const after = await page.evaluate(() => ({
+      focused: !!window.EDITOR?.isFocused,
+      from: window.EDITOR!.state.selection.from,
+      to: window.EDITOR!.state.selection.to,
+    }))
+    check(after.focused, 'the editor is focused again after using a button')
+    check(after.from === range.from && after.to === range.to, `the selection is intact: ${after.from}-${after.to}`)
+    return 'labelled, keyboard reachable, and focus comes back to the selection'
+  })
+
   await browser.close()
 
   // --- the report ---

@@ -135,9 +135,9 @@ export function ApplicationsProvider({
   )
 
   // Persist a note edit. We update local state optimistically so re-opening a
-  // card — which remounts NoteField and reseeds it from this prop — shows the
-  // latest text; the PATCH saves it to the server. No reload(): the seeded-once
-  // NoteField would ignore a refetch anyway, and we save on every keystroke.
+  // card — which remounts the note editor and reseeds it from this prop — shows
+  // the latest text; the PATCH saves it to the server. No reload(): the editor is
+  // seeded on mount and we save on every edit, so a refetch would buy nothing.
   const saveNote = useCallback(
     (application: Application, note: NonNullable<Application['note']>) => {
       setApplications((current) =>

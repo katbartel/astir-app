@@ -579,6 +579,15 @@ remains.
 Scheduled, with a precondition, so it is a deletion waiting on an event rather than a
 wish.
 
+### 4.4c Known noise: the Agentation health poll
+
+`DevAgentation.tsx` line 28 polls `localhost:4747/health` and floods the console with
+connection errors whenever the Agentation tool is not running, which is most of the time.
+
+It is the only entry on the smoke check's allowlist, and every console error it emits has
+to be filtered by URL to keep that check honest. Logged as its own task, deliberately not
+fixed here: the fix belongs with that component, not with the notes editor.
+
 ### 4.4b Known leak: the card reaches server-only modules
 
 `PipelineCard` transitively imports helpers that read `process.env.API_TARGET`
@@ -1152,6 +1161,20 @@ at never arrives. The slot thresholds are re-measured as the page moves: "measur
 at lift" is about the gap not moving what decides where the gap goes, and a scroll moves
 the rows themselves.
 
+**A painted grip is a pressable grip, and it lingers.** Two rules, and between them they
+are the fix for "the grip appears and dragging does nothing":
+
+1. **Visibility, never `pointer-events`, is what takes the grip out of the way.** A grip
+   fading out is still under the cursor. Switching `pointer-events` off mid-fade sends
+   the press to the row behind it, and the observed symptom is exactly that: the
+   pointerdown target was a paragraph, `mousedown` fired (proving the grip's handler never
+   ran), and no lift followed.
+2. **The grip lingers `GRIP_LINGER_MS` (260ms) after the pointer leaves its row**, and
+   keeps belonging to that row while it does. Reaching for an 8px target in the gutter
+   means crossing other rows on the way, and without the linger each of those took the
+   grip away between the eye seeing it and the finger pressing it. Pressing during the
+   linger drags the row the grip was offered for, never the row the pointer drifted onto.
+
 **The press does not depend on hover bookkeeping.** The row being dragged is recorded on
 the grip element when it is placed, and read back at pointerdown, so an intervening
 mousemove cannot leave a visible grip that presses nothing. A visible grip is always
@@ -1461,13 +1484,19 @@ Three rules for the harness, each learned the hard way:
   served chunk and grepping it for the change: that is evidence, where a reload is a
   hope. Incognito, or a hard reload, is the confirmation step before any code is
   suspected.
-- **A synthetic pointer is not a pointer.** Playwright dispatches few, heavily coalesced
-  moves (two, for eight requested), never starts a native HTML5 drag, and can teleport
-  onto a control without ever crossing the boundary that decides whether the control is
-  still live. A drag helper therefore approaches a control the way a pointer does, and
-  asserts that the element under the pointer IS the control before pressing, and that
-  the lift happened before travelling. Without those, "the affordance is visible but
-  inert" is invisible to the suite.
+- **A synthetic pointer is not a pointer.** Playwright never starts a native HTML5 drag,
+  and it can teleport onto a control without crossing the boundary that decides whether
+  the control is still live. A drag helper therefore approaches a control the way a
+  pointer does, and asserts that the element under the pointer IS the control before
+  pressing, and that the lift happened before travelling.
+
+  **That was not enough, and the way it was not enough is the lesson.** Those assertions
+  passed while a real press failed, because they moved along one row and pressed while
+  the grip was settled. A real hand reaching for an 8px target drifts across other rows,
+  and the failure lived in that drift. An assertion about a control must therefore
+  reproduce the **approach**, not just the destination: hover the row, drift onto a
+  different one, and press at the grip's painted centre. Measuring coalescing was a red
+  herring: the real trace had 236 pointermoves.
 - **A step that cannot be reached yet is reported as DEFERRED with its reason**, and
   the list is carried forward. It is never skipped quietly, because a silent skip
   reads as a pass.

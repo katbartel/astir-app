@@ -4792,14 +4792,19 @@ textarea {
   color: var(--placeholder);
   cursor: grab;
   opacity: 0;
-  pointer-events: none;
+  /* Painted means pressable. Visibility, not pointer-events, is what takes the grip out
+     of the way: a grip that is fading out is still under the cursor, and switching
+     pointer-events off mid-fade sends the press to the row behind it. That is the whole
+     of the "dragging does nothing" report. */
+  visibility: hidden;
   touch-action: none;
-  transition: opacity 0.12s ease, color 0.12s ease;
+  transition: opacity 0.12s ease, color 0.12s ease, visibility 0s linear 0.12s;
 }
 
 .note-editor-shell .note-grip[data-on='true'] {
   opacity: 1;
-  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.12s ease, color 0.12s ease;
 }
 
 .note-editor-shell .note-grip[data-on='true']:hover {

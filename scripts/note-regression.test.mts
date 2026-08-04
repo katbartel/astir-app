@@ -782,6 +782,74 @@ async function main() {
     return 'down when open, right when closed, and no chip in any state'
   })
 
+
+  await step('5f. a grip that is painted is pressable, even while it is fading out', async () => {
+    // The failure the suite could not see. Reaching for an 8px grip means the pointer
+    // drifts across other rows on the way. A non-check row takes the grip away, and the
+    // grip then FADES rather than vanishing: it is still painted, under the cursor, and
+    // the press was landing on the row behind it. Real Chrome reported the pointerdown
+    // target as a paragraph, and mousedown firing proved the grip's handler never ran.
+    //
+    // Every earlier drag assertion moved along one row and pressed while the grip was
+    // settled, so none of them crossed the moment that breaks.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'the row with a grip' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'a plain row just below it' }] },
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'another box' }] },
+        ],
+      }),
+    )
+    const list = visible(await rows())
+    const checkRow = list[0]
+    const plainRow = list[1]
+
+    await page.mouse.move(checkRow.left + 90, checkRow.top + checkRow.height / 2)
+    await page.waitForSelector(".note-grip[data-on='true']")
+    const painted = await page.evaluate(() => {
+      const r = document.querySelector('.note-grip')!.getBoundingClientRect()
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+    })
+
+    // Drift onto the plain row, which is what takes the grip away.
+    await page.mouse.move(plainRow.left + 90, plainRow.top + plainRow.height / 2)
+
+    // Now press at the grip's PAINTED centre, immediately, while it is still on screen.
+    const hit = await page.evaluate(
+      ([x, y]) => {
+        const grip = document.querySelector('.note-grip') as HTMLElement | null
+        const el = document.elementFromPoint(x as number, y as number) as HTMLElement | null
+        const painted = grip ? Number(getComputedStyle(grip).opacity) > 0 : false
+        if (!el) return { painted, hit: 'nothing' }
+        if (grip && (el === grip || grip.contains(el))) return { painted, hit: 'grip' }
+        return { painted, hit: `${el.tagName}.${String(el.className).slice(0, 30)}` }
+      },
+      [painted.x, painted.y],
+    )
+    check(
+      !hit.painted || hit.hit === 'grip',
+      `while painted (${hit.painted}), the press at its centre reaches: ${hit.hit}`,
+    )
+
+    // And the gesture must actually work from there.
+    await page.mouse.move(painted.x, painted.y)
+    await page.mouse.down()
+    await page.mouse.move(painted.x, painted.y + 12, { steps: 3 })
+    const lifted = await page.evaluate(() => !!document.querySelector('.note-drag-card'))
+    await page.mouse.move(painted.x, list[2].top + list[2].height + 4, { steps: 8 })
+    await page.mouse.up()
+    await page.waitForTimeout(200)
+    check(lifted, 'and pressing it lifts the row')
+    const after = shape(await rows())
+    check(
+      after.startsWith('paragraph "a plain row just below it"'),
+      `and the row moved: ${after}`,
+    )
+    return 'a painted grip is pressable, and the drag works after a drift'
+  })
+
   // 4
   await step('4. the Enter ladder: continue, drop the marker, leave the section', async () => {
     await seed(sectionWithChecks)
@@ -1717,17 +1785,40 @@ async function main() {
     // checkbox span, so it belonged to a check row and to nothing else. This step used
     // to assert the opposite, that a paragraph and a bullet got one in the same place,
     // which was the rebuild's behaviour rather than the editor's.
+    // The grip lingers for GRIP_LINGER_MS after the pointer leaves its row, so that it
+    // can be reached (5f). "A paragraph offers no grip" is therefore a statement about
+    // where the grip settles, not about the instant the pointer arrives: the wait has to
+    // outlast the linger or it measures the previous row's grip.
     const offered = async (rowIndex: number) => {
       const list = visible(await rows())
       const row = list[rowIndex]
       await page.mouse.move(row.left + 20, row.top + row.height / 2)
-      await page.waitForTimeout(120)
+      await page.waitForTimeout(400)
       return (await page.locator(".note-grip[data-on='true']").count()) > 0
     }
     check(await offered(1), 'a check row offers a grip')
     check(!(await offered(0)), 'a paragraph does not')
     check(!(await offered(2)), 'a bullet does not')
     check(await offered(4), 'a check row inside a section body does')
+    // And during the linger the grip still belongs to the row it was offered for, which
+    // is what makes reaching for it safe: pressing it drags that check row, never the
+    // row the pointer has drifted onto.
+    {
+      const list = visible(await rows())
+      await page.mouse.move(list[1].left + 60, list[1].top + list[1].height / 2)
+      await page.waitForSelector(".note-grip[data-on='true']")
+      const owner = await page.evaluate(() => (document.querySelector('.note-grip') as HTMLElement).dataset.rowPos)
+      await page.mouse.move(list[0].left + 60, list[0].top + list[0].height / 2)
+      const during = await page.evaluate(() => {
+        const g = document.querySelector('.note-grip') as HTMLElement
+        return { on: g.dataset.on, rowPos: g.dataset.rowPos }
+      })
+      check(
+        during.on === 'true' && during.rowPos === owner,
+        `during the linger the grip still belongs to its own row (${JSON.stringify(during)} was ${owner})`,
+      )
+    }
+
     // An empty check row still offers one: the old rule was the marker, not the text.
     await seed(v2({ type: 'doc', content: [{ type: 'check', attrs: { checked: false } }] }))
     check(await offered(0), 'and an empty check row still does, because the rule is the marker')

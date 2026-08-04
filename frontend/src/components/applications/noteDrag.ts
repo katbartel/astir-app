@@ -26,6 +26,11 @@ const ACTIVATION_DISTANCE = 5
  */
 const EDGE_ZONE = 60
 const EDGE_SPEED = 16
+/**
+ * How long the grip lingers after the pointer leaves its row, matching the fade. Long
+ * enough to reach for it, short enough not to hang around.
+ */
+const GRIP_LINGER_MS = 260
 const ROW_TYPES = ['paragraph', 'check', 'bullet']
 
 const isRow = (node: PmNode | null | undefined) => !!node && ROW_TYPES.includes(node.type.name)
@@ -343,13 +348,33 @@ export const NoteDrag = Extension.create({
             return null
           }
 
+          /**
+           * Hiding is deferred by the length of the fade. Reaching for an 8px target in
+           * the gutter means the pointer crosses other rows on the way, and each of
+           * those would otherwise take the grip away between the eye seeing it and the
+           * finger pressing it.
+           */
+          let hideTimer: ReturnType<typeof setTimeout> | null = null
+          const cancelHide = () => {
+            if (hideTimer !== null) {
+              clearTimeout(hideTimer)
+              hideTimer = null
+            }
+          }
+
           const placeGrip = (row: { pos: number; nodeSize: number } | null) => {
             if (!grip) return
             if (!row) {
-              grip.dataset.on = 'false'
-              delete grip.dataset.rowPos
+              cancelHide()
+              const target = grip
+              hideTimer = setTimeout(() => {
+                hideTimer = null
+                target.dataset.on = 'false'
+                delete target.dataset.rowPos
+              }, GRIP_LINGER_MS)
               return
             }
+            cancelHide()
             const parent = host()
             if (grip.parentElement !== parent) parent.appendChild(grip)
             // Vertical from the first line of the row; horizontal from the row's
@@ -406,6 +431,7 @@ export const NoteDrag = Extension.create({
             const pos = recorded === undefined ? NaN : Number(recorded)
             const node = Number.isNaN(pos) ? null : view.state.doc.nodeAt(pos)
             if (!node || node.type.name !== 'check') return
+            cancelHide()
             event.preventDefault()
             armed = false
             origin = { x: event.clientX, y: event.clientY }

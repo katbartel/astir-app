@@ -164,8 +164,9 @@ container, which is why the frontend volume is not the one that goes stale.
 | `note-schema.test.mts` | host | the schema, built without an editor |
 | `note-editing.test.mts` | host | section 6, against ProseMirror state with no DOM |
 | `note-regression.test.mts` | host | section 13, against an esbuild bundle in real Chrome |
+| `note-css-lint.test.mts` | host | the notes CSS scope: no raw hex, no rgba, no non-token px |
 
-`node scripts/notes-suite.mts` runs all five, **smoke first**, and stops if the smoke
+`node scripts/notes-suite.mts` runs all six, **smoke first**, and stops if the smoke
 check fails.
 
 **The four editor suites are host-only by nature, and that is a real limit.** They
@@ -703,11 +704,20 @@ never a new `--something-soft` token: the link underline is
 
 A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.
 Six belong to the adapters and are covered in step 6. Five are behaviour and are
-asserted directly: the toolbar's flip and clamp, its exact contents and order, that
-the grip's width never shifts a row, that markers are SVG elements rather than text
-nodes, and that every toolbar button is keyboard reachable with an aria label matching
-its tooltip and focus returning to the selection on close. Two of those had shipped
-unimplemented and were caught by a click failing, which is not a test noticing.
+asserted directly: the toolbar's flip and clamp, its exact contents and order, where
+the grip sits, that markers are SVG elements rather than text nodes, and that every
+toolbar button is keyboard reachable with an aria label matching its tooltip and focus
+returning to the selection on close. Two of those had shipped unimplemented and were
+caught by a click failing, which is not a test noticing.
+
+The grip rule is **three** assertions, not one. The original "its width never shifts a
+row" passed for the length of the rebuild while the grip sat over the box instead of
+beside it: a width check cannot see horizontal position. The three that replaced it pin
+the position the width check could not — the grip is in the gutter to the left of the
+box, it does not move when the row's marker changes (or has none), and it tracks the
+section indent — and each was written to fail against the shipped grip before the fix
+landed. The bug: the grip was placed from `coordsAtPos(row.pos + 1)`, the content edge
+*after* the marker, rather than `row.pos`, the row's own left edge. See section 8.
 
 **The remaining rules are deliberately not asserted, and this is the list**: the field
 recipe's colours, the toolbar surface recipe, the active-state colours, the

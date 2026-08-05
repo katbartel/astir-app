@@ -1298,6 +1298,18 @@ are the fix for "the grip appears and dragging does nothing":
    grip away between the eye seeing it and the finger pressing it. Pressing during the
    linger drags the row the grip was offered for, never the row the pointer drifted onto.
 
+**The row is resolved at the moment of the press, never from a cached position.** A
+document position is valid for exactly one version of the document. The grip records one
+when it is placed and it lingers for 260ms, so any change in between (a keystroke, a
+checkbox toggle, an earlier drop) leaves that number pointing at a different row, or at an
+empty paragraph. Pressing it then drags **that**: a card cloned from an empty paragraph is
+a caret and nothing else, the decoration hides the wrong row so the real one stays behind
+at the origin, and the slots exclude a range nobody is dragging so no gap opens. One stale
+number produces every one of those symptoms at once, which is why they arrive together.
+
+The grip's `data-rowPos` is therefore a diagnostic, not a source of truth: pointerdown asks
+`posAtCoords` where the grip is, against the document as it is now.
+
 **The press does not depend on hover bookkeeping.** The row being dragged is recorded on
 the grip element when it is placed, and read back at pointerdown, so an intervening
 mousemove cannot leave a visible grip that presses nothing. A visible grip is always

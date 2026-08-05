@@ -830,6 +830,9 @@ async function main() {
         rowWidth: Math.round(rowWidth as number),
         cardHasCheckbox: !!card.querySelector('.note-box'),
         cardText: (card.textContent ?? '').trim(),
+        // The card's own markup in the failure message: a wrong card is then visible in
+        // the output instead of inferred from a boolean.
+        cardHtml: card.outerHTML.slice(0, 300),
         ghosts,
         gapBackground: gs?.backgroundColor ?? 'no gap',
         gapBorder: gs ? `${gs.borderTopWidth} ${gs.borderTopStyle}` : 'no gap',
@@ -842,7 +845,11 @@ async function main() {
       Math.abs(during.cardWidth - during.rowWidth) <= 1,
       `the card fills the row's width: card ${during.cardWidth}, row ${during.rowWidth}`,
     )
-    check(during.cardHasCheckbox, `the card carries the checkbox: ${JSON.stringify(during.cardText)}`)
+    check(during.cardHasCheckbox, `the card carries the checkbox. card was: ${during.cardHtml}`)
+    check(
+      during.cardText === 'lift me whole',
+      `and it carries THIS row's text, not another row's. card was: ${during.cardHtml}`,
+    )
     check(during.ghosts === 0, `nothing renders at the origin (${during.ghosts} ghost rows)`)
     check(
       during.gapBackground === 'rgba(0, 0, 0, 0)' || during.gapBackground === 'transparent',
@@ -853,6 +860,73 @@ async function main() {
       `and no outline on the gap: ${during.gapBorder}`,
     )
     return 'the whole row lifts, the origin is empty, and the gap is empty space'
+  })
+
+
+  await step('f11b. a second drag builds its card from the row it was pressed on', async () => {
+    // The case the first version of f11 could not see. A document position is only valid
+    // for one version of the document, and the grip caches one on its element. After a
+    // drop the document has changed, so pressing the same grip again without moving the
+    // pointer dragged whatever now sits at the old position: an earlier row, or an empty
+    // paragraph, giving a card with no marker and no text.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'alpha' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'beta' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'gamma' }] },
+          { type: 'paragraph' },
+        ],
+      }),
+    )
+    const first = visible(await rows())
+    // Drag alpha down past beta, which changes the document under the grip.
+    await dragRowTo(0, first[1].top + first[1].height / 2 + 2)
+    await page.waitForTimeout(150)
+    const order = shape(await rows())
+    check(order.startsWith('check[ ] "beta"'), `the first drag moved a row: ${order}`)
+
+    // Now press the grip again, moving onto it but WITHOUT re-hovering the row, exactly
+    // as a hand does when reordering two rows one after the other.
+    const grip = await page.locator('.note-grip').boundingBox()
+    if (!grip) throw new Error('the grip vanished after the drop')
+    // Whichever row the grip is now beside is the row that must lift. Read from the
+    // layout, not from the grip's own record, so a stale record cannot define correctness.
+    const expected = await page.evaluate(() => {
+      const g = document.querySelector('.note-grip')!.getBoundingClientRect()
+      const mid = g.top + g.height / 2
+      const row = [...document.querySelectorAll('.note-editor .note-row')].find((el) => {
+        const r = el.getBoundingClientRect()
+        return mid >= r.top && mid <= r.bottom
+      })
+      return { type: row?.classList.contains('note-check-row') ? 'check' : 'other', text: (row?.textContent ?? '').trim() }
+    })
+    await page.mouse.move(grip.x + 2, grip.y + grip.height - 3)
+    await page.mouse.down()
+    await page.mouse.move(grip.x + 2, grip.y + grip.height - 3 + 14, { steps: 3 })
+    const second = await page.evaluate(() => {
+      const card = document.querySelector('.note-drag-card') as HTMLElement | null
+      return {
+        exists: !!card,
+        text: (card?.textContent ?? '').trim(),
+        hasBox: !!card?.querySelector('.note-box'),
+        html: card ? card.outerHTML.slice(0, 300) : 'NO CARD',
+      }
+    })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+
+    check(second.exists, 'the second press lifts a card')
+    check(
+      second.hasBox,
+      `the second card carries a checkbox, so it was built from a check row. card was: ${second.html}`,
+    )
+    check(
+      second.text === expected.text && expected.type === 'check',
+      `the second card is the row the grip points at (${expected.type} "${expected.text}"). card was: ${second.html}`,
+    )
+    return 'a drag after a drag builds its card from the right row'
   })
 
   await step('5f. a grip that is painted is pressable, even while it is fading out', async () => {

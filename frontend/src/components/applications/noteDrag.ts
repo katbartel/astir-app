@@ -358,6 +358,19 @@ export const NoteDrag = Extension.create({
            * those would otherwise take the grip away between the eye seeing it and the
            * finger pressing it.
            */
+          /**
+           * The last place the pointer was seen inside the editor.
+           *
+           * The grip records a document position, and a document position is only valid
+           * for one version of the document. After any change the recorded one may point
+           * at a different row, or at an empty paragraph, and pressing the grip would
+           * then drag that instead: a card with no marker and no text, the wrong row
+           * hidden, and slots computed for a range nobody is dragging. So the grip is
+           * re-resolved from the pointer whenever the document changes, rather than
+           * trusting a cached position across versions.
+           */
+          let lastPointer: { x: number; y: number } | null = null
+
           let hideTimer: ReturnType<typeof setTimeout> | null = null
           const cancelHide = () => {
             if (hideTimer !== null) {
@@ -405,6 +418,7 @@ export const NoteDrag = Extension.create({
           }
 
           const onMove = (event: MouseEvent) => {
+            lastPointer = { x: event.clientX, y: event.clientY }
             if (noteDragKey.getState(view.state)) return
             // Moving from the row onto the grip must not count as leaving the row.
             // The grip sits over the editable but is not inside it, so listening on
@@ -431,10 +445,27 @@ export const NoteDrag = Extension.create({
           let start: { pos: number; nodeSize: number } | null = null
 
           const onPointerDown = (event: PointerEvent) => {
-            const recorded = grip?.dataset.rowPos
-            const pos = recorded === undefined ? NaN : Number(recorded)
+            /**
+             * The row is resolved HERE, from where the grip is, against the document as
+             * it is now. It is never read from a cached position.
+             *
+             * A document position is only valid for one version of the document. The grip
+             * records one when it is placed and the grip lingers for 260ms, so any change
+             * in between (a keystroke, a checkbox toggle, an earlier drop) leaves the
+             * recorded position pointing at a different row, or at an empty paragraph.
+             * Pressing it then dragged that instead: a card cloned from an empty
+             * paragraph is a caret and nothing else, the wrong row is hidden so the real
+             * one stays behind at the origin, and the slots exclude a range nobody is
+             * dragging so no gap opens. Every symptom of that report is one stale number.
+             */
+            const rect = grip?.getBoundingClientRect()
+            if (!rect) return
+            // Just inside the content column, at the grip's own vertical centre.
+            const resolved = rowUnder(rect.right + 6, rect.top + rect.height / 2)
+            const pos = resolved?.pos ?? NaN
             const node = Number.isNaN(pos) ? null : view.state.doc.nodeAt(pos)
             if (!node || node.type.name !== 'check') return
+            if (grip) grip.dataset.rowPos = String(pos)
             cancelHide()
             event.preventDefault()
             armed = false
@@ -611,6 +642,12 @@ export const NoteDrag = Extension.create({
           window.addEventListener('keydown', onKeyDown)
 
           return {
+            update(_view, prevState) {
+              // Not while a drag is running: the lift owns the grip until it ends.
+              if (noteDragKey.getState(view.state)) return
+              if (prevState.doc.eq(view.state.doc)) return
+              placeGrip(lastPointer ? rowUnder(lastPointer.x, lastPointer.y) : null)
+            },
             destroy() {
               view.dom.removeEventListener('mousemove', onMove)
               view.dom.removeEventListener('mouseleave', onLeave)

@@ -83,6 +83,10 @@ function buildSlots(view: EditorView, exclude: { from: number; to: number }): Sl
       const pos = offset
       offset += child.nodeSize
 
+      // The row in the air is out of flow, so it has no rect worth measuring and offers
+      // no slot of its own.
+      if (pos === exclude.from) return
+
       if (isRow(child)) {
         const rect = rowRect(pos)
         const mid = (rect.top + rect.bottom) / 2
@@ -465,6 +469,12 @@ export const NoteDrag = Extension.create({
             const node = view.state.doc.nodeAt(start.pos)
             if (!node) return
             const coords = view.coordsAtPos(start.pos + 1)
+            // Measured and cloned BEFORE the lift is dispatched. The lift takes the row
+            // out of flow, so anything measured after it reads as a zero-width box, and
+            // the card was 26px of its own padding.
+            const rowDom = view.nodeDOM(start.pos) as HTMLElement | null
+            const rowWidth = rowDom?.getBoundingClientRect().width ?? 0
+            const rowClone = rowDom?.cloneNode(true) as HTMLElement | undefined
             const dragging: Dragging = {
               from: start.pos,
               to: start.pos + node.nodeSize,
@@ -477,10 +487,32 @@ export const NoteDrag = Extension.create({
             tr.setMeta('addToHistory', false)
             view.dispatch(tr)
 
+            // The lifted element is the ENTIRE row: grip, checkbox and text, as one
+            // card at the row's own width. A pill fitted to the text leaves the marker
+            // behind and reads as dragging a word rather than a line. Section 8.
             card = document.createElement('div')
             card.className = 'note-drag-card'
             if (reduceMotion()) card.dataset.reduceMotion = 'true'
-            card.textContent = node.textContent
+            if (rowWidth > 0) card.style.width = `${rowWidth}px`
+            if (rowClone) {
+              // A clone is inert: no contenteditable, no ProseMirror bookkeeping, and
+              // nothing in it can take a caret while it is in the air.
+              rowClone.removeAttribute('contenteditable')
+              for (const editable of rowClone.querySelectorAll('[contenteditable]')) {
+                editable.removeAttribute('contenteditable')
+              }
+              card.appendChild(rowClone)
+              // The grip rides along, so the card is the row as it was, gutter included.
+              if (grip) {
+                const gripClone = grip.cloneNode(true) as HTMLElement
+                gripClone.removeAttribute('style')
+                gripClone.dataset.on = 'true'
+                gripClone.classList.add('note-drag-card-grip')
+                card.appendChild(gripClone)
+              }
+            } else {
+              card.textContent = node.textContent
+            }
             document.body.appendChild(card)
             if (grip) grip.dataset.dragging = 'true'
             armed = true

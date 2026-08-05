@@ -787,6 +787,74 @@ async function main() {
   })
 
 
+
+  await step('f11. the drag lifts the whole row, and nothing is left at the origin', async () => {
+    // Four rules, all four already in section 8, none of them asserted until now. That
+    // is the second spec rule to ship unimplemented for want of an assertion, after the
+    // toolbar's flip and clamp.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'lift me whole' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'second row' }] },
+          { type: 'paragraph', content: [{ type: 'text', text: 'tail' }] },
+        ],
+      }),
+    )
+    const list = visible(await rows())
+    const row = list[0]
+    await page.mouse.move(row.left + 80, row.top + row.height / 2)
+    await page.waitForSelector(".note-grip[data-on='true']")
+    const grip = (await page.locator('.note-grip').boundingBox())!
+    await page.mouse.move(grip.x + 2, grip.y + grip.height - 3)
+    await page.mouse.down()
+    await page.mouse.move(grip.x + 2, grip.y + grip.height - 3 + 14, { steps: 3 })
+    await page.waitForSelector('.note-drag-card')
+
+    const during = await page.evaluate((rowWidth) => {
+      const card = document.querySelector('.note-drag-card') as HTMLElement
+      const gap = document.querySelector('.note-drag-gap') as HTMLElement | null
+      // offsetWidth, not the bounding rect: the card carries a scale(1.01) lift, so its
+      // painted box is 1% larger by design. The rule is about the card's own width
+      // matching the row's, not about the lift.
+      const cardWidthOwn = card.offsetWidth
+      const gs = gap ? getComputedStyle(gap) : null
+      // Anything still painting the dragged row's text where it came from.
+      const ghosts = [...document.querySelectorAll('.note-editor .note-row')].filter((el) => {
+        const r = el.getBoundingClientRect()
+        return (el.textContent ?? '').includes('lift me whole') && r.height > 0 && r.width > 0
+      }).length
+      return {
+        cardWidth: Math.round(cardWidthOwn),
+        rowWidth: Math.round(rowWidth as number),
+        cardHasCheckbox: !!card.querySelector('.note-box'),
+        cardText: (card.textContent ?? '').trim(),
+        ghosts,
+        gapBackground: gs?.backgroundColor ?? 'no gap',
+        gapBorder: gs ? `${gs.borderTopWidth} ${gs.borderTopStyle}` : 'no gap',
+      }
+    }, row.width)
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+
+    check(
+      Math.abs(during.cardWidth - during.rowWidth) <= 1,
+      `the card fills the row's width: card ${during.cardWidth}, row ${during.rowWidth}`,
+    )
+    check(during.cardHasCheckbox, `the card carries the checkbox: ${JSON.stringify(during.cardText)}`)
+    check(during.ghosts === 0, `nothing renders at the origin (${during.ghosts} ghost rows)`)
+    check(
+      during.gapBackground === 'rgba(0, 0, 0, 0)' || during.gapBackground === 'transparent',
+      `the gap is empty space, no fill: ${during.gapBackground}`,
+    )
+    check(
+      during.gapBorder.startsWith('0px') || during.gapBorder.includes('none'),
+      `and no outline on the gap: ${during.gapBorder}`,
+    )
+    return 'the whole row lifts, the origin is empty, and the gap is empty space'
+  })
+
   await step('5f. a grip that is painted is pressable, even while it is fading out', async () => {
     // The failure the suite could not see. Reaching for an 8px grip means the pointer
     // drifts across other rows on the way. A non-check row takes the grip away, and the
@@ -994,11 +1062,18 @@ async function main() {
     )
     check(now[1].indent > now[0].indent, 'and they are indented under it')
     check(now[1].checked === true, 'with their checked states kept')
-    // And a section inside a section is not offered.
-    await page.evaluate(() => window.EDITOR!.chain().focus().setTextSelection({ from: 6, to: 9 }).run())
+    // And a section inside a section is not offered. Measured on a row in the BODY: with
+    // the caret in the title the same button dissolves the section instead, which is
+    // f14's last row.
+    const bodyRow = (await docRows()).find((r) => r.text === 'one')
+    if (!bodyRow) throw new Error('no body row to select')
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: bodyRow.start, to: bodyRow.end },
+    )
     await page.waitForSelector('.note-toolbar')
     const disabled = await page.locator('[aria-label="Section"]').isDisabled()
-    check(disabled, 'the section button is disabled inside a section body')
+    check(disabled, 'the section button is disabled on a row inside a section body')
     return 'the row became the header and adopted what followed it, one section total'
   })
 
@@ -1077,12 +1152,12 @@ async function main() {
     // One surface that is itself the field: the URL is editable text, not a label.
     const url = await page.locator('.note-linkbar-field').inputValue()
     check(url.includes('example.test/posting'), `the link bar shows the URL as editable text: ${url}`)
-    check((await page.locator('[aria-label="Open in new tab"]').count()) === 1, 'with an open-in-new-tab icon')
-    check((await page.locator('[aria-label="Remove link"]').count()) === 1, 'and a remove icon')
+    check((await page.locator('[aria-label="Open"]').count()) === 1, 'with an Open icon')
+    check((await page.locator('[aria-label="Delete"]').count()) === 1, 'and a Delete icon')
     check((await page.locator('[aria-label="Save"]').count()) === 0, 'and no tick, because it is saved')
 
     // Remove takes the mark off the whole run, and the text stays.
-    await page.click('[aria-label="Remove link"]')
+    await page.click('[aria-label="Delete"]')
     const after = await page.evaluate(() => JSON.stringify(window.EDITOR!.getJSON()))
     check(!after.includes('"link"'), 'Remove took the mark off')
     check(after.includes('see the posting'), 'and left the text alone')
@@ -2094,8 +2169,8 @@ async function main() {
     await caretTo(inLink)
     await page.waitForSelector('.note-linkbar[data-state="saved"]')
     check((await page.locator('[aria-label="Save"]').count()) === 0, 'the saved state has no tick')
-    check((await page.locator('[aria-label="Open in new tab"]').count()) === 1, 'it has open in new tab')
-    check((await page.locator('[aria-label="Remove link"]').count()) === 1, 'and remove link')
+    check((await page.locator('[aria-label="Open"]').count()) === 1, 'it has Open')
+    check((await page.locator('[aria-label="Delete"]').count()) === 1, 'and Delete')
     check((await page.locator('.note-linkbar-field').isEditable()), 'and the URL is still editable in place')
     // No pencil, and no second field for display text.
     check((await page.locator('.note-linkbar input').count()) === 1, 'one field only, no second one for link text')
@@ -2111,6 +2186,208 @@ async function main() {
       `the icons are outline only, bare at rest: ${JSON.stringify(icons)}`,
     )
     return 'one surface, three states, outline icons, nothing nested'
+  })
+
+
+  await step('f12. toolbar chrome: bare buttons, one hairline on the container', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'chrome me' }] }] }))
+    await selectRow(0)
+    const read = () =>
+      page.evaluate(() => {
+        const bar = document.querySelector('.note-toolbar') as HTMLElement
+        const bs = getComputedStyle(bar)
+        const buttons = [...document.querySelectorAll('.note-toolbar button')].map((el) => {
+          const cs = getComputedStyle(el)
+          return {
+            border: `${cs.borderTopWidth} ${cs.borderRightWidth} ${cs.borderBottomWidth} ${cs.borderLeftWidth}`,
+            outline: cs.outlineStyle === 'none' ? 'none' : `${cs.outlineWidth} ${cs.outlineStyle}`,
+            background: cs.backgroundColor,
+          }
+        })
+        return {
+          container: {
+            border: `${bs.borderTopWidth} ${bs.borderTopStyle} ${bs.borderTopColor}`,
+            widths: `${bs.borderTopWidth} ${bs.borderRightWidth} ${bs.borderBottomWidth} ${bs.borderLeftWidth}`,
+            radius: bs.borderTopLeftRadius,
+            outline: bs.outlineStyle,
+          },
+          buttons,
+        }
+      })
+
+    const resting = await read()
+    check(resting.container.widths === '1px 1px 1px 1px', `the container has exactly one 1px border: ${resting.container.widths}`)
+    check(
+      resting.container.border.includes('rgba(70, 60, 40, 0.16)'),
+      `in the divider tone: ${resting.container.border}`,
+    )
+    check(resting.container.radius === '14px', `radius 14: ${resting.container.radius}`)
+    check(resting.container.outline === 'none', `and no outline on the container: ${resting.container.outline}`)
+    const bare = (list: { border: string; outline: string; background: string }[]) =>
+      list.every((b) => b.border === '0px 0px 0px 0px' && b.outline === 'none')
+    check(bare(resting.buttons), `resting: no button has a border or outline: ${JSON.stringify(resting.buttons[0])}`)
+    check(
+      resting.buttons.every((b) => b.background === 'rgba(0, 0, 0, 0)'),
+      'and resting is the bare glyph, no background',
+    )
+
+    await page.hover('[aria-label="Bold"]')
+    await page.waitForTimeout(80)
+    const hovered = await read()
+    check(bare(hovered.buttons), `hover: still no border or outline: ${JSON.stringify(hovered.buttons[0])}`)
+    check(hovered.buttons[0].background !== 'rgba(0, 0, 0, 0)', `hover is a tinted square: ${hovered.buttons[0].background}`)
+
+    await page.click('[aria-label="Bold"]')
+    await page.waitForTimeout(120)
+    const active = await read()
+    check(bare(active.buttons), `active: still no border or outline: ${JSON.stringify(active.buttons[0])}`)
+    const gold = await page.evaluate(() => {
+      const el = document.querySelector('.note-toolbar button.active') as HTMLElement
+      const cs = getComputedStyle(el)
+      return { background: cs.backgroundColor, colour: cs.color }
+    })
+    check(
+      gold.background === 'rgba(223, 168, 63, 0.16)' && gold.colour === 'rgb(138, 100, 22)',
+      `active is a gold-soft square with a gold-text glyph: ${JSON.stringify(gold)}`,
+    )
+    // The divider stays where it was.
+    const order = await page.evaluate(() =>
+      [...document.querySelectorAll('.note-toolbar > *')].map((el) =>
+        el.tagName === 'SPAN' ? '|' : el.getAttribute('aria-label'),
+      ),
+    )
+    check(
+      JSON.stringify(order) === JSON.stringify(['Bold', 'Italic', 'Strikethrough', 'Link', '|', 'Checkbox', 'Bullet', 'Quote', 'Section']),
+      `the divider stays between the link and the checkbox: ${JSON.stringify(order)}`,
+    )
+    return 'bare buttons, one hairline container, gold only on the active square'
+  })
+
+  await step('f13. the link tooltips clear the popover, and read Save, Open, Delete', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'tooltip clearance' }] }] }))
+    await selectRow(0)
+    await page.click('[aria-label="Link"]')
+    await page.waitForSelector('.note-linkbar')
+    check((await page.locator('[aria-label="Save"]').count()) === 1, 'the empty state offers Save')
+    await page.hover('[aria-label="Save"]')
+    await page.waitForSelector('.tooltip-layer:not([hidden])')
+    const clearance = async () =>
+      page.evaluate(() => {
+        const bar = document.querySelector('.note-linkbar')!.getBoundingClientRect()
+        const tip = document.querySelector('.tooltip-bubble')!.getBoundingClientRect()
+        const overlaps = !(tip.bottom <= bar.top || tip.top >= bar.bottom || tip.right <= bar.left || tip.left >= bar.right)
+        return { overlaps, side: tip.bottom <= bar.top ? 'above' : 'below', tipText: document.querySelector('.tooltip-label')!.textContent }
+      })
+    const top = await clearance()
+    check(!top.overlaps, `the tooltip does not overlap the bar (${top.side})`)
+    check(top.tipText === 'Save', `and reads exactly "Save": ${JSON.stringify(top.tipText)}`)
+
+    // Saved state: Open and Delete, exactly those words, still clearing the bar.
+    await page.fill('.note-linkbar-field', 'https://example.test/x')
+    await page.press('.note-linkbar-field', 'Enter')
+    await page.waitForTimeout(150)
+    const inLink = await page.evaluate(() => {
+      let at = 0
+      window.EDITOR!.state.doc.descendants((node, pos) => {
+        if (node.isText && node.marks.some((m) => m.type.name === 'link')) at = pos + 2
+        return true
+      })
+      return at
+    })
+    await caretTo(inLink)
+    await page.waitForSelector('.note-linkbar[data-state="saved"]')
+    const labels = await page.evaluate(() =>
+      [...document.querySelectorAll('.note-linkbar-icon')].map((el) => el.getAttribute('data-tooltip')),
+    )
+    check(JSON.stringify(labels) === JSON.stringify(['Open', 'Delete']), `the copy is Open and Delete: ${JSON.stringify(labels)}`)
+    for (const label of ['Open', 'Delete']) {
+      await page.hover(`[aria-label="${label}"]`)
+      await page.waitForTimeout(120)
+      const spot = await clearance()
+      check(!spot.overlaps, `${label}'s tooltip clears the bar (${spot.side})`)
+    }
+    return 'tooltips clear the bar entirely, and read Save, Open, Delete'
+  })
+
+  await step('f14. the type buttons change the type and never the checked state', async () => {
+    const rowOf = () =>
+      page.evaluate(() => {
+        const node = window.EDITOR!.state.doc.firstChild!
+        return { type: node.type.name, checked: node.attrs.checked ?? null, text: node.textContent }
+      })
+    const press = async (label: string) => {
+      await selectRow(0)
+      await page.click(`[aria-label="${label}"]`)
+      await page.waitForTimeout(150)
+      return rowOf()
+    }
+    const row = (type: string, text: string, checked?: boolean) =>
+      v2({
+        type: 'doc',
+        content: [
+          type === 'check'
+            ? { type: 'check', attrs: { checked: !!checked }, content: [{ type: 'text', text }] }
+            : { type, content: [{ type: 'text', text }] },
+        ],
+      })
+
+    // The one the report named: a ticked row loses its marker, it does not untick.
+    await seed(row('check', 'ticked row', true))
+    let after = await press('Checkbox')
+    check(
+      after.type === 'paragraph' && after.text === 'ticked row',
+      `ticked check + checkbox becomes a paragraph, text kept: ${JSON.stringify(after)}`,
+    )
+
+    await seed(row('check', 'unticked row', false))
+    after = await press('Checkbox')
+    check(after.type === 'paragraph' && after.text === 'unticked row', `unticked check + checkbox becomes a paragraph: ${JSON.stringify(after)}`)
+
+    await seed(row('paragraph', 'plain row'))
+    after = await press('Checkbox')
+    check(
+      after.type === 'check' && after.checked === false && after.text === 'plain row',
+      `paragraph + checkbox becomes an unticked check: ${JSON.stringify(after)}`,
+    )
+
+    await seed(row('bullet', 'bulleted row'))
+    after = await press('Bullet')
+    check(after.type === 'paragraph' && after.text === 'bulleted row', `bullet + bullet becomes a paragraph: ${JSON.stringify(after)}`)
+
+    await seed(row('paragraph', 'plain again'))
+    after = await press('Bullet')
+    check(after.type === 'bullet' && after.text === 'plain again', `paragraph + bullet becomes a bullet: ${JSON.stringify(after)}`)
+
+    // Section dissolves, per the existing rule.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'section',
+            attrs: { collapsed: false },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'Header' }] },
+              { type: 'sectionBody', content: [{ type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'kept' }] }] },
+            ],
+          },
+        ],
+      }),
+    )
+    const list = await docRows()
+    await page.evaluate(
+      (range) => window.EDITOR!.chain().focus().setTextSelection(range).run(),
+      { from: list[0].start, to: list[0].end },
+    )
+    await page.waitForSelector('.note-toolbar')
+    await page.click('[aria-label="Section"]')
+    await page.waitForTimeout(150)
+    const dissolved = shape(await rows())
+    check(
+      dissolved === 'paragraph "Header" | check[x] "kept"',
+      `section + section dissolves, keeping the ticked child: ${dissolved}`,
+    )
+    return 'all six transitions, and a ticked row loses its marker rather than its tick'
   })
 
   await step('f9. a tooltip shows its shortcut as a separate, dimmer part', async () => {

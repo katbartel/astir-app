@@ -320,6 +320,52 @@ function caretIntoStartOf(node: PmNode, nodeStart: number): number {
 
 // --- Backspace ---
 
+/**
+ * Dissolve the section the caret is in: its body rows take the section's place, in
+ * order, and the title becomes a paragraph keeping its text. Content is never destroyed.
+ *
+ * One implementation, used by Backspace at the start of a title and by the toolbar's
+ * section button, so the two cannot drift apart.
+ */
+export const dissolveSection: Command = (state, dispatch) => {
+  const $from = state.selection.$from
+  const title = titleAround($from)
+  if (!title) return false
+  if (!dispatch) return true
+  const schema = state.schema
+  const sectionDepth = title.depth - 1
+  const sectionPos = $from.before(sectionDepth)
+  const section = $from.node(sectionDepth)
+  const body = section.child(1)
+  const replacement: PmNode[] = [schema.nodes.paragraph.createChecked(null, title.node.content)]
+  body.forEach((child) => replacement.push(child))
+  const tr = state.tr.replaceWith(sectionPos, sectionPos + section.nodeSize, replacement)
+  tr.setSelection(TextSelection.create(tr.doc, sectionPos + 1))
+  dispatch(tr.scrollIntoView())
+  return true
+}
+
+/**
+ * The toolbar's row-type buttons change a row's TYPE and never touch `checked`.
+ *
+ * Pressing the checkbox button on a row that is already a checkbox removes the marker:
+ * it does not untick the box. Only the box in the row changes `checked`, and nothing in
+ * the toolbar does. See docs/notes-editor.md 6.7.
+ */
+export function toggleRowType(name: 'check' | 'bullet'): Command {
+  return (state, dispatch) => {
+    const $from = state.selection.$from
+    // In a section title the same button dissolves the section, per 6.3.
+    const row = rowAround($from)
+    if (!row) return false
+    const next = row.node.type.name === name ? 'paragraph' : name
+    const tr = state.tr
+    if (!applyRowType(tr, next)) return false
+    if (dispatch) dispatch(tr.scrollIntoView())
+    return true
+  }
+}
+
 export const noteBackspace: Command = (state, dispatch) => {
   const { $from, empty } = state.selection
   if (!empty) return false // a selection deletes normally
@@ -328,19 +374,7 @@ export const noteBackspace: Command = (state, dispatch) => {
   const title = titleAround($from)
   if (title) {
     if ($from.pos !== $from.start(title.depth)) return false
-    // Dissolve: the body's rows take the section's place, in order, and the title
-    // becomes a paragraph keeping its text. Content is never destroyed.
-    if (!dispatch) return true
-    const sectionDepth = title.depth - 1
-    const sectionPos = $from.before(sectionDepth)
-    const section = $from.node(sectionDepth)
-    const body = section.child(1)
-    const replacement: PmNode[] = [schema.nodes.paragraph.createChecked(null, title.node.content)]
-    body.forEach((child) => replacement.push(child))
-    const tr = state.tr.replaceWith(sectionPos, sectionPos + section.nodeSize, replacement)
-    tr.setSelection(TextSelection.create(tr.doc, sectionPos + 1))
-    dispatch(tr.scrollIntoView())
-    return true
+    return dissolveSection(state, dispatch)
   }
 
   const row = rowAround($from)
@@ -486,6 +520,9 @@ export function setRowType(name: 'paragraph' | 'check' | 'bullet'): Command {
  */
 export const convertRowToSection: Command = (state, dispatch) => {
   const $from = state.selection.$from
+  // Already a section: the button dissolves it, which is the same operation Backspace
+  // performs on a title (6.3). A type button always toggles the type it names.
+  if (titleAround($from)) return dissolveSection(state, dispatch)
   const row = rowAround($from)
   if (!row) return false
   const container = containerOf($from, row.depth)

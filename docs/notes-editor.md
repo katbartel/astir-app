@@ -844,7 +844,13 @@ inside a bordered box: that reads as a box inside a box, which is what it replac
   nothing moves when typing starts. Saved: the URL as editable text, then open-in-new-tab
   and remove, and no tick.
 - **Icons are outline only.** No gold fill, no solid button. Resting is the bare glyph;
-  hover adds the tinted square and the tooltip. `Save`, `Open in new tab`, `Remove link`.
+  hover adds the tinted square and the tooltip. The copy is exactly `Save`, `Open`,
+  `Delete`.
+- **A tooltip inside a floating surface measures against the surface, not the control.** A
+  tooltip anchored to a 22px icon inside a 46px bar lands on top of the bar. The bar
+  carries `data-tooltip-clear`, and the tooltip layer then takes its vertical anchor from
+  the bar's box and flips to the other side when there is no room. Asserted by checking
+  that the tooltip's box does not intersect the bar's, for all three icons.
 - **No pencil and no second field.** The URL is edited in place, because it is already a
   field. There is no separate input for the link's display text: that text lives in the
   note, where it can be seen in context.
@@ -852,6 +858,29 @@ inside a bordered box: that reads as a box inside a box, which is what it replac
 Two values are the bar's own geometry and are component tokens (5.1): 46 is the height
 that fits a control row and its padding without reading as an input, and 6 is the air the
 icons need against 16 on the text side.
+
+### 5.7 Toolbar chrome
+
+The container is the only outlined thing.
+
+- **Container**: card surface, radius `--r-lg`, menu shadow, and **exactly one**
+  `--border-thin` border in `--line2`, the same tone as the internal divider and the link
+  bar's outline.
+- **Buttons**: no border and no outline, in resting, hover or active state. Resting is the
+  bare glyph; hover is a soft tinted square. The one exception is `:focus-visible`, which
+  is not a resting state and is required: a control that cannot be seen when focused is
+  unusable from the keyboard.
+- **Active**: a `--gold-soft` square with a `--gold-text` glyph. That is the only gold in
+  the toolbar.
+- The divider stays between the link button and the checkbox button.
+
+This regressed because deleting the old popover rules by regex decapitated three shared
+rules, not one: the base button rule, its hover, and its focus ring all had
+`.note-popover-action` as a second selector, and removing that left `.note-toolbar button`
+dangling above the focus declarations. Every button then took the browser's default border
+and the gold outline in every state. **The CSS lint caught only the rule that happened to
+contain a px value**, which is worth knowing about the lint: it guards values, not
+structure.
 
 ### 5.2 What is deliberately not asserted
 
@@ -1026,6 +1055,24 @@ Conversion always changes the current row. It never inserts a new one.
    is a wrap, so the adopted nodes are moved, never rebuilt.
 5. **Section to paragraph**: dissolves, as in 6.3.
 
+**The toolbar's type buttons change a row's type and never its `checked` state.** They
+toggle the type they name: pressing the checkbox button on a row that is already a
+checkbox **removes the marker**, it does not untick the box, and on a ticked row the
+`checked` value is discarded with the type. The full set:
+
+| Row | Button | Result |
+|---|---|---|
+| `check`, ticked | checkbox | `paragraph`, text kept, `checked` discarded |
+| `check`, unticked | checkbox | `paragraph`, text kept |
+| `paragraph` | checkbox | `check`, unticked, text kept |
+| `bullet` | bullet | `paragraph`, text kept |
+| `paragraph` | bullet | `bullet`, text kept |
+| section | section | dissolves, as in 6.3 |
+
+**The only thing that changes `checked` is the box in the row.** Nothing in the toolbar
+does. The dissolve is one implementation shared by Backspace at the start of a title and
+by the section button, so the two cannot drift apart.
+
 A conversion from a selection collapses the selection to its start first: the
 toolbar acts on a range, the row operations need a single position. Forgetting
 this used to make the toolbar buttons silent no-ops.
@@ -1197,6 +1244,24 @@ The behaviour, carried forward in full:
   the editable, so a drag that never focused it would leave cmd Z doing nothing.
 - Lift state is plugin state with `addToHistory: false`, and the drop is one
   transaction. Nothing about the appearance of a drag is in the document.
+
+**The lifted element is the whole row.** Grip, marker and text, as one card at the row's
+own width, cloned from the row's DOM before the lift is dispatched (after it, the row is
+out of flow and measures zero). Not a pill fitted to the text: a pill leaves the marker
+behind and reads as dragging a word rather than a line.
+
+**Nothing renders at the origin.** The row stays in the document and leaves the flow while
+it is in the air, and the gap holds the space at the target. A ghosted copy at the origin
+plus a gap at the target is two holes for one row. The row in the air also contributes no
+slot and is not measured for one.
+
+**The gap is empty space.** No fill, no grey bar, no dashed outline: the shape of the row
+that will land there and nothing else.
+
+All four of those were already stated here and none was asserted, which is why all four
+shipped wrong. They are asserted now: the card's own width equals the row's, the card
+contains the checkbox element, no element carrying the row's text renders at the origin
+during the drag, and the gap has no background and no border.
 
 Visual treatment: the lifted row is a card surface at `--r-md` with menu shadow
 `0 6px 24px rgba(60,50,30,.12)`. The gap is a plain space with no dashed outline, and
@@ -1691,6 +1756,13 @@ resolved entries describe the code being deleted, not code that is already gone.
   5. **A synthetic pointer.** The drag suite passed while a real press on a real grip
      did nothing. Playwright never starts a native drag and teleported onto the grip
      without crossing the hover handoff, so the suite could not see the class at all.
+  7. **A spec rule with nothing behind it, twice.** The toolbar's flip and clamp were
+     specified in section 7 and never implemented, caught by a click failing. The drag's
+     four lift rules were specified in section 8 and never implemented: the card was a
+     pill of text, the origin kept a ghost, and the gap was a grey bar. Both had been in
+     the spec for as long as the code existed. **Writing a rule down does not make it
+     true, and a rule with no assertion behind it is a wish.** Sections 5, 7 and 10 were
+     swept for that once (5.2); section 8 was not.
   6. **A centre-only hit test.** The grip's element was 8px wide while its intended
      target was the 14px gutter. Every drag assertion pressed the computed centre, which
      was the only column that worked, and an `elementFromPoint` check at that same centre

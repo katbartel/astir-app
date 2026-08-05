@@ -4632,8 +4632,10 @@ textarea {
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1);
+  /* Exactly one border, a hairline in the divider tone: the same --line2 as the
+     internal divider and the link bar's outline. */
   border: var(--border-thin) solid var(--line2);
-  border-radius: var(--r-md);
+  border-radius: var(--r-lg);
   background: var(--card);
   box-shadow: var(--shadow-menu);
 }
@@ -4718,19 +4720,41 @@ textarea {
   stroke-width: 1.7;
 }
 
-.note-toolbar button,
+/* Buttons carry no chrome of their own. Resting is the bare glyph: no border, no
+   outline, no background, in any state. The container is the only outlined thing.
+   See docs/notes-editor.md 5.7. */
+.note-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--space-1);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
 
-.note-toolbar button:hover,
+/* Hover is a soft tinted square, and nothing else. */
+.note-toolbar button:hover {
+  background: var(--hover-soft);
+}
 
+/* Keyboard focus is the one exception, and it is not a resting state: a control that
+   cannot be seen when focused is unusable from the keyboard (AGENTS.md, stack rule 4). */
 .note-toolbar button:focus-visible {
   outline: var(--border-thin) solid var(--gold);
   outline-offset: var(--note-focus-offset);
 }
 
-/* Pressed formatting under the caret. */
+/* Pressed formatting under the caret: a gold-soft square with a gold-text glyph. The
+   only gold in the toolbar. */
 .note-toolbar button.active {
   background: var(--gold-soft);
-  color: var(--gold-deep);
+  color: var(--gold-text);
 }
 
 .note-toolbar button:disabled {
@@ -4853,33 +4877,34 @@ textarea {
   opacity: 0;
 }
 
-/* The row being dragged stays in the document; this is only how it looks. */
+/* Nothing renders at the origin. The row stays in the document, out of flow while it is
+   in the air, and the gap holds the space at the target instead. A ghosted copy at the
+   origin plus a gap at the target is two holes for one row. */
 .note-editor .note-dragging {
-  opacity: 0.35;
+  display: none;
 }
 
-/* The gap is a plain space at the target indent. No dashed outline. */
+/* The gap is EMPTY SPACE at the target indent: no fill, no grey bar, no dashed outline.
+   It is the shape of the row that will land there, and nothing else. */
 .note-drag-gap {
-  border-radius: var(--r-sm);
-  background: var(--hover-soft);
+  background: none;
+  border: none;
   pointer-events: none;
 }
 
-/* The lifted row: card surface, r-md, menu shadow. It eases across to the target
-   indent, which is the only horizontal movement in a drag. */
+/* The lifted row: the whole row as one card, at the row's own width. Card surface,
+   r-md, menu shadow. It eases across to the target indent, which is the only horizontal
+   movement in a drag. */
 .note-drag-card {
   position: fixed;
   z-index: 70;
-  max-width: calc(var(--space-16) * 5);
   padding: var(--space-1) var(--space-3);
-  overflow: hidden;
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-md);
   background: var(--card);
   box-shadow: var(--shadow-menu);
   color: var(--ink);
   font-size: var(--type-body);
-  white-space: nowrap;
   pointer-events: none;
   transform: translate(var(--space-4), -50%) scale(1.01);
   transition: transform 0.15s ease;
@@ -4892,6 +4917,21 @@ textarea {
   .note-drag-card {
     transition-duration: 0s;
   }
+}
+
+/* The row inside the card keeps its own layout, so the marker sits where it did. */
+.note-drag-card .note-row {
+  min-height: var(--watch-title-action-size);
+}
+
+/* The grip rides along at the card's own gutter, outside its width so the card still
+   measures the width of the row. */
+.note-drag-card .note-drag-card-grip {
+  position: absolute;
+  top: var(--space-1);
+  left: calc((var(--space-3) + var(--note-grip-gap)) * -1);
+  opacity: 1;
+  visibility: visible;
 }
 
 .note-drag-card[data-reduce-motion='true'] {

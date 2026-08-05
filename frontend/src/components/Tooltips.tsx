@@ -52,7 +52,15 @@ export function Tooltips() {
 
     function positionTooltip() {
       if (!activeTooltipTarget || tooltipLayer.hidden) return
-      const targetRect = activeTooltipTarget.getBoundingClientRect()
+      // A control inside a floating surface measures against the SURFACE, not itself: a
+      // tooltip anchored to a 22px icon inside a 46px bar lands on top of the bar. The
+      // opt-in is data-tooltip-clear on the surface, so nothing else changes behaviour.
+      const ownRect = activeTooltipTarget.getBoundingClientRect()
+      const clearOf = activeTooltipTarget.closest('[data-tooltip-clear]') as HTMLElement | null
+      const clearRect = clearOf?.getBoundingClientRect()
+      const targetRect = clearRect
+        ? { left: ownRect.left, width: ownRect.width, top: clearRect.top, bottom: clearRect.bottom }
+        : ownRect
       const inset = tooltipNumber('--space-2', 8)
       const shift = tooltipNumber('--tooltip-shift', 3)
       const minLeft = tooltipMinLeft()

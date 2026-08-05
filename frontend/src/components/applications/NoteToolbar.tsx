@@ -11,7 +11,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { Editor } from '@tiptap/core'
 import type { Command } from '@tiptap/pm/state'
-import { convertRowToSection, setRowType, toggleQuote } from './noteEditing'
+import { convertRowToSection, toggleQuote, toggleRowType } from './noteEditing'
 
 type Rect = { top: number; left: number; bottom: number }
 
@@ -331,6 +331,9 @@ export function NoteToolbar({
       <div
         ref={surfaceRef}
         className="note-linkbar"
+        // The tooltips of the icons inside measure against this box, so they clear it
+        // entirely rather than landing on top of it. See docs/notes-editor.md 5.6.
+        data-tooltip-clear=""
         data-state={saved ? 'saved' : 'editing'}
         style={{ top: rect.bottom, left: clampedLeft }}
         role="group"
@@ -366,8 +369,8 @@ export function NoteToolbar({
             <button
               type="button"
               className="note-linkbar-icon"
-              aria-label="Open in new tab"
-              data-tooltip="Open in new tab"
+              aria-label="Open"
+              data-tooltip="Open"
               onMouseDown={run(() => window.open(link.href, '_blank', 'noreferrer,noopener'))}
             >
               <OpenGlyph />
@@ -375,8 +378,8 @@ export function NoteToolbar({
             <button
               type="button"
               className="note-linkbar-icon"
-              aria-label="Remove link"
-              data-tooltip="Remove link"
+              aria-label="Delete"
+              data-tooltip="Delete"
               onMouseDown={run(() =>
                 editor.chain().focus().setTextSelection({ from: link.from, to: link.to }).unsetLink().run(),
               )}
@@ -485,7 +488,7 @@ export function NoteToolbar({
         data-tooltip="Checkbox"
         data-tooltip-key={shortcut.Checkbox}
         data-tooltip-above=""
-        onMouseDown={run(() => dispatchCommand(setRowType('check')))}
+        onMouseDown={run(() => dispatchCommand(toggleRowType('check')))}
       >
         <CheckboxGlyph />
       </button>
@@ -498,7 +501,7 @@ export function NoteToolbar({
         data-tooltip="Bullet"
         data-tooltip-key={shortcut.Bullet}
         data-tooltip-above=""
-        onMouseDown={run(() => dispatchCommand(setRowType('bullet')))}
+        onMouseDown={run(() => dispatchCommand(toggleRowType('bullet')))}
       >
         <BulletGlyph />
       </button>

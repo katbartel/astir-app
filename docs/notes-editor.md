@@ -1308,7 +1308,19 @@ at the origin, and the slots exclude a range nobody is dragging so no gap opens.
 number produces every one of those symptoms at once, which is why they arrive together.
 
 The grip's `data-rowPos` is therefore a diagnostic, not a source of truth: pointerdown asks
-`posAtCoords` where the grip is, against the document as it is now.
+`posAtCoords` where the grip is, against the document as it is now. Two rules, both needed:
+
+1. **The row is resolved at the press**, from the grip's own geometry.
+2. **The grip is re-aimed whenever the document changes**, in the plugin's `update` hook,
+   from the last known pointer position.
+
+**Why a hand can only reach this through the keyboard.** Pressing the grip requires moving
+the pointer onto it, and every move re-resolves the row from the layout, so a cached
+position cannot go stale across a normal reach. The one gesture with no move in it is
+typing: the pointer stays wherever it was left. Rest it on a grip, add or remove a row by
+keyboard, and press without moving, and the cached number is a row behind. That is the
+gesture `f11c` performs, and the reason `f11b` — press again after a drop — proves nothing:
+it has to move onto the grip first, which refreshes the number it was meant to catch stale.
 
 **The press does not depend on hover bookkeeping.** The row being dragged is recorded on
 the grip element when it is placed, and read back at pointerdown, so an intervening
@@ -1697,6 +1709,23 @@ While the rewrite is in progress the superseded editor is still what runs, so th
 resolved entries describe the code being deleted, not code that is already gone.
 
 ### 15.1 Active: still true of the current design
+
+- **A regression step that cannot fail is worse than no step.** `f11b` was written to catch
+  a stale document position on the grip: drag a row, then press the grip again. It passed.
+  It also passed with the fix reverted, and with **both** halves of the fix reverted —
+  because pressing a grip requires moving the pointer onto it, and that move re-resolves
+  the row, refreshing exactly the value the step existed to catch stale. The step was
+  green, plausible, and inert.
+
+  It was found by bisecting: revert the fix, run the step, and require it to fail. That is
+  the only thing that distinguishes an assertion from a wish, and it is cheap — one run.
+  `f11c` came out of asking what gesture the code path actually needs (a document change
+  with no pointer movement, i.e. the keyboard) rather than what gesture sounded like the
+  report. It fails without the fix, with `NO CARD`.
+
+  The general rule, and the eighth instance of a green check covering something broken:
+  **a new assertion is not finished when it passes. It is finished when it has been seen to
+  fail for the stated reason.**
 
 - **A v2 note was silently saved as `{ kind: 'blocks' }`, losing every edit on
   reload.** The rebuilt editor emits a v2 envelope `{ v, kind, doc }`, but the

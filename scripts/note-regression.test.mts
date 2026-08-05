@@ -929,6 +929,103 @@ async function main() {
     return 'a drag after a drag builds its card from the right row'
   })
 
+  await step('f11c. the document changing under a resting pointer does not misaim the grip', async () => {
+    /**
+     * The gesture f11b could NOT see, and the one that matches the report.
+     *
+     * A hand cannot press the grip without moving the pointer onto it, and every move
+     * re-resolves the row from the layout. So a cached position can only go stale in the
+     * one case where no move intervenes: the pointer is already resting on the grip and
+     * the document changes by keyboard. Typing does not move the mouse.
+     *
+     * With a cached position that is the wrong row: the card is cloned from whatever now
+     * sits at the old number (an empty paragraph clones as a caret and nothing else), the
+     * decoration hides that row so the real one stays behind at the origin, and the slots
+     * exclude a range nobody is dragging so no gap opens.
+     */
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'alpha' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'beta' }] },
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'gamma' }] },
+        ],
+      }),
+    )
+    // Rest the pointer on gamma's grip, and leave it there for the rest of the step.
+    const list = visible(await rows())
+    await page.mouse.move(list[2].left + 40, list[2].top + list[2].height / 2)
+    await page.waitForSelector('.note-grip[data-on="true"]')
+    const parked = await page.locator('.note-grip').boundingBox()
+    if (!parked) throw new Error('no grip to rest on')
+    await page.mouse.move(parked.x + parked.width / 2, parked.y + parked.height / 2)
+
+    // Now change the document by keyboard, which does not move the pointer: a caret at
+    // the end of alpha, and Enter, inserting a row above the one the grip points at.
+    await caretAt(0, 'end')
+    await press('Enter')
+    await page.waitForTimeout(120)
+    check(visible(await rows()).length === 4, `the keyboard added a row: ${shape(await rows())}`)
+
+    // Whichever row the grip is beside now is the row that must lift. Read from the
+    // layout, so a stale record cannot define its own correctness.
+    const expected = await page.evaluate(() => {
+      const g = document.querySelector('.note-grip') as HTMLElement | null
+      if (!g || g.dataset.on !== 'true') return { painted: false, type: 'none', text: '' }
+      const box = g.getBoundingClientRect()
+      const mid = box.top + box.height / 2
+      const row = [...document.querySelectorAll('.note-editor .note-row')].find((el) => {
+        const r = el.getBoundingClientRect()
+        return mid >= r.top && mid <= r.bottom
+      })
+      return {
+        painted: true,
+        type: row?.classList.contains('note-check-row') ? 'check' : 'other',
+        text: (row?.textContent ?? '').trim(),
+      }
+    })
+
+    // Press without having moved the pointer since the document changed.
+    await page.mouse.down()
+    await page.mouse.move(parked.x + parked.width / 2, parked.y + parked.height / 2 + 16, { steps: 4 })
+    const lifted = await page.evaluate(() => {
+      const card = document.querySelector('.note-drag-card') as HTMLElement | null
+      const hidden = [...document.querySelectorAll('.note-editor .note-row')].filter((el) => {
+        const cs = getComputedStyle(el)
+        return cs.display === 'none' || cs.visibility === 'hidden'
+      })
+      return {
+        exists: !!card,
+        text: (card?.textContent ?? '').trim(),
+        hasBox: !!card?.querySelector('.note-box'),
+        gap: !!document.querySelector('.note-drag-gap'),
+        hiddenText: hidden.map((el) => (el.textContent ?? '').trim()).join(','),
+        html: card ? card.outerHTML.slice(0, 300) : 'NO CARD',
+      }
+    })
+    await page.mouse.up()
+    await page.waitForTimeout(150)
+
+    if (!expected.painted) {
+      // Acceptable outcome: the grip may be withdrawn rather than re-aimed. What is not
+      // acceptable is a painted grip that lifts a row it is not beside.
+      check(!lifted.exists, `an unpainted grip lifts nothing. card was: ${lifted.html}`)
+      return 'the grip withdrew rather than pointing at a stale row'
+    }
+    check(lifted.exists && lifted.hasBox, `the press lifts a check row. card was: ${lifted.html}`)
+    check(
+      lifted.text === expected.text,
+      `the card is the row the grip is beside ("${expected.text}"), not a stale one. card was: ${lifted.html}`,
+    )
+    check(
+      lifted.hiddenText === expected.text,
+      `and the row hidden at the origin is that same row: hid "${lifted.hiddenText}", lifted "${expected.text}"`,
+    )
+    check(lifted.gap, 'and a gap opens')
+    return 'a document change under a resting pointer cannot misaim the grip'
+  })
+
   await step('5f. a grip that is painted is pressable, even while it is fading out', async () => {
     // The failure the suite could not see. Reaching for an 8px grip means the pointer
     // drifts across other rows on the way. A non-check row takes the grip away, and the

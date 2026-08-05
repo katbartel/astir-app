@@ -1020,8 +1020,8 @@ async function main() {
     )
     await page.waitForSelector('.note-toolbar')
     await page.click('[aria-label="Link"]')
-    await page.fill('.note-link-input', 'https://example.test/posting')
-    await page.press('.note-link-input', 'Enter')
+    await page.fill('.note-linkbar-field', 'https://example.test/posting')
+    await page.press('.note-linkbar-field', 'Enter')
 
     const marks = await page.evaluate(() => {
       const out: { text: string; href: string | null }[] = []
@@ -1073,14 +1073,16 @@ async function main() {
       return at
     })
     await caretTo(inLink)
-    await page.waitForSelector('.note-popover')
-    const url = (await page.locator('.note-popover-url').textContent()) ?? ''
-    check(url.includes('example.test/posting'), `the popover shows the URL: ${url}`)
-    check((await page.locator('.note-popover-action', { hasText: 'Open' }).count()) === 1, 'with an Open action')
-    check((await page.locator('.note-popover-action', { hasText: 'Remove' }).count()) === 1, 'and a Remove action')
+    await page.waitForSelector('.note-linkbar[data-state="saved"]')
+    // One surface that is itself the field: the URL is editable text, not a label.
+    const url = await page.locator('.note-linkbar-field').inputValue()
+    check(url.includes('example.test/posting'), `the link bar shows the URL as editable text: ${url}`)
+    check((await page.locator('[aria-label="Open in new tab"]').count()) === 1, 'with an open-in-new-tab icon')
+    check((await page.locator('[aria-label="Remove link"]').count()) === 1, 'and a remove icon')
+    check((await page.locator('[aria-label="Save"]').count()) === 0, 'and no tick, because it is saved')
 
     // Remove takes the mark off the whole run, and the text stays.
-    await page.click('.note-popover-action:has-text("Remove")')
+    await page.click('[aria-label="Remove link"]')
     const after = await page.evaluate(() => JSON.stringify(window.EDITOR!.getJSON()))
     check(!after.includes('"link"'), 'Remove took the mark off')
     check(after.includes('see the posting'), 'and left the text alone')
@@ -1618,13 +1620,16 @@ async function main() {
       return { from, to }
     })
     await page.click('[aria-label="Link"]')
-    await page.waitForSelector('.note-link-input')
+    await page.waitForSelector('.note-linkbar-field')
     // Focus is now in the toolbar's own field, so the editor is deliberately not
     // focused. Visibility must not be keyed on that.
     check((await page.evaluate(() => window.EDITOR!.isFocused)) === false, 'the editor is not focused while the field has focus')
-    check((await page.locator('.note-toolbar').count()) === 1, 'the toolbar is still mounted')
-    check((await page.locator('.note-link-input').count()) === 1, 'and so is the URL field')
-    await page.fill('.note-link-input', 'https://example.test/kept')
+    // Opening the link replaces the toolbar with the link bar: one surface, not a box
+    // inside a box. The rule is unchanged, and it is about the surface staying mounted
+    // while focus is inside it.
+    check((await page.locator('.note-linkbar').count()) === 1, 'the link bar is still mounted')
+    check((await page.locator('.note-linkbar-field').count()) === 1, 'and so is the URL field')
+    await page.fill('.note-linkbar-field', 'https://example.test/kept')
     const during = await page.evaluate(() => {
       const { from, to } = window.EDITOR!.state.selection
       return { from, to }
@@ -1633,7 +1638,7 @@ async function main() {
       during.from === before.from && during.to === before.to,
       `the selection is intact: ${JSON.stringify(during)} was ${JSON.stringify(before)}`,
     )
-    await page.press('.note-link-input', 'Enter')
+    await page.press('.note-linkbar-field', 'Enter')
     const applied = await page.evaluate(() => JSON.stringify(window.EDITOR!.getJSON()))
     check(applied.includes('example.test/kept'), 'and the link applied to the range that was selected')
     check(applied.includes('"text":"select"'), 'to exactly that range')
@@ -1709,8 +1714,8 @@ async function main() {
         act: async () => {
           await at(0, 'select')
           await clickButton('Link')
-          await page.fill('.note-link-input', 'https://example.test/one')
-          await page.press('.note-link-input', 'Enter')
+          await page.fill('.note-linkbar-field', 'https://example.test/one')
+          await page.press('.note-linkbar-field', 'Enter')
         },
       },
       { name: 'toolbar: checkbox', seed: plain, act: async () => { await at(0, 'select'); await clickButton('Checkbox') } },
@@ -1843,6 +1848,110 @@ async function main() {
   })
 
 
+
+  await step('f6. Enter in a collapsed section opens it and adds one visible row', async () => {
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'section',
+            attrs: { collapsed: true },
+            content: [
+              { type: 'sectionTitle', content: [{ type: 'text', text: 'Closed' }] },
+              {
+                type: 'sectionBody',
+                content: [{ type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'hidden' }] }],
+              },
+            ],
+          },
+        ],
+      }),
+    )
+    check(visible(await rows()).length === 1, 'it starts collapsed, showing only the header')
+    const list = await docRows()
+    await caretTo(list[0].end) // end of the title
+    await press('Enter')
+    const now = visible(await rows())
+    check(now.length === 3, `the section opened: ${shape(await rows())}`)
+    check(now[1].kind === 'paragraph' && now[1].text === '', 'and the new row is an empty first row of the body')
+    check(now[2].text === 'hidden', 'above the row that was hidden')
+    const collapsed = await page.evaluate(() => {
+      let value: unknown = null
+      window.EDITOR!.state.doc.descendants((node) => {
+        if (node.type.name === 'section') value = node.attrs.collapsed
+        return true
+      })
+      return value
+    })
+    check(collapsed === false, 'the section is recorded as open, not merely drawn open')
+    // The caret is on the visible row, not in a hidden body.
+    const caretVisible = await page.evaluate(() => {
+      const { $from } = window.EDITOR!.state.selection
+      for (let d = $from.depth; d > 0; d -= 1) {
+        if ($from.node(d).type.name === 'sectionBody') return true
+      }
+      return false
+    })
+    check(caretVisible, 'and the caret is in the body, which is now visible')
+    return 'the section opens, one empty row appears, and the caret is on it'
+  })
+
+  await step('f8. a link never spans a space', async () => {
+    const linked = (text: string) =>
+      v2({
+        type: 'doc',
+        content: [
+          {
+            type: 'paragraph',
+            content: [
+              { type: 'text', text: 'see ' },
+              {
+                type: 'text',
+                text,
+                marks: [{ type: 'link', attrs: { href: 'https://x.test/', target: '_blank', rel: 'noreferrer noopener' } }],
+              },
+              { type: 'text', text: ' tail' },
+            ],
+          },
+        ],
+      })
+    const runs = () =>
+      page.evaluate(() => {
+        const out: string[] = []
+        window.EDITOR!.state.doc.descendants((node) => {
+          if (node.isText) out.push(`"${node.text}"${node.marks.some((m) => m.type.name === 'link') ? '{link}' : ''}`)
+          return true
+        })
+        return out.join(' ')
+      })
+
+    // At the end of a link: the space and everything after stay plain.
+    await seed(linked('linked'))
+    await caretTo(11)
+    await press('Space')
+    let after = await runs()
+    check(after === '"see " "linked"{link} "  tail"', `at the end of the link: ${after}`)
+
+    // Inside a link: it ends at the caret. The link never spans the space.
+    await seed(linked('linked'))
+    await caretTo(8)
+    await press('Space')
+    after = await runs()
+    check(after === '"see " "lin"{link} " ked tail"', `inside the link: ${after}`)
+    check(!after.includes('" "{link}') && !/\{link\}[^ ]* "[^"]* /.test(''), 'and no link run contains a space')
+    const spans = await page.evaluate(() => {
+      let bad = false
+      window.EDITOR!.state.doc.descendants((node) => {
+        if (node.isText && node.marks.some((m) => m.type.name === 'link') && (node.text ?? '').includes(' ')) bad = true
+        return true
+      })
+      return bad
+    })
+    check(!spans, 'no linked text contains a space, checked across the document')
+    return 'a space ends the link at the caret, in the middle or at the end'
+  })
+
   await step('5.2/3b. only a check row offers a grip', async () => {
     await seed(gripDoc)
     // The recovered rule, literally: in the deleted editor the grip lived inside the
@@ -1921,6 +2030,115 @@ async function main() {
     return { from: row.start, to: row.end }
   }
 
+
+  await step('f7. the link bar is one surface that is itself the field', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'link this text' }] }] }))
+    await selectRow(0)
+    await page.click('[aria-label="Link"]')
+    await page.waitForSelector('.note-linkbar[data-state="editing"]')
+
+    const surface = await page.evaluate(() => {
+      const bar = document.querySelector('.note-linkbar') as HTMLElement
+      const field = bar.querySelector('.note-linkbar-field') as HTMLInputElement
+      const bs = getComputedStyle(bar)
+      const fs = getComputedStyle(field)
+      return {
+        height: bs.height,
+        radius: bs.borderTopLeftRadius,
+        padLeft: bs.paddingLeft,
+        padRight: bs.paddingRight,
+        outline: bs.borderTopColor,
+        dividerColour: getComputedStyle(bar.querySelector('.note-linkbar-divider')!).backgroundColor,
+        dividers: bar.querySelectorAll('.note-linkbar-divider').length,
+        placeholder: field.placeholder,
+        fieldBorder: fs.borderTopWidth,
+        fieldBackground: fs.backgroundColor,
+      }
+    })
+    check(surface.height === '46px', `height 46: ${surface.height}`)
+    check(surface.radius === '14px', `radius 14: ${surface.radius}`)
+    check(surface.padLeft === '16px' && surface.padRight === '6px', `padding 16 left, 6 right: ${surface.padLeft} / ${surface.padRight}`)
+    check(surface.placeholder === 'Paste the link', `the empty state's placeholder: ${JSON.stringify(surface.placeholder)}`)
+    // The surface IS the field: no inner input with its own border or background.
+    check(surface.fieldBorder === '0px', `the field has no border of its own: ${surface.fieldBorder}`)
+    check(
+      surface.fieldBackground === 'rgba(0, 0, 0, 0)' || surface.fieldBackground === 'transparent',
+      `and no background of its own: ${surface.fieldBackground}`,
+    )
+    check(surface.dividers === 1, `one divider: ${surface.dividers}`)
+    check(surface.dividerColour === surface.outline, `in the same tone as the outline: ${surface.dividerColour} vs ${surface.outline}`)
+
+    // Empty state: a tick, on the right, and nothing else.
+    check((await page.locator('[aria-label="Save"]').count()) === 1, 'the empty state offers a tick')
+    const tickBefore = await page.locator('[aria-label="Save"]').boundingBox()
+
+    // Typing must not move it.
+    await page.fill('.note-linkbar-field', 'https://example.test/x')
+    const tickAfter = await page.locator('[aria-label="Save"]').boundingBox()
+    check(
+      Math.abs((tickBefore?.x ?? 0) - (tickAfter?.x ?? 0)) <= 1,
+      `the tick does not move when typing starts: ${Math.round(tickBefore?.x ?? 0)} to ${Math.round(tickAfter?.x ?? 0)}`,
+    )
+
+    // Saved state: two outline icons, no tick, URL still editable.
+    await page.press('.note-linkbar-field', 'Enter')
+    await page.waitForTimeout(150)
+    const inLink = await page.evaluate(() => {
+      let at = 0
+      window.EDITOR!.state.doc.descendants((node, pos) => {
+        if (node.isText && node.marks.some((m) => m.type.name === 'link')) at = pos + 2
+        return true
+      })
+      return at
+    })
+    await caretTo(inLink)
+    await page.waitForSelector('.note-linkbar[data-state="saved"]')
+    check((await page.locator('[aria-label="Save"]').count()) === 0, 'the saved state has no tick')
+    check((await page.locator('[aria-label="Open in new tab"]').count()) === 1, 'it has open in new tab')
+    check((await page.locator('[aria-label="Remove link"]').count()) === 1, 'and remove link')
+    check((await page.locator('.note-linkbar-field').isEditable()), 'and the URL is still editable in place')
+    // No pencil, and no second field for display text.
+    check((await page.locator('.note-linkbar input').count()) === 1, 'one field only, no second one for link text')
+    const icons = await page.evaluate(() =>
+      [...document.querySelectorAll('.note-linkbar-icon')].map((el) => {
+        const cs = getComputedStyle(el)
+        const svg = el.querySelector('svg')!
+        return { background: cs.backgroundColor, fill: getComputedStyle(svg).fill, stroke: getComputedStyle(svg).stroke }
+      }),
+    )
+    check(
+      icons.every((i) => i.background === 'rgba(0, 0, 0, 0)' && i.fill === 'none'),
+      `the icons are outline only, bare at rest: ${JSON.stringify(icons)}`,
+    )
+    return 'one surface, three states, outline icons, nothing nested'
+  })
+
+  await step('f9. a tooltip shows its shortcut as a separate, dimmer part', async () => {
+    await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'tip me' }] }] }))
+    await selectRow(0)
+    await page.hover('[aria-label="Bold"]')
+    await page.waitForSelector('.tooltip-bubble[data-has-key="true"]')
+    const tip = await page.evaluate(() => {
+      const bubble = document.querySelector('.tooltip-bubble') as HTMLElement
+      const label = bubble.querySelector('.tooltip-label') as HTMLElement
+      const key = bubble.querySelector('.tooltip-key') as HTMLElement
+      const bs = getComputedStyle(bubble)
+      return {
+        label: label.textContent,
+        key: key.textContent,
+        gap: bs.gap,
+        labelColour: getComputedStyle(label).color,
+        keyColour: getComputedStyle(key).color,
+      }
+    })
+    check(tip.label === 'Bold', `the label is the name alone: ${JSON.stringify(tip.label)}`)
+    check(tip.key === '\u2318B', `the shortcut is its own part: ${JSON.stringify(tip.key)}`)
+    check(tip.gap === '14px', `with a 14px gap between them: ${tip.gap}`)
+    check(tip.labelColour !== tip.keyColour, `and the shortcut is dimmer than the label (${tip.keyColour} vs ${tip.labelColour})`)
+    return 'label and shortcut are separate parts, weighted apart'
+  })
+
+
   await step('5.3/1. an empty section header shows its own placeholder', async () => {
     await seed(
       v2({
@@ -1976,7 +2194,7 @@ async function main() {
     await seed(v2({ type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'link me' }] }] }))
     await selectRow(0)
     await page.keyboard.press('Meta+k')
-    await page.waitForSelector('.note-link-input')
+    await page.waitForSelector('.note-linkbar-field')
     check(true, 'Link (Meta+k) opens the URL field')
     worked.push('Link')
     return `${worked.length} shortcuts bound: ${worked.join(', ')}`
@@ -2058,6 +2276,7 @@ async function main() {
       els.map((el) => ({
         label: el.getAttribute('aria-label'),
         tooltip: el.getAttribute('data-tooltip'),
+        key: el.getAttribute('data-tooltip-key'),
         native: el.getAttribute('title'),
         tag: el.tagName.toLowerCase(),
       })),
@@ -2065,17 +2284,14 @@ async function main() {
     for (const button of buttons) {
       check(button.tag === 'button', `${button.label} is a <button>, so it is in the tab order`)
       // The visible label is the app's own tooltip layer, not the browser's `title`
-      // (recovered treatment, section 7). The tooltip may add the shortcut after the
-      // name, as the deleted toolbar did, so it starts with the aria-label rather than
-      // equalling it.
-      // Equal, or the name followed by the two-space shortcut separator. A bare
-      // startsWith would let "Strikethrough" pass for an aria-label of "Strike",
-      // which is two different words for one button and exactly what it let through.
-      const named =
-        !!button.label &&
-        !!button.tooltip &&
-        (button.tooltip === button.label || button.tooltip.startsWith(`${button.label}  `))
-      check(named, `${button.label} is named identically by its tooltip (${JSON.stringify(button.tooltip)})`)
+      // (section 7). The shortcut is a separate attribute now, so the label and the
+      // accessible name are exactly the same string rather than one being a prefix of
+      // the other: a bare startsWith once let an aria-label of "Strike" pass against a
+      // tooltip of "Strikethrough", which is two words for one button.
+      check(
+        !!button.label && button.tooltip === button.label,
+        `${button.label} is named identically by its tooltip (${JSON.stringify(button.tooltip)})`,
+      )
       check(button.native === null, `${button.label} uses the styled tooltip, not the browser's title`)
     }
     // Focus returns to the selection: use a button and the editor is focused again

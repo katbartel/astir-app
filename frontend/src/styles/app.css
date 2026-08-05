@@ -4386,6 +4386,13 @@ textarea {
   --note-disclosure-icon: 18px;
   --note-quote-rule: 3px;
   --note-underline-offset: 2px;
+  /* The link bar's own geometry. Neither is on a scale: 46 is the height that fits a
+     control row plus its padding without looking like an input, and 6 is the air the
+     icons need on the right against 16 on the text side. */
+  --note-linkbar-height: 46px;
+  --note-linkbar-pad-right: 6px;
+  /* A focus ring sits one pixel off the control so the two outlines stay legible. */
+  --note-focus-offset: 1px;
 }
 
 .note-editor-shell .note-editor {
@@ -4618,7 +4625,7 @@ textarea {
    Both use the menu recipe from AGENTS.md 4.7: card surface, r-md, menu shadow. */
 
 .note-toolbar,
-.note-popover {
+.note-linkbar {
   position: fixed;
   z-index: 60;
   display: flex;
@@ -4641,40 +4648,83 @@ textarea {
   transform: translateY(var(--space-2));
 }
 
-/* Under the link it belongs to, so it never covers the text being read. */
-.note-popover {
+/* ONE surface, and the surface is the field. Under the link it belongs to, so it never
+   covers the text being read. See docs/notes-editor.md 5.6. */
+.note-linkbar {
   transform: translateY(var(--space-1));
-  padding: var(--space-1) var(--space-2);
+  height: var(--note-linkbar-height);
+  padding: 0 var(--note-linkbar-pad-right) 0 var(--space-4);
   gap: var(--space-2);
+  border-radius: var(--r-lg);
+  border-color: var(--line2);
 }
 
-.note-toolbar button,
-.note-popover-action {
-  display: grid;
-  place-items: center;
-  min-width: var(--watch-title-action-size);
-  height: var(--watch-title-action-size);
-  padding: 0 var(--space-2);
+/* The field has no border, no background and no ring of its own: the surface is already
+   the field, and an input inside a bordered box reads as a box inside a box. */
+.note-linkbar-field {
+  flex: 1;
+  min-width: calc(var(--space-16) * 3);
   border: none;
-  /* The radius scale, matching the disclosure control (5.1), not the spacing
-     scale borrowed as a radius. */
-  border-radius: var(--r-sm);
   background: transparent;
   color: var(--ink);
   font-size: var(--type-body);
-  line-height: 1;
+  outline: none;
+}
+
+.note-linkbar-field::placeholder {
+  color: var(--placeholder);
+}
+
+/* The one divider, in the same tone as the surface's own outline. */
+.note-linkbar-divider {
+  align-self: stretch;
+  width: var(--border-thin);
+  margin: var(--space-2) 0;
+  background: var(--line2);
+}
+
+/* Outline icons. Resting is the bare glyph; hover adds the tinted square. No gold fill,
+   no solid button. */
+.note-linkbar-icon {
+  display: grid;
+  place-items: center;
+  width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
+  padding: 0;
+  border: none;
+  border-radius: var(--space-1);
+  background: transparent;
+  color: var(--ink2);
   cursor: pointer;
 }
 
-.note-toolbar button:hover,
-.note-popover-action:hover {
-  background: var(--tile-hover);
+.note-linkbar-icon:hover {
+  background: var(--hover-soft);
+  color: var(--ink);
 }
 
-.note-toolbar button:focus-visible,
-.note-popover-action:focus-visible {
+.note-linkbar-icon:focus-visible {
   outline: var(--border-thin) solid var(--gold);
-  outline-offset: var(--border-thin);
+  outline-offset: var(--note-focus-offset);
+}
+
+.note-linkbar-icon svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+.note-toolbar button,
+
+.note-toolbar button:hover,
+
+.note-toolbar button:focus-visible {
+  outline: var(--border-thin) solid var(--gold);
+  outline-offset: var(--note-focus-offset);
 }
 
 /* Pressed formatting under the caret. */
@@ -4726,39 +4776,10 @@ textarea {
   background: var(--line2);
 }
 
-.note-toolbar .note-tb-text {
-  padding: 0 var(--space-3);
-  color: var(--gold-deep);
-  font-weight: 500;
-}
 
-.note-link-input {
-  width: calc(var(--space-16) * 3);
-  height: var(--watch-title-action-size);
-  padding: 0 var(--space-2);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-  background: var(--paper);
-  color: var(--ink);
-  font-size: var(--type-body);
-}
 
-.note-link-input:focus {
-  border-color: var(--gold);
-  outline: none;
-}
 
-.note-popover-url {
-  max-width: calc(var(--space-16) * 4);
-  overflow: hidden;
-  color: var(--ink2);
-  font-size: var(--type-meta);
-  white-space: nowrap;
-}
 
-.note-popover-action {
-  color: var(--gold-deep);
-}
 
 /* Notes drag. See docs/notes-editor.md section 8.
 
@@ -4886,4 +4907,31 @@ textarea {
   border-radius: var(--input-radius);
   color: var(--muted);
   font-size: var(--type-body);
+}
+
+/* A tooltip that names a keyboard shortcut. Two parts, weighted apart: jammed into one
+   string the shortcut competes with the label instead of supporting it. See
+   docs/notes-editor.md 5.5. Keyboard symbols are allowed here under AGENTS.md 4.6: the
+   character IS the content, not a drawing standing in for an icon. */
+.tooltip-bubble[data-has-key='true'] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tooltip-key-gap);
+}
+
+.tooltip-bubble[data-has-key='true'] .tooltip-label {
+  /* Brighter than the bubble's base colour, so the name leads. */
+  color: var(--snack-text);
+  font-weight: 500;
+}
+
+.tooltip-key {
+  /* Dimmer, derived from the snackbar text token rather than a new one: the sanctioned
+     way to take a token to partial strength (AGENTS.md 3.1, token exception 5). */
+  color: color-mix(in srgb, var(--snack-text) 58%, var(--snack-bg));
+  white-space: nowrap;
+}
+
+.tooltip-bubble[data-has-key='false'] .tooltip-key {
+  display: none;
 }

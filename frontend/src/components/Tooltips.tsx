@@ -14,10 +14,17 @@ export function Tooltips() {
     tooltipLayer.className = 'tooltip-layer'
     tooltipLayer.hidden = true
     tooltipLayer.innerHTML =
-      '<span class="tooltip-arrow" aria-hidden="true"></span><span class="tooltip-bubble"></span>'
+      '<span class="tooltip-arrow" aria-hidden="true"></span>' +
+      // The label and the shortcut are separate elements so they can be weighted
+      // differently: jammed together in one string they compete. Only callers that set
+      // data-tooltip-key get a shortcut, so every existing tooltip is untouched.
+      '<span class="tooltip-bubble"><span class="tooltip-label"></span>' +
+      '<span class="tooltip-key" aria-hidden="true"></span></span>'
     document.body.appendChild(tooltipLayer)
     const tooltipArrow = tooltipLayer.querySelector('.tooltip-arrow') as HTMLElement
     const tooltipBubble = tooltipLayer.querySelector('.tooltip-bubble') as HTMLElement
+    const tooltipLabel = tooltipLayer.querySelector('.tooltip-label') as HTMLElement
+    const tooltipKey = tooltipLayer.querySelector('.tooltip-key') as HTMLElement
 
     function tooltipCopy(target: HTMLElement | null) {
       return target ? target.dataset.infoTooltip || target.dataset.tooltip || '' : ''
@@ -96,7 +103,10 @@ export function Tooltips() {
       const copy = tooltipCopy(target)
       if (!copy) return
       activeTooltipTarget = target
-      tooltipBubble.textContent = copy
+      tooltipLabel.textContent = copy
+      const shortcut = target?.dataset.tooltipKey ?? ''
+      tooltipKey.textContent = shortcut
+      tooltipBubble.dataset.hasKey = shortcut ? 'true' : 'false'
       tooltipLayer.classList.toggle('no-arrow', !target.dataset.infoTooltip)
       tooltipLayer.hidden = false
       positionTooltip()

@@ -8,6 +8,10 @@
 import { createRoot } from 'react-dom/client'
 import type { Editor } from '@tiptap/core'
 import { NoteEditor } from '@/components/applications/NoteEditor'
+// The real tooltip layer, as the app layout mounts it. Toolbar tooltips are rendered by
+// this and by nothing in the editor, so without it a tooltip assertion has nothing to
+// look at.
+import { Tooltips } from '@/components/Tooltips'
 import { isPlaceholderDocument } from '@/components/applications/noteNodeViews'
 import type { StoredNote } from '@/lib/noteMigration'
 
@@ -71,16 +75,19 @@ function render(seed: unknown) {
   window.SAVED = null
   window.EDITOR = null
   root.render(
-    <NoteEditor
-      key={generation}
-      note={seed}
-      onChange={(note) => {
-        window.SAVED = note
-      }}
-      onReady={(editor) => {
-        window.EDITOR = editor
-      }}
-    />,
+    <>
+      <Tooltips />
+      <NoteEditor
+        key={generation}
+        note={seed}
+        onChange={(note) => {
+          window.SAVED = note
+        }}
+        onReady={(editor) => {
+          window.EDITOR = editor
+        }}
+      />
+    </>,
   )
 }
 

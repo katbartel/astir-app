@@ -813,6 +813,46 @@ were lost is that they lived in CSS and nowhere else.
 4. **No chip behind the arrow, in any state including hover.** The arrow alone: only
    its colour answers the pointer. Asserted open, closed, and hovered.
 
+### 5.5 Tooltip shortcuts
+
+A tooltip that names a shortcut has two parts, not one string. Jammed together the
+shortcut competes with the label instead of supporting it.
+
+- The label is the control's name alone, and it is the same string as the `aria-label`.
+- The shortcut is its own element, `--tooltip-key-gap` (14px) away.
+- The label reads at weight 500 in `--snack-text`; the shortcut is dimmer, from
+  `color-mix(in srgb, var(--snack-text) 58%, var(--snack-bg))`. Partial strength comes
+  from `color-mix` on the token, never a new token and never a hardcoded rgba.
+- Keyboard symbols are allowed here under AGENTS.md 4.6: `⌘`, `⇧` and the rest are the
+  content, not a drawing standing in for an icon.
+
+The shared tooltip layer gained an optional `data-tooltip-key`. Only callers that set it
+get a shortcut, so every other tooltip in the app is untouched.
+
+### 5.6 The link bar
+
+One surface, and **the surface is the field**. No input with its own border or background
+inside a bordered box: that reads as a box inside a box, which is what it replaced.
+
+- `--note-linkbar-height` (46px), radius `--r-lg`, `--space-4` of padding on the text
+  side and `--note-linkbar-pad-right` (6px) on the icon side, outlined in `--line2` with
+  the menu shadow.
+- One `--border-thin` divider between the URL and the icons, in the same tone as the
+  outline.
+- **Three states, one field.** Empty: the placeholder `Paste the link` and a tick on the
+  right. Typing: the URL as editable text, **the same tick in the same position**, so
+  nothing moves when typing starts. Saved: the URL as editable text, then open-in-new-tab
+  and remove, and no tick.
+- **Icons are outline only.** No gold fill, no solid button. Resting is the bare glyph;
+  hover adds the tinted square and the tooltip. `Save`, `Open in new tab`, `Remove link`.
+- **No pencil and no second field.** The URL is edited in place, because it is already a
+  field. There is no separate input for the link's display text: that text lives in the
+  note, where it can be seen in context.
+
+Two values are the bar's own geometry and are component tokens (5.1): 46 is the height
+that fits a control row and its padding without reading as an input, and 6 is the air the
+icons need against 16 on the text side.
+
 ### 5.2 What is deliberately not asserted
 
 A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.
@@ -1003,6 +1043,16 @@ this used to make the toolbar buttons silent no-ops.
    when the caret leaves the link or on Escape.
 6. Deleting the marked text deletes the mark. In ProseMirror a mark cannot
    outlive its text.
+7. **A link never spans a space.** Typing a space ends the link at the caret: the space
+   and everything after it inside the link come out plain. At the end of a link that
+   means typing leaves link mode; in the middle it truncates the link at the caret
+   rather than splitting it in two. A two-word link is therefore not possible, and
+   remove-then-reapply is the path to one.
+
+   The reason is not taste. **It makes a class of bug impossible: a link that can grow
+   across a space can swallow the rest of the line**, and then the whole row is one
+   anchor and nobody can see where the link ends. Editing the linked text itself is
+   unaffected, before, after, or in the middle, as long as no space is involved.
 
 ### 6.9 Collapse
 
@@ -1343,6 +1393,20 @@ to the notes editor, not just the one you were asked to make.
     document was canonicalised on the way in. "My notes keep showing as edited"
     has more than one possible cause, and this closes the ones that are not the
     canonical-form gate in 4.1.
+18. **No keystroke puts the caret or new content inside a collapsed body without
+    expanding the section first**, in the same transaction. Enter at the end of a
+    collapsed section's title opens the section and adds one visible empty row as the
+    body's first row, with the caret on it. Two presses used to disappear into the hidden
+    body and the third to appear below the section.
+
+    This extends what was already true of Backspace and Delete, which place the caret on
+    a collapsed section's title and never inside it (6.4a).
+
+    **It does not contradict "a collapsed section is one opaque row" in section 8.** That
+    rule is about drag targets, where auto-expanding would reflow the list under a moving
+    pointer mid-gesture. A keystroke is an explicit act on a section the caret is already
+    in, and there is no gesture to disturb. Drag never opens a section; a keystroke that
+    would otherwise write somewhere invisible always does.
 16. **A NodeView holds no state.** It renders from the node's attributes and
     dispatches transactions. No React state mirroring a checkbox, no collapsed
     flag held beside the node, no DOM read to decide what to render. A NodeView
@@ -1353,7 +1417,7 @@ to the notes editor, not just the one you were asked to make.
 
 Only three of these were reworded from the block model brief, and only where they
 named the superseded implementation: 1 (ids to structural identity), 5 and 12
-(the array to the document). The obligations are unchanged. Invariants 16 and 17
+(the array to the document). The obligations are unchanged. Invariants 16, 17 and 18
 were added during the rebuild.
 
 ---

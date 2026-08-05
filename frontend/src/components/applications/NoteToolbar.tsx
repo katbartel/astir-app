@@ -77,6 +77,28 @@ const LinkGlyph = () => (
   </svg>
 )
 
+// Outline only, no fill, no solid button: the resting state is the bare icon and hover
+// adds the tinted square. See docs/notes-editor.md 5.6.
+const TickGlyph = () => (
+  <svg {...SVG_PROPS}>
+    <path d="M5 12.5l4.2 4.2 9-9.4" />
+  </svg>
+)
+const OpenGlyph = () => (
+  <svg {...SVG_PROPS}>
+    <path d="M14 5h5v5" />
+    <path d="M19 5l-7.5 7.5" />
+    <path d="M18 14v4a1.8 1.8 0 01-1.8 1.8H6.8A1.8 1.8 0 015 18V8.6A1.8 1.8 0 016.8 6.8H11" />
+  </svg>
+)
+const RemoveGlyph = () => (
+  <svg {...SVG_PROPS}>
+    <path d="M5.5 8h13" />
+    <path d="M9.5 8V6.2A1.2 1.2 0 0110.7 5h2.6A1.2 1.2 0 0114.5 6.2V8" />
+    <path d="M7.2 8l.8 10.2A1.6 1.6 0 009.6 19.7h4.8a1.6 1.6 0 001.6-1.5L16.8 8" />
+  </svg>
+)
+
 /** The link mark under the caret, and the range it covers, read from the document. */
 function linkAtCaret(editor: Editor): { href: string; from: number; to: number } | null {
   const { state } = editor
@@ -103,8 +125,6 @@ function linkAtCaret(editor: Editor): { href: string; from: number; to: number }
   const base = $from.start()
   return { href: String(mark.attrs.href ?? ''), from: base + start, to: base + end }
 }
-
-const truncate = (url: string) => (url.length > 42 ? `${url.slice(0, 41)}…` : url)
 
 /** Room the toolbar needs above the selection before it has to flip below it. */
 const TOOLBAR_CLEARANCE = 48
@@ -291,66 +311,90 @@ export function NoteToolbar({
     close()
   }
 
-  if (showPopover && link) {
+  // ONE surface for both link states, and the surface IS the field: no input with a
+  // border of its own inside a bordered box. See docs/notes-editor.md 5.6.
+  //
+  //   empty            placeholder, and a tick on the right
+  //   typing/editing   the URL as editable text, the same tick in the same place
+  //   saved            the URL as editable text, then open-in-new-tab and remove
+  //
+  // Nothing moves between empty and typing, which is why the tick keeps its position
+  // rather than appearing when the field becomes non-empty.
+  if (showPopover || linkFieldOpen) {
+    const saved = !!link && !linkFieldOpen
+    const value = saved ? link.href : draft
+    const commit = () => {
+      if (saved) return
+      applyLink()
+    }
     return (
       <div
         ref={surfaceRef}
-        className="note-popover"
+        className="note-linkbar"
+        data-state={saved ? 'saved' : 'editing'}
         style={{ top: rect.bottom, left: clampedLeft }}
         role="group"
         aria-label="Link"
       >
-        {/* Native title here on purpose: this is the untruncated href behind an
-            ellipsis, not a control's name, and it can be far longer than a tooltip. */}
-        <span className="note-popover-url" title={link.href}>
-          {truncate(link.href)}
-        </span>
-        <button
-          type="button"
-          className="note-popover-action"
-          onMouseDown={run(() => window.open(link.href, '_blank', 'noreferrer,noopener'))}
-        >
-          Open
-        </button>
-        <button
-          type="button"
-          className="note-popover-action"
-          onMouseDown={run(() =>
-            editor.chain().focus().setTextSelection({ from: link.from, to: link.to }).unsetLink().run(),
-          )}
-        >
-          Remove
-        </button>
-      </div>
-    )
-  }
-
-  if (linkFieldOpen) {
-    return (
-      <div
-        ref={surfaceRef}
-        className="note-toolbar note-toolbar-link"
-        data-below={below ? 'true' : 'false'}
-        style={{ top: below ? rect.bottom : rect.top, left: clampedLeft }}
-      >
         <input
           ref={inputRef}
-          className="note-link-input"
+          className="note-linkbar-field"
           type="text"
-          value={draft}
-          placeholder="Paste a link"
+          value={value}
+          placeholder="Paste the link"
           aria-label="Link address"
+          spellCheck={false}
+          onFocus={() => {
+            // Editing a saved link is done in place: the field is the same element, so
+            // there is no pencil and no second mode to enter.
+            if (saved && link) {
+              setDraft(link.href)
+              setLinkFieldOpen(true)
+            }
+          }}
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault()
-              applyLink()
+              commit()
             }
           }}
         />
-        <button type="button" className="note-tb-text" onMouseDown={run(applyLink)}>
-          Apply
-        </button>
+        <span className="note-linkbar-divider" aria-hidden="true" />
+        {saved && link ? (
+          <>
+            <button
+              type="button"
+              className="note-linkbar-icon"
+              aria-label="Open in new tab"
+              data-tooltip="Open in new tab"
+              onMouseDown={run(() => window.open(link.href, '_blank', 'noreferrer,noopener'))}
+            >
+              <OpenGlyph />
+            </button>
+            <button
+              type="button"
+              className="note-linkbar-icon"
+              aria-label="Remove link"
+              data-tooltip="Remove link"
+              onMouseDown={run(() =>
+                editor.chain().focus().setTextSelection({ from: link.from, to: link.to }).unsetLink().run(),
+              )}
+            >
+              <RemoveGlyph />
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="note-linkbar-icon"
+            aria-label="Save"
+            data-tooltip="Save"
+            onMouseDown={run(commit)}
+          >
+            <TickGlyph />
+          </button>
+        )}
       </div>
     )
   }
@@ -374,15 +418,15 @@ export function NoteToolbar({
    * keymap, and Cmd+K is bound in this file. The checkbox and bullet name their text
    * triggers, which is what the deleted editor's tooltips did.
    */
-  const hint: Record<string, string> = {
-    Bold: 'Bold  \u2318B',
-    Italic: 'Italic  \u2318I',
-    Strikethrough: 'Strikethrough  \u21e7\u2318S',
-    Link: 'Link  \u2318K',
-    Checkbox: 'Checkbox  []',
-    Bullet: 'Bullet  - ',
-    Quote: 'Quote  \u21e7\u2318E',
-    Section: 'Section  \u21e7\u2318O',
+  const shortcut: Record<string, string> = {
+    Bold: '\u2318B',
+    Italic: '\u2318I',
+    Strikethrough: '\u21e7\u2318S',
+    Link: '\u2318K',
+    Checkbox: '[]',
+    Bullet: '- ',
+    Quote: '\u21e7\u2318E',
+    Section: '\u21e7\u2318O',
   }
   const sectionAvailable = convertRowToSection(state, undefined)
 
@@ -402,7 +446,8 @@ export function NoteToolbar({
           className={`${className}${editor.isActive(name) ? ' active' : ''}`}
           aria-label={title}
           aria-pressed={editor.isActive(name)}
-          data-tooltip={hint[title] ?? title}
+          data-tooltip={title}
+          data-tooltip-key={shortcut[title] ?? ''}
           data-tooltip-above=""
           onMouseDown={run(() => {
             if (name === 'bold') editor.chain().focus().toggleBold().run()
@@ -418,7 +463,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('link') ? 'active' : undefined}
         aria-label="Link"
-        data-tooltip={hint.Link}
+        data-tooltip="Link"
+        data-tooltip-key={shortcut.Link}
         data-tooltip-above=""
         onMouseDown={run(() => {
           setDraft(editor.isActive('link') ? String(editor.getAttributes('link').href ?? '') : '')
@@ -436,7 +482,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('check') ? 'active' : undefined}
         aria-label="Checkbox"
-        data-tooltip={hint.Checkbox}
+        data-tooltip="Checkbox"
+        data-tooltip-key={shortcut.Checkbox}
         data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(setRowType('check')))}
       >
@@ -448,7 +495,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('bullet') ? 'active' : undefined}
         aria-label="Bullet"
-        data-tooltip={hint.Bullet}
+        data-tooltip="Bullet"
+        data-tooltip-key={shortcut.Bullet}
         data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(setRowType('bullet')))}
       >
@@ -460,7 +508,8 @@ export function NoteToolbar({
         type="button"
         className={editor.isActive('quote') ? 'active' : undefined}
         aria-label="Quote"
-        data-tooltip={hint.Quote}
+        data-tooltip="Quote"
+        data-tooltip-key={shortcut.Quote}
         data-tooltip-above=""
         onMouseDown={run(() => dispatchCommand(toggleQuote))}
       >
@@ -471,7 +520,8 @@ export function NoteToolbar({
       <button
         type="button"
         aria-label="Section"
-        data-tooltip={sectionAvailable ? hint.Section : 'Sections only at the top level'}
+        data-tooltip={sectionAvailable ? 'Section' : 'Sections only at the top level'}
+        data-tooltip-key={sectionAvailable ? shortcut.Section : ''}
         data-tooltip-above=""
         disabled={!sectionAvailable}
         onMouseDown={run(() => dispatchCommand(convertRowToSection))}

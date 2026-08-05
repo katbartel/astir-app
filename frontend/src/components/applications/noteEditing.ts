@@ -88,6 +88,24 @@ function applyEnter(
     const atStart = $from.pos === titleStart
     const atEnd = $from.pos === titleEnd
 
+    /**
+     * Anything that puts the caret or new content into this section's body has to open
+     * the section first, in the same transaction. Otherwise the row is added where
+     * nobody can see it: two presses used to disappear into a hidden body and the third
+     * to appear below the section.
+     *
+     * This is invariant 18, and it is not the same rule as "a collapsed section is one
+     * opaque row" in section 8. That one is about drag targets, where auto-expanding
+     * would reflow the list under a moving pointer mid-gesture. A keystroke is an
+     * explicit act on a section the caret is already in, and there is no gesture to
+     * disturb.
+     */
+    const expandFirst = () => {
+      if (section.attrs.collapsed === true) {
+        transaction.setNodeMarkup(sectionPos, undefined, { ...section.attrs, collapsed: false })
+      }
+    }
+
     // The whole section moves down and a plain paragraph opens above it.
     if (atStart && title.node.content.size > 0) {
       if (!dispatch) return true
@@ -100,6 +118,7 @@ function applyEnter(
     // The title keeps what is before the caret, the rest opens the body.
     if (!atEnd && title.node.content.size > 0) {
       if (!dispatch) return true
+      expandFirst()
       const tail = title.node.content.cut($from.parentOffset)
       const bodyStart = sectionPos + 1 + title.node.nodeSize + 1
       transaction.delete($from.pos, titleEnd)
@@ -116,6 +135,7 @@ function applyEnter(
     // already empty rather than adding another one: opening a fresh row on every
     // press is what used to grow blank lines above a section's content.
     if (!dispatch) return true
+    expandFirst()
     const bodyStart = sectionPos + 1 + title.node.nodeSize + 1
     const firstRow = body.firstChild
     if (firstRow && isRow(firstRow) && isEmptyRow(firstRow)) {
@@ -505,6 +525,56 @@ export const toggleQuote: Command = (state, dispatch) => {
   return wrapIn(state.schema.nodes.quote)(state, dispatch)
 }
 
+/**
+ * Typing a space ends a link at the caret. See docs/notes-editor.md 6.8.
+ *
+ * A link never spans a space, so the space and everything after it inside the link come
+ * out plain. Typing at the end of a link therefore leaves link mode, and typing in the
+ * middle of one truncates it at the caret rather than splitting it in two.
+ *
+ * The reason is not only that a two-word link is rarely wanted. It makes a class of bug
+ * impossible: a link that can grow across a space can swallow the rest of the line, and
+ * then the whole row is one anchor and nobody can tell where the link ends.
+ */
+export const noteSpace: Command = (state, dispatch) => {
+  const { $from, empty } = state.selection
+  if (!empty) return false
+  const linkType = state.schema.marks.link
+  if (!linkType) return false
+  const mark = $from.marks().find((candidate) => candidate.type === linkType)
+  if (!mark) return false // no link here: let the space be inserted normally
+
+  if (!dispatch) return true
+
+  // The end of the marked run this caret sits in, found in the document rather than by
+  // walking the DOM.
+  const parent = $from.parent
+  const base = $from.start()
+  const offset = $from.parentOffset
+  let runEnd = offset
+  let cursor = 0
+  parent.forEach((child) => {
+    const childEnd = cursor + child.nodeSize
+    if (child.isText && child.marks.some((candidate) => candidate.eq(mark)) && cursor <= offset && offset <= childEnd) {
+      runEnd = childEnd
+    }
+    cursor = childEnd
+  })
+
+  const caret = $from.pos
+  const tr = state.tr
+  // Everything from the caret to the end of the run stops being a link, then the space
+  // goes in plain. Removing the mark from the inserted character too, because the marks
+  // at an insertion point are inherited from the text before it.
+  if (base + runEnd > caret) tr.removeMark(caret, base + runEnd, linkType)
+  tr.insertText(' ', caret)
+  tr.removeMark(caret, caret + 1, linkType)
+  tr.removeStoredMark(linkType)
+  tr.setSelection(TextSelection.create(tr.doc, caret + 1))
+  dispatch(tr.scrollIntoView())
+  return true
+}
+
 /** Shift+Enter: a soft break, and nothing else. Never continues a list. */
 export const noteHardBreak: Command = (state, dispatch) => {
   const type = state.schema.nodes.hardBreak
@@ -659,6 +729,7 @@ export const NoteEditing = Extension.create({
         // section are plain commands; the link needs the toolbar's URL field, so it is
         // bound there (section 7). A tooltip claiming a shortcut that does nothing is
         // worse than no hint, so these exist because the tooltips name them.
+        ' ': noteSpace,
         'Mod-Shift-e': toggleQuote,
         'Mod-Shift-o': convertRowToSection,
         Tab: () => false,

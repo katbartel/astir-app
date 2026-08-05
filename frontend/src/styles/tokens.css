@@ -149,6 +149,10 @@
   --border-dot: 1.5px;
   --inset-hairline: 1px;
   --space-hairline: 2px;
+  /* Air between a tooltip's label and the shortcut beside it. Not on the space scale:
+     the two need more separation than 12 and less than 16 to read as one line with two
+     weights. */
+  --tooltip-key-gap: 14px;
   --button-pad-y: 9px;
   --input-radius: 10px;
   --input-height: 32px;

@@ -1161,6 +1161,14 @@ at never arrives. The slot thresholds are re-measured as the page moves: "measur
 at lift" is about the gap not moving what decides where the gap goes, and a scroll moves
 the rows themselves.
 
+**The grip's hit target is the whole gutter.** The dots are `--space-2` wide and stay
+where they are; the element that catches the press fills the field's left padding,
+`calc(var(--space-3) + var(--note-grip-gap))`, with the glyph pinned to its right-hand
+end and a `--note-grip-gap` of clearance. Its right edge stops at the row's own left
+edge, so it can never overlap the checkbox or shift the row (section 5, rule 1), and its
+height is the row's marker cell. An 8px-wide element is one column of pixels for a hand
+aiming at a 14px gutter, and every press that missed landed on the row behind it.
+
 **A painted grip is a pressable grip, and it lingers.** Two rules, and between them they
 are the fix for "the grip appears and dragging does nothing":
 
@@ -1484,6 +1492,18 @@ Three rules for the harness, each learned the hard way:
   served chunk and grepping it for the change: that is evidence, where a reload is a
   hope. Incognito, or a hard reload, is the confirmation step before any code is
   suspected.
+- **A hit target is asserted at its edges, never only at its centre.** A centre-only
+  assertion cannot see an undersized target: it presses the one path that works. The
+  grip's dots are 8px and its intended target is the whole 14px gutter by the height of
+  the row, and for a long time the element was 8px wide, so a hand aiming at the gutter
+  missed it and the press landed on the row behind. The assertion presses left edge + 2,
+  right edge - 2, top + 2 and bottom - 2, and all four must work. The intended target is
+  computed from the layout, never from the control's own box, because measuring the
+  element only confirms whatever size it happens to be.
+
+  The drag helper presses near a corner rather than the middle for the same reason, so
+  every drag assertion inherits the check.
+
 - **A synthetic pointer is not a pointer.** Playwright never starts a native HTML5 drag,
   and it can teleport onto a control without crossing the boundary that decides whether
   the control is still live. A drag helper therefore approaches a control the way a
@@ -1578,9 +1598,9 @@ resolved entries describe the code being deleted, not code that is already gone.
   are host-only by nature: 2.2 says so in the doc rather than leaving a green suite to
   be misread.
 
-- **The check ran against something other than what shipped.** Five times, in one
-  rebuild, and the last two were caught by the person using the app rather than by any
-  test:
+- **The check ran against something other than what shipped.** Six times, in one
+  rebuild, and the last three were caught by the person using the app rather than by any
+  test. The pattern does not vary: **the check exercises the one path that works.**
 
   1. **The host is not the container.** Tiptap was installed on the host; four suites
      and a production build were green; the container could not resolve `@tiptap/core`
@@ -1605,9 +1625,14 @@ resolved entries describe the code being deleted, not code that is already gone.
      tab was serving a page from before the change. Confirmed only when the same test
      was run in incognito.
   5. **A synthetic pointer.** The drag suite passed while a real press on a real grip
-     did nothing. Playwright delivered two coalesced pointermoves for eight requested,
-     never started a native drag, and teleported onto the grip without crossing the
-     hover handoff. The suite could not see the class of failure at all.
+     did nothing. Playwright never starts a native drag and teleported onto the grip
+     without crossing the hover handoff, so the suite could not see the class at all.
+  6. **A centre-only hit test.** The grip's element was 8px wide while its intended
+     target was the 14px gutter. Every drag assertion pressed the computed centre, which
+     was the only column that worked, and an `elementFromPoint` check at that same centre
+     confirmed it. Two rounds of instrumentation went into hypotheses about native drags,
+     event coalescing and hover handoffs before the answer turned out to be the size of
+     the box. The person using the app measured it.
 
   The shared shape: **a green check is a claim about whatever it actually ran against.**
   All three passed honestly and none of them was a claim about the app. The mitigations

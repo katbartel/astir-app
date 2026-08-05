@@ -174,8 +174,12 @@ async function dragRowTo(rowIndex: number, targetY: number) {
   await page.waitForSelector(".note-grip[data-on='true']")
   const grip = await page.locator('.note-grip').boundingBox()
   if (!grip) throw new Error('the grip has no box')
-  const gx = grip.x + grip.width / 2
-  const gy = grip.y + grip.height / 2
+  // Deliberately NOT the centre. A helper that presses the exact middle of a control
+  // passes on an undersized target: for an 8px-wide grip the centre was the only column
+  // of pixels that worked. Pressing near an edge is what a hand does, so it is what the
+  // helper does, and every drag assertion inherits the check.
+  const gx = grip.x + 2
+  const gy = grip.y + grip.height - 3
   for (let x = row.left + 80; x > gx; x -= 8) await page.mouse.move(x, row.top + row.height / 2)
   await page.mouse.move(gx, gy)
 
@@ -848,6 +852,66 @@ async function main() {
       `and the row moved: ${after}`,
     )
     return 'a painted grip is pressable, and the drag works after a drift'
+  })
+
+
+  await step('5g. the grip is pressable across its whole intended hit target, not just its centre', async () => {
+    // A centre-only assertion cannot see an undersized target. dragRowTo presses the
+    // exact centre, which for an 8px-wide grip is the one column of pixels that works;
+    // a hand aiming at the gutter misses it and the press lands on the row behind.
+    //
+    // The intended target is the full gutter (the field's left padding) by at least the
+    // height of the check row, and it is computed from the layout here rather than from
+    // the grip's own box: measuring the element would just confirm whatever size it
+    // happens to be.
+    await seed(
+      v2({
+        type: 'doc',
+        content: [
+          { type: 'check', attrs: { checked: false }, content: [{ type: 'text', text: 'press my edges' }] },
+          { type: 'check', attrs: { checked: true }, content: [{ type: 'text', text: 'second box' }] },
+        ],
+      }),
+    )
+    const list = visible(await rows())
+    const row = list[0]
+    await page.mouse.move(row.left + 90, row.top + row.height / 2)
+    await page.waitForSelector(".note-grip[data-on='true']")
+
+    const target = await page.evaluate(() => {
+      const editor = document.querySelector('.note-editor') as HTMLElement
+      const first = document.querySelector('.note-check-row') as HTMLElement
+      const rowRect = first.getBoundingClientRect()
+      const gutter = parseFloat(getComputedStyle(editor).paddingLeft)
+      return {
+        left: rowRect.left - gutter,
+        right: rowRect.left,
+        top: rowRect.top,
+        bottom: rowRect.top + Math.max(rowRect.height, 22),
+        gutter,
+      }
+    })
+
+    const points: [string, number, number][] = [
+      ['left edge + 2', target.left + 2, (target.top + target.bottom) / 2],
+      ['right edge - 2', target.right - 2, (target.top + target.bottom) / 2],
+      ['top + 2', (target.left + target.right) / 2, target.top + 2],
+      ['bottom - 2', (target.left + target.right) / 2, target.bottom - 2],
+    ]
+
+    for (const [name, x, y] of points) {
+      // Re-arm the hover each time, then press at the point and see whether it lifts.
+      await page.mouse.move(row.left + 90, row.top + row.height / 2)
+      await page.waitForSelector(".note-grip[data-on='true']")
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x, y + 12, { steps: 3 })
+      const lifted = await page.evaluate(() => !!document.querySelector('.note-drag-card'))
+      await page.mouse.up()
+      await page.waitForTimeout(120)
+      check(lifted, `pressing at the ${name} of the gutter (${Math.round(target.gutter)}px wide) lifts the row`)
+    }
+    return 'all four edges of the intended hit target lift the row'
   })
 
   // 4

@@ -4778,15 +4778,22 @@ textarea {
    of a row that HAS something to drag. It never appears on an empty row. Keying it to
    the field being hovered, as the rebuild did, put a grip beside every blank line the
    pointer passed. */
+/* The hit target is the WHOLE gutter, not the width of the dots.
+   The dots stay 8px and stay exactly where they were: the box grows leftwards to fill
+   the field's left padding and the glyph is pinned to its right-hand end. An 8px-wide
+   button is one column of pixels for a hand aiming at a 14px gutter, and every press
+   that misses lands on the row behind it. The right edge stops at the row's own left
+   edge, so it can never overlap the checkbox or shift the row. */
 .note-editor-shell .note-grip {
   position: absolute;
   z-index: 2;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: var(--space-2);
+  justify-content: flex-end;
+  width: calc(var(--space-3) + var(--note-grip-gap));
+  padding-right: var(--note-grip-gap);
   height: var(--watch-title-action-size);
-  margin-left: calc((var(--space-2) + var(--note-grip-gap)) * -1);
+  margin-left: calc((var(--space-3) + var(--note-grip-gap)) * -1);
   border: none;
   background: transparent;
   color: var(--placeholder);

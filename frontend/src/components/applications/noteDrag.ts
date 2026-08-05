@@ -522,7 +522,10 @@ export const NoteDrag = Extension.create({
             // card at the row's own width. A pill fitted to the text leaves the marker
             // behind and reads as dragging a word rather than a line. Section 8.
             card = document.createElement('div')
-            card.className = 'note-drag-card'
+            // The card is absolutely positioned on the body, so it has no editor
+            // ancestor: it carries the row styling context itself. Without note-surface
+            // the DOM is correct and unreadable — see docs/notes-editor.md 8.
+            card.className = 'note-drag-card note-surface'
             if (reduceMotion()) card.dataset.reduceMotion = 'true'
             if (rowWidth > 0) card.style.width = `${rowWidth}px`
             if (rowClone) {

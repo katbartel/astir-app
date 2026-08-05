@@ -27,6 +27,15 @@ const suites: Suite[] = [
     where: 'container',
     stopOnFail: false,
   },
+  {
+    // Geometry, in the real app's own cascade. The harness measures a card on a bare page;
+    // this measures one inside a pipeline card. See 8.0: containment assertions passed on
+    // an unreadable card, so the rendered size is the assertion that matters.
+    name: 'drag card geometry: the lifted card renders as a row',
+    script: 'scripts/drag-card-geometry.mts',
+    where: 'container',
+    stopOnFail: false,
+  },
   { name: 'migration mapping', script: 'scripts/migrate-notes.test.mts', where: 'host', stopOnFail: false },
   { name: 'schema', script: 'scripts/note-schema.test.mts', where: 'host', stopOnFail: false },
   { name: 'editing semantics', script: 'scripts/note-editing.test.mts', where: 'host', stopOnFail: false },

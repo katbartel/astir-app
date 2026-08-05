@@ -1187,6 +1187,50 @@ The Tiptap drag handle extension was rejected for its peer graph (section 2). A
 drop is one transaction, so it is one undo step. **It never moves DOM nodes and it
 never rebuilds the document from the DOM.**
 
+### 8.0 The lifted card carries its styling context
+
+**The rule: any element rendered outside `.note-editor` that reuses row markup must
+carry the row styling context with it.** In practice: it carries the `.note-surface`
+class, and every row rule and every `--note-*` component token is scoped to that class
+rather than to `.note-editor`.
+
+The card is `position: fixed` on the document body, so it has no editor ancestor. When
+the row rules were written as `.note-editor .note-row`, `.note-editor .note-box` and so
+on, the card matched **none** of them, and neither did the `--note-*` tokens, which were
+declared on `.note-editor-shell` and so did not inherit across the body either. The
+result was a card whose DOM was correct in every respect and which was unreadable on
+screen: the box collapsed to a 4px sliver against the row's 16px, the line wrapped onto
+its own row below it, and the grip clone lost its width and its glyph and rendered as a
+bare vertical mark. The stray marks reported at the card's left edge were that.
+
+**Why the class, and not rendering the card inside the editor.** Rendering it inside the
+editor would have inherited everything for free, and it was rejected for three reasons,
+the first decisive:
+
+1. `.note-editor` is `overflow: auto`. A card inside it is clipped at the editor's
+   bounds, exactly where a drag is heading when the edge auto-scroll matters most.
+2. The editor root is the `contenteditable`. Injecting a foreign child into ProseMirror's
+   own DOM invites it to be treated as content, and section 8's first condition is that
+   the drag never touches the document's DOM.
+3. `position: fixed` resolves against the nearest ancestor with a transform, and the
+   pipeline card that contains the editor has one. The card's coordinates would break
+   inside a `.pipeline-card` and work in the harness.
+
+**Enforced, not documented.** `note-css-lint.test.mts` fails on any rule scoped to
+`.note-editor` or `.note-editor-shell` whose selector names a row-internal class
+(`.note-row`, `.note-check-row`, `.note-bullet-row`, `.note-line`, `.note-box`,
+`.note-bullet`, `.note-para`, `.note-link`, `.note-grip`). One exception, stated at its
+own rule: `.note-editor .note-dragging`, which hides a row that is in the air. The card
+carries `.note-surface`, so scoping that one to the surface would hide the card itself.
+
+**Assert geometry, not containment.** A DOM-containment assertion cannot see a styling
+failure. `cardHasBox` and `cardText` both passed on the unreadable card, because they ask
+whether a node is present and never whether it renders. Section 13 step f11 therefore
+measures: the card's checkbox has a non-zero width equal to the source row's, the card's
+text shares a line with its checkbox rather than wrapping below it, and the row inside the
+card renders at the source row's height. The source row is measured **before** the press,
+because during the drag it is `display: none` and measures zero.
+
 Two conditions on keeping our own drag, both structural rather than cosmetic:
 
 1. **The drag code no longer mutates the DOM.** It resolves a target document
@@ -1709,6 +1753,29 @@ While the rewrite is in progress the superseded editor is still what runs, so th
 resolved entries describe the code being deleted, not code that is already gone.
 
 ### 15.1 Active: still true of the current design
+
+- **A DOM-containment assertion cannot see a styling failure.** The lifted drag card
+  rendered as a near-invisible sliver, a wrapped line and two stray vertical marks, while
+  the card's DOM was byte-for-byte correct and six assertions on it passed. The cause was
+  scope: row rules written as `.note-editor` descendants, and a card that is
+  `position: fixed` on the body with no editor ancestor. Section 8.0 has the fix and the
+  rule.
+
+  The assertions are the entry. `cardHasBox` and `cardText` ask whether nodes are
+  **present**. Nothing above them asked whether anything **renders**, so the suite was
+  testing the DOM adjacent to the bug while a person looked straight at it.
+
+  Ninth instance, and the shape is the same every time: **the check tested something
+  adjacent to what a person sees.** Containment instead of geometry, here. The host
+  instead of the container. A faked save instead of the API. A stale bundle instead of the
+  served one. The centre of a hit target instead of its edges. The remedy is the same in
+  each: assert the thing itself, in the place it runs, and bisect it against the unfixed
+  code so the failure has been seen.
+
+  A related weakness fixed at the same time: `check` throws, so a step reported only its
+  first failure and each fix looked complete until the next run. Independent measurements
+  of one captured state now use `checkSoft`, which records all of them and fails the step
+  at the end.
 
 - **A regression step that cannot fail is worse than no step.** `f11b` was written to catch
   a stale document position on the grip: drag a row, then press the grip again. It passed.

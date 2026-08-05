@@ -12,6 +12,11 @@
 // colour, no rgba()/rgb(), and no px literal — except in the definition of a named
 // component token (a `--note-*` custom property, section 5.1), which is the one
 // place a px value is allowed to live.
+//
+// Second rule, added after the lifted drag card rendered unreadably: a row rule may
+// not be scoped to `.note-editor`. Row markup renders in two places, and the card is
+// on the body with no editor ancestor, so an editor-scoped row rule silently applies
+// to one of them. `.note-surface` is the context both carry. Section 8.
 
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -45,17 +50,61 @@ for (let match = ruleRe.exec(css); match; match = ruleRe.exec(css)) {
   }
 }
 
+/**
+ * Row internals: class names that appear in row markup and therefore render inside the
+ * lifted drag card as well as inside the editor.
+ */
+const ROW_INTERNALS = [
+  'note-row',
+  'note-check-row',
+  'note-bullet-row',
+  'note-line',
+  'note-box',
+  'note-bullet',
+  'note-para',
+  'note-link',
+  'note-grip',
+]
+
+/**
+ * `.note-dragging` is the deliberate exception, stated at its rule: it hides a row that
+ * is in the air, and the card carries .note-surface, so scoping it to the surface would
+ * hide the card itself.
+ */
+const SCOPE_EXCEPTIONS = ['.note-dragging']
+
+const misscoped: { selector: string; reason: string }[] = []
+for (let match = ruleRe.exec(css); match; match = ruleRe.exec(css)) {
+  for (const part of match[1].split(',')) {
+    const selector = part.trim().replace(/\s+/g, ' ')
+    if (!/^\.note-editor(-shell)?\s/.test(selector)) continue
+    if (SCOPE_EXCEPTIONS.some((entry) => selector.includes(entry))) continue
+    const hit = ROW_INTERNALS.find((name) => selector.includes(`.${name}`))
+    if (hit) {
+      misscoped.push({
+        selector,
+        reason: `.${hit} renders in the drag card too, which has no editor ancestor: scope it to .note-surface`,
+      })
+    }
+  }
+}
+
 console.log('Notes CSS lint')
 console.log('='.repeat(64))
-if (violations.length === 0) {
+if (misscoped.length > 0) {
+  for (const entry of misscoped) console.log(`  FAIL  ${entry.selector}\n        ${entry.reason}`)
+}
+if (violations.length === 0 && misscoped.length === 0) {
   console.log('ok    no raw hex, rgba, or non-token px in the notes CSS scope')
+  console.log('ok    every row rule is scoped to .note-surface, so the drag card matches it')
   process.exit(0)
 }
 for (const violation of violations) {
   console.log(`FAIL  ${violation.reason}\n        ${violation.selector} { ${violation.decl} }`)
 }
 console.log(
-  `\n${violations.length} violation(s). Colours come from the palette tokens; opacity from color-mix on a` +
-    ' token; px only inside a --note- component token (5.1).',
+  `\n${violations.length} value violation(s) and ${misscoped.length} mis-scoped rule(s). Colours come from` +
+    ' the palette tokens; opacity from color-mix on a token; px only inside a --note- component token' +
+    ' (5.1); row rules on .note-surface, not .note-editor (8.0).',
 )
 process.exit(1)

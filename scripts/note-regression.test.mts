@@ -42,10 +42,33 @@ const check = (ok: boolean, what: string) => {
   checks.push(`${ok ? 'ok  ' : 'FAIL'}  ${what}`)
   if (!ok) throw new Error(what)
 }
+
+/**
+ * A check that records and does not abort the step. For INDEPENDENT measurements of one
+ * captured state, where the first failure must not hide the rest: three geometry
+ * assertions on one lifted card are three separate facts, and a step that reports only
+ * the first makes each fix look complete until the next run. Call `softFailures()` at the
+ * end of the step to fail it.
+ *
+ * Not a general replacement for `check`. Where a later assertion cannot run meaningfully
+ * once an earlier one has failed — no card, no row — aborting is the honest behaviour.
+ */
+const soft: string[] = []
+const checkSoft = (ok: boolean, what: string) => {
+  checks.push(`${ok ? 'ok  ' : 'FAIL'}  ${what}`)
+  if (!ok) soft.push(what)
+}
+const softFailures = () => {
+  if (soft.length === 0) return
+  const all = soft.join(' AND ALSO: ')
+  soft.length = 0
+  throw new Error(all)
+}
 const deferred = (step: string, note: string) => results.push({ step, state: 'DEFERRED', note })
 
 async function step(name: string, body: () => Promise<string>) {
   checks.length = 0
+  soft.length = 0
   try {
     const note = await body()
     results.push({ step: name, state: 'PASS', note })
@@ -804,6 +827,18 @@ async function main() {
     )
     const list = visible(await rows())
     const row = list[0]
+    // The source row's geometry, taken before the press: during the drag the origin row is
+    // display:none, so it measures zero and cannot be the reference for anything.
+    const source = await page.evaluate(() => {
+      const el = [...document.querySelectorAll('.note-editor .note-row')].find((n) =>
+        (n.textContent ?? '').includes('lift me whole'),
+      ) as HTMLElement
+      const box = el.querySelector('.note-box') as HTMLElement
+      return {
+        height: Math.round(el.getBoundingClientRect().height),
+        boxWidth: Math.round(box.getBoundingClientRect().width),
+      }
+    })
     await page.mouse.move(row.left + 80, row.top + row.height / 2)
     await page.waitForSelector(".note-grip[data-on='true']")
     const grip = (await page.locator('.note-grip').boundingBox())!
@@ -836,6 +871,27 @@ async function main() {
         ghosts,
         gapBackground: gs?.backgroundColor ?? 'no gap',
         gapBorder: gs ? `${gs.borderTopWidth} ${gs.borderTopStyle}` : 'no gap',
+        /**
+         * GEOMETRY, not containment. Every assertion above this line asks whether a node
+         * is PRESENT. None of them can see whether it RENDERS: the card's DOM was correct
+         * in every respect while the card on screen was unreadable, because the row rules
+         * were scoped to .note-editor and the card has no editor ancestor. The three
+         * below measure what a person sees.
+         */
+        cardBoxWidth: Math.round(
+          (card.querySelector('.note-box') as HTMLElement | null)?.getBoundingClientRect().width ?? 0,
+        ),
+        // Same line means their vertical extents overlap. Wrapped below means they do not.
+        sameLine: (() => {
+          const box = card.querySelector('.note-box')?.getBoundingClientRect()
+          const line = card.querySelector('.note-line')?.getBoundingClientRect()
+          if (!box || !line) return null
+          return { overlap: Math.min(box.bottom, line.bottom) - Math.max(box.top, line.top), boxRight: Math.round(box.right), lineLeft: Math.round(line.left) }
+        })(),
+        // The row inside the card, not the card: the card adds its own padding by design.
+        cardRowHeight: Math.round(
+          (card.querySelector('.note-row') as HTMLElement | null)?.getBoundingClientRect().height ?? 0,
+        ),
       }
     }, row.width)
     await page.mouse.up()
@@ -859,7 +915,23 @@ async function main() {
       during.gapBorder.startsWith('0px') || during.gapBorder.includes('none'),
       `and no outline on the gap: ${during.gapBorder}`,
     )
-    return 'the whole row lifts, the origin is empty, and the gap is empty space'
+
+    // The three geometry assertions. A styling failure is invisible to everything above.
+    // Soft, so all three measurements are reported rather than only the first.
+    checkSoft(
+      during.cardBoxWidth > 0 && during.cardBoxWidth === source.boxWidth,
+      `the card's checkbox renders at the source row's width: card ${during.cardBoxWidth}, row ${source.boxWidth}. card was: ${during.cardHtml}`,
+    )
+    checkSoft(
+      !!during.sameLine && during.sameLine.overlap > 0 && during.sameLine.lineLeft >= during.sameLine.boxRight,
+      `the card's text sits on the same line as its checkbox, not below it: ${JSON.stringify(during.sameLine)}. card was: ${during.cardHtml}`,
+    )
+    checkSoft(
+      during.cardRowHeight === source.height,
+      `the row in the card renders at the source row's height: card ${during.cardRowHeight}, row ${source.height}. card was: ${during.cardHtml}`,
+    )
+    softFailures()
+    return 'the whole row lifts, renders as a row, and the origin is empty'
   })
 
 

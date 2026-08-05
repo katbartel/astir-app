@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(HL=0 node verify2.mjs)",
+      "Bash(docker exec *)",
+      "Bash(curl -s -o /dev/null -w \"backend:%{http_code}\\\\n\" http://localhost:3000/api/users/me --max-time 10)",
+      "Read(//Users/kate/.cache/**)",
+      "Bash(npm ls *)",
+      "Bash(npm i *)",
+      "Bash(node shot.mjs \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJjbXJkcHY5YzIwMDAwbWoza2s3N2NlbHRiIiwiZW1haWwiOiJiYXJ0ZWwua2F0YXJ6eW5hQGdtYWlsLmNvbSIsImlhdCI6MTc4NTY5ODY2NCwiZXhwIjoxNzg1NzQxODY0fQ.u2U1IkZQ6_yNZw7cg-_HPm2lEQDo925jsukGHCf6qKM\" stages.png)"
+    ]
+  }
+}

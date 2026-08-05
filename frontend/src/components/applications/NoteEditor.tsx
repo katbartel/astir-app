@@ -98,7 +98,7 @@ export function NoteEditor({
 
   if (unreadable.current) {
     return (
-      <div className="note-editor-shell">
+      <div className="note-editor-shell note-surface">
         <p className="note-unreadable" role="status">
           This note could not be opened. It is saved exactly as it was.
         </p>
@@ -107,7 +107,7 @@ export function NoteEditor({
   }
 
   return (
-    <div className="note-editor-shell">
+    <div className="note-editor-shell note-surface">
       <EditorContent editor={editor} />
       <NoteToolbar editor={editor} tools={tools} />
     </div>

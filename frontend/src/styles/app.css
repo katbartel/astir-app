@@ -4382,7 +4382,21 @@ textarea {
 
    --note-disclosure-icon exists only because the system has no icon size scale.
    Adding one is a foundations task, not this job's. */
-.note-editor-shell {
+/* THE ROW STYLING CONTEXT.
+   Row markup renders in two places: inside the editor, and inside the lifted drag card,
+   which is absolutely positioned on the body and therefore has NO editor ancestor. Every
+   row rule and every component token lives on this class rather than on .note-editor, and
+   both places carry it.
+
+   This is not a style preference. When the rules were scoped as .note-editor descendants
+   the card matched none of them: the box collapsed to a near-zero-width sliver, the line
+   wrapped below it, and the grip clone rendered as a bare vertical mark, because
+   --note-* was declared on the shell too and did not inherit across the body. The DOM was
+   correct in every respect and the card was unreadable.
+
+   THE RULE: any element rendered outside .note-editor that reuses row markup must carry
+   the row styling context with it, by carrying this class. See docs/notes-editor.md 8. */
+.note-surface {
   --note-disclosure-icon: 18px;
   --note-quote-rule: 3px;
   --note-underline-offset: 2px;
@@ -4424,7 +4438,7 @@ textarea {
 /* One row per row node. A marker row is a flex pair of marker and line; a
    paragraph holds its inline content directly, so it must NOT be a flex
    container, or every inline run becomes a flex item and text stops wrapping. */
-.note-editor .note-row {
+.note-surface .note-row {
   position: relative;
   /* Recovered from .note-check: a marker row stood a control tall, not a line tall,
      which is what gave the rows their air. The line box is the floor for a plain
@@ -4432,8 +4446,8 @@ textarea {
   min-height: calc(var(--type-body) * 1.5);
 }
 
-.note-editor .note-check-row,
-.note-editor .note-bullet-row {
+.note-surface .note-check-row,
+.note-surface .note-bullet-row {
   display: flex;
   /* Recovered: the marker sits on the row's first line and is centred against it,
      so a wrapping row keeps its marker beside the first line rather than the middle. */
@@ -4442,23 +4456,23 @@ textarea {
   min-height: var(--watch-title-action-size);
 }
 
-.note-editor .note-line {
+.note-surface .note-line {
   flex: 1;
   min-width: 0;
 }
 
 /* An empty row keeps full line height: selectable, focusable, and never collapsed
    away. Invariant 2. */
-.note-editor .note-row:empty::after,
-.note-editor .note-line:empty::after {
+.note-surface .note-row:empty::after,
+.note-surface .note-line:empty::after {
   content: '';
   display: inline-block;
 }
 
 /* The box defines the row's left edge, so a paragraph indents to match it rather
    than the box hanging off to one side. */
-.note-editor .note-box,
-.note-editor .note-bullet {
+.note-surface .note-box,
+.note-surface .note-bullet {
   flex: none;
   display: grid;
   place-items: center;
@@ -4473,11 +4487,11 @@ textarea {
    text, a bullet's glyph, a checkbox's box, and the placeholder. Nothing sits inboard
    of it. A paragraph therefore takes no indent at all: aligning its text to a
    checkbox's TEXT is the other reading of this rule and it is the wrong one. */
-.note-editor .note-para {
+.note-surface .note-para {
   padding-left: 0;
 }
 
-.note-editor .note-box {
+.note-surface .note-box {
   height: var(--space-4);
   /* Recovered: the box is centred in the row's control height, which is what put it
      on the text's optical centre instead of its cap line. */
@@ -4489,7 +4503,7 @@ textarea {
   cursor: pointer;
 }
 
-.note-editor .note-box svg {
+.note-surface .note-box svg {
   width: var(--icon-size);
   height: var(--icon-size);
   fill: none;
@@ -4501,20 +4515,20 @@ textarea {
   transition: opacity 0.12s ease;
 }
 
-.note-editor .note-check-row[data-checked='true'] .note-box {
+.note-surface .note-check-row[data-checked='true'] .note-box {
   border-color: transparent;
   background: var(--gold-soft);
 }
 
-.note-editor .note-check-row[data-checked='true'] .note-box svg {
+.note-surface .note-check-row[data-checked='true'] .note-box svg {
   opacity: 1;
 }
 
-.note-editor .note-bullet {
+.note-surface .note-bullet {
   color: var(--placeholder);
 }
 
-.note-editor .note-bullet svg {
+.note-surface .note-bullet svg {
   width: var(--space-2);
   height: var(--space-2);
 }
@@ -4587,7 +4601,7 @@ textarea {
 
 /* A link: gold, solid 1px underline at 40% opacity. Never blue. There is no
    underline mark in notes, so nothing else here is underlined. */
-.note-editor .note-link {
+.note-surface .note-link {
   color: var(--gold-text);
   text-decoration-line: underline;
   text-decoration-thickness: var(--border-thin);
@@ -4616,7 +4630,7 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   .note-editor .note-disclosure,
-  .note-editor .note-box svg {
+  .note-surface .note-box svg {
     transition: none;
   }
 }
@@ -4829,7 +4843,7 @@ textarea {
    button is one column of pixels for a hand aiming at a 14px gutter, and every press
    that misses lands on the row behind it. The right edge stops at the row's own left
    edge, so it can never overlap the checkbox or shift the row. */
-.note-editor-shell .note-grip {
+.note-surface .note-grip {
   position: absolute;
   z-index: 2;
   display: inline-flex;
@@ -4853,19 +4867,19 @@ textarea {
   transition: opacity 0.12s ease, color 0.12s ease, visibility 0s linear 0.12s;
 }
 
-.note-editor-shell .note-grip[data-on='true'] {
+.note-surface .note-grip[data-on='true'] {
   opacity: 1;
   visibility: visible;
   transition: opacity 0.12s ease, color 0.12s ease;
 }
 
-.note-editor-shell .note-grip[data-on='true']:hover {
+.note-surface .note-grip[data-on='true']:hover {
   color: var(--ink2);
 }
 
 /* Recovered: the six-dot glyph, as SVG, filled from currentColor so it follows the
    colour above. */
-.note-editor-shell .note-grip svg {
+.note-surface .note-grip svg {
   width: var(--space-2);
   height: var(--space-3);
   fill: currentColor;
@@ -4873,13 +4887,17 @@ textarea {
 
 /* Recovered: the grip has done its job once the row is in the air, and the pointer is
    still over it, so hover must not bring it back. */
-.note-editor-shell .note-grip[data-dragging='true'] {
+.note-surface .note-grip[data-dragging='true'] {
   opacity: 0;
 }
 
 /* Nothing renders at the origin. The row stays in the document, out of flow while it is
    in the air, and the gap holds the space at the target instead. A ghosted copy at the
-   origin plus a gap at the target is two holes for one row. */
+   origin plus a gap at the target is two holes for one row.
+
+   Deliberately scoped to .note-editor and NOT to .note-surface: the card carries the
+   surface class, so if a clone ever kept this class the card itself would be hidden. Only
+   a row still in the document may be hidden by it. */
 .note-editor .note-dragging {
   display: none;
 }
@@ -4912,16 +4930,11 @@ textarea {
 
 @media (prefers-reduced-motion: reduce) {
   /* The lift and the reorder still happen. Only the durations go. */
-  .note-editor-shell .note-grip,
+  .note-surface .note-grip,
   .note-editor .note-disclosure,
   .note-drag-card {
     transition-duration: 0s;
   }
-}
-
-/* The row inside the card keeps its own layout, so the marker sits where it did. */
-.note-drag-card .note-row {
-  min-height: var(--watch-title-action-size);
 }
 
 /* The grip rides along at the card's own gutter, outside its width so the card still

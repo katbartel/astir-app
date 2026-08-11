@@ -88,6 +88,42 @@ describe('GreenhouseProvider.normalize', () => {
     ).toBe('This is a full-time, hybrid position based out of our Oakland office.')
   })
 
+  it('drops Greenhouse jobs whose public posting redirects to the board error page', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            {
+              id: 1,
+              title: 'Live Product Manager',
+              absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/1',
+              location: { name: 'Remote - Europe' },
+            },
+            {
+              id: 2,
+              title: 'Closed Product Manager',
+              absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/2',
+              location: { name: 'Remote - Europe' },
+            },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        headers: { get: () => null },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        headers: { get: () => '/acme?error=true' },
+      } as unknown as Response)
+
+    await expect(provider.fetchListings(source)).resolves.toMatchObject([
+      { externalId: '1', title: 'Live Product Manager' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    fetchMock.mockRestore()
+  })
+
   it('extracts EU Greenhouse handles and jobs from the rendered board payload', () => {
     expect(provider.handleFromUrl('https://job-boards.eu.greenhouse.io/creativefabrica')).toBe(
       'eu:creativefabrica',

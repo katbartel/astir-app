@@ -111,6 +111,23 @@ export function greenhouseEuJobsFromHtml(
   }
 }
 
+async function isLiveGreenhouseJobUrl(url: string): Promise<boolean> {
+  if (!/\/\/job-boards\.greenhouse\.io\/[^/]+\/jobs\/[^/?#]+/i.test(url)) {
+    return true
+  }
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    })
+    const location = response.headers.get('location') ?? ''
+    return (response.status || 200) < 400 && !location.includes('error=true')
+  } catch {
+    return true
+  }
+}
+
 @Injectable()
 export class GreenhouseProvider implements AtsProvider {
   readonly provider = 'greenhouse'
@@ -181,9 +198,11 @@ export class GreenhouseProvider implements AtsProvider {
     if (!Array.isArray(payload.jobs)) {
       throw new Error(`Greenhouse board "${source.externalId}" returned no jobs array`)
     }
-    return payload.jobs
+    const jobs = payload.jobs
       .map((job) => this.normalize(job, source))
       .filter((job): job is NormalizedJob => job !== null)
+    const live = await Promise.all(jobs.map(async (job) => isLiveGreenhouseJobUrl(job.url)))
+    return jobs.filter((_, index) => live[index])
   }
 
   normalize(job: GreenhouseJob, source: JobBoardSourceRef): NormalizedJob | null {

@@ -28,7 +28,7 @@ import { TeamtailorProvider } from './teamtailor.provider'
 import { TheMuseProvider } from './themuse.provider'
 import { TraffitProvider } from './traffit.provider'
 import { WorkableProvider } from './workable.provider'
-import { WorkdayProvider } from './workday.provider'
+import { WorkdayProvider, parseWorkdayPostedOn } from './workday.provider'
 import { ZohoRecruitProvider, zohoRecruitJobsFromHtml } from './zohorecruit.provider'
 
 const source = { externalId: 'acme', companyName: 'Acme' }
@@ -69,6 +69,23 @@ describe('GreenhouseProvider.normalize', () => {
     )
     expect(job?.companyName).toBe('Acme')
     expect(provider.normalize({ title: 'No id' }, source)).toBeNull()
+  })
+
+  it('keeps Greenhouse content as plain description text when available', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 7524547003,
+          title: 'Senior Product Manager, Data & Integrations',
+          absolute_url: 'https://www.fivetran.com/careers/job?gh_jid=7524547003',
+          company_name: 'Fivetran',
+          location: { name: 'Oakland, California, United States, AMER' },
+          content:
+            '<p>This is a full-time, <strong>hybrid</strong> position based out of our Oakland office.</p>',
+        },
+        source,
+      )?.descriptionText,
+    ).toBe('This is a full-time, hybrid position based out of our Oakland office.')
   })
 
   it('extracts EU Greenhouse handles and jobs from the rendered board payload', () => {
@@ -667,6 +684,7 @@ describe('WorkdayProvider.normalize', () => {
           title: 'Senior ASIC Timing Engineer',
           externalPath: '/job/US-MA-Westford/Senior-ASIC-Timing-Engineer_JR2011363-1',
           locationsText: 'US-MA-Westford',
+          postedOn: 'Posted 4 Days Ago',
           bulletFields: ['JR2011363'],
         },
         workday,
@@ -680,8 +698,20 @@ describe('WorkdayProvider.normalize', () => {
       locations: ['US-MA-Westford'],
       workMode: null,
       url: 'https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-MA-Westford/Senior-ASIC-Timing-Engineer_JR2011363-1',
-      postedAt: null,
+      postedAt: parseWorkdayPostedOn('Posted 4 Days Ago'),
     })
+  })
+
+  it('parses exact Workday relative posting dates', () => {
+    const reference = new Date('2026-08-10T13:45:00Z')
+    expect(parseWorkdayPostedOn('Posted Today', reference)).toEqual(new Date('2026-08-10T00:00:00Z'))
+    expect(parseWorkdayPostedOn('Posted Yesterday', reference)).toEqual(
+      new Date('2026-08-09T00:00:00Z'),
+    )
+    expect(parseWorkdayPostedOn('Posted 4 Days Ago', reference)).toEqual(
+      new Date('2026-08-06T00:00:00Z'),
+    )
+    expect(parseWorkdayPostedOn('Posted 30+ Days Ago', reference)).toBeNull()
   })
 
   it('drops a location count, falls back to the external path for id, and drops incomplete postings', () => {

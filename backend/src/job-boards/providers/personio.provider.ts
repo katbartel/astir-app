@@ -12,8 +12,9 @@ const PROBE_TIMEOUT_MS = 6_000
 // Personio serves a public JSON board at
 // https://{handle}.jobs.personio.{com|de}/search.json — no key, no login.
 // Tenants live on either TLD, so both hosts are tried. The payload is a bare
-// array of positions and carries neither an apply URL nor a posting date: the
-// URL is built from the resolved host + position id, and postedAt stays null.
+// array of positions and carries no apply URL, so the URL is built from the
+// resolved host + position id. Most tenants omit posting dates, but when a
+// date-like field is present we keep it.
 type PersonioJob = {
   id?: number | string
   name?: string

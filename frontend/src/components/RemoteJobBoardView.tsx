@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Application } from '@/lib/applications'
 import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
-import { displayLocationParts } from '@/lib/location-display'
 import { STAGE_IDS } from '@/lib/stages'
+import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
@@ -31,6 +31,18 @@ export type Listing = {
   providers: string[]
   matchedKeywords: string[]
   status: string
+  remotePolicyStatus: string | null
+  classificationVisible: boolean
+  locationFit: {
+    label: string
+    details?: string[]
+    uncertain: boolean
+  }
+  typeFit: {
+    label: 'Fully remote' | 'Remote, occasional presence' | 'Uncertain'
+    uncertain: boolean
+  }
+  reasonCodes: string[]
 }
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
@@ -42,42 +54,59 @@ function isFresh(listing: Listing): boolean {
   return Date.now() - new Date(listing.postedAt).getTime() < NEW_WINDOW_MS
 }
 
-// "Newest" means the provider's posting date when it exists, falling back to
-// when we first saw the listing.
+// "Newest" on the curated board means when Astir first saw the listing. Some
+// ATS boards keep still-open roles under old provider posting dates, while a
+// new company add should bring those live openings near the top.
 function listedAt(listing: Listing): number {
-  return new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
-}
-
-// The same role posted across regions is folded into one row: show the primary
-// location with a "+N" chip for the rest. Providers deliver extras either as
-// separate array entries or a ";"-joined string, so flatten both.
-function locationParts(listing: Listing): string[] {
-  return displayLocationParts(listing.locations, listing.location)
+  return new Date(listing.firstSeenAt).getTime()
 }
 
 function MetaLine({ listing }: { listing: Listing }) {
-  const parts = locationParts(listing)
-  const primary = parts[0] ?? null
-  const extra = Math.max(0, parts.length - 1)
-  const hiddenLocations = parts.slice(1).join(', ')
+  const locationDetails = listing.locationFit.details ?? []
+  const primaryLocation = locationDetails[0] ?? listing.locationFit.label
+  const extraLocationCount = Math.max(0, locationDetails.length - 1)
+  const hiddenLocations = locationDetails.slice(1).join(', ')
   return (
     <div className="role-loc">
-      {listing.companyName}
-      {primary ? (
+      <span>{listing.companyName}</span>
+      <span className="meta-separator"> · </span>
+      <span className="meta-key">Location:</span>{' '}
+      <span
+        className={listing.locationFit.uncertain ? 'meta-value meta-value-uncertain' : 'meta-value'}
+        data-tooltip={
+          listing.locationFit.uncertain
+            ? 'Astir was unable to confirm hiring location. Please review the job description.'
+            : undefined
+        }
+      >
+        {primaryLocation}
+        {extraLocationCount > 0 ? (
+          <span className="more-cities" data-tooltip={`Also posted in ${hiddenLocations}.`}>
+            +{extraLocationCount}
+          </span>
+        ) : null}
+      </span>
+      <span className="meta-separator"> · </span>
+      <span className="meta-key">Type:</span>{' '}
+      <span
+        className={listing.typeFit.uncertain ? 'meta-value meta-value-uncertain' : 'meta-value'}
+        data-tooltip={
+          listing.typeFit.label === 'Remote, occasional presence'
+            ? 'This role is remote, but occasional presence, like an offsite, is mentioned in the description.'
+            : listing.typeFit.uncertain
+              ? 'Astir was unable to confirm whether this role is fully remote. Please review the job description.'
+              : undefined
+        }
+      >
+        {listing.typeFit.label}
+      </span>
+      {listing.contentLanguage ? (
         <>
-          {' · '}
-          {primary}
-          {extra > 0 ? (
-            <span className="more-cities" data-tooltip={hiddenLocations}>
-              +{extra}
-            </span>
-          ) : null}
+          <span className="meta-separator"> · </span>
+          <span className="meta-key">Language:</span>{' '}
+          <span className="meta-value">{listing.contentLanguage.toUpperCase()}</span>
         </>
       ) : null}
-      {/* A single-location row can show its work mode; when several regions are
-          folded the modes vary, so we drop it (mirrors the Watchlist). */}
-      {extra === 0 && listing.workMode ? ` · ${listing.workMode}` : null}
-      {listing.contentLanguage ? ` · ${listing.contentLanguage.toUpperCase()}` : null}
     </div>
   )
 }
@@ -90,12 +119,15 @@ function ListingRow({
   listing,
   onLog,
   onSetStatus,
+  reviewOnly = false,
 }: {
   listing: Listing
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
+  reviewOnly?: boolean
 }) {
   const isIrrelevant = listing.status === 'irrelevant'
+  const opensFoldedPosting = (listing.locationFit.details?.length ?? 0) > 1
   return (
     <div className="watch-role">
       <div className="role-main">
@@ -109,7 +141,11 @@ function ListingRow({
             target="_blank"
             rel="noreferrer"
             aria-label="Open posting"
-            data-tooltip="Open posting"
+            data-tooltip={
+              opensFoldedPosting
+                ? 'Opens one posting. Other locations may have separate links.'
+                : 'Open posting'
+            }
           >
             <OpenIcon />
           </a>
@@ -126,26 +162,30 @@ function ListingRow({
           </div>
         ) : null}
       </div>
-      <button
-        className="round-icon add-application"
-        type="button"
-        aria-label="Log application"
-        data-tooltip="Log application"
-        onClick={() => onLog(listing)}
-      >
-        <PlusIcon />
-      </button>
-      <KebabMenu menuClassName="board-menu">
-        {isIrrelevant ? (
-          <button type="button" onClick={() => onSetStatus(listing, 'new')}>
-            Back to relevant
+      {!reviewOnly ? (
+        <>
+          <button
+            className="round-icon add-application"
+            type="button"
+            aria-label="Log application"
+            data-tooltip="Log application"
+            onClick={() => onLog(listing)}
+          >
+            <PlusIcon />
           </button>
-        ) : (
-          <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
-            Mark as irrelevant
-          </button>
-        )}
-      </KebabMenu>
+          <KebabMenu menuClassName="board-menu">
+            {isIrrelevant ? (
+              <button type="button" onClick={() => onSetStatus(listing, 'new')}>
+                Back to relevant
+              </button>
+            ) : (
+              <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
+                Mark as irrelevant
+              </button>
+            )}
+          </KebabMenu>
+        </>
+      ) : null}
     </div>
   )
 }
@@ -159,7 +199,10 @@ export function RemoteJobBoardView({
 }: {
   initialListings?: Listing[] | null
 }) {
+  const user = useUser()
   const [listings, setListings] = useState<Listing[] | null>(initialListings)
+  const [notApplicableListings, setNotApplicableListings] = useState<Listing[] | null>(null)
+  const [mode, setMode] = useState<'board' | 'not-applicable'>('board')
   const [failed, setFailed] = useState(false)
   const [quietOpen, setQuietOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
@@ -190,9 +233,40 @@ export function RemoteJobBoardView({
     }
   }, [initialListings])
 
+  useEffect(() => {
+    if (!user.isAdmin || mode !== 'not-applicable' || notApplicableListings !== null) return
+    let cancelled = false
+    fetch('/api/remote-job-board/not-applicable-listings')
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Listings request failed: ${response.status}`)
+        }
+        return (await response.json()) as Listing[]
+      })
+      .then((data) => {
+        if (!cancelled) {
+          setNotApplicableListings(data)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFailed(true)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [mode, notApplicableListings, user.isAdmin])
+
   const sorted = useMemo(() => sortListings(listings ?? []), [listings])
+  const sortedNotApplicable = useMemo(
+    () => sortListings(notApplicableListings ?? []),
+    [notApplicableListings],
+  )
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
+  const reviewMode = mode === 'not-applicable'
+  const loading = reviewMode ? notApplicableListings === null : listings === null
 
   // Mark a listing irrelevant (it drops to the quiet section below) or bring it
   // back to the main feed. Optimistic: flip the local status first, then PATCH;
@@ -237,7 +311,7 @@ export function RemoteJobBoardView({
   }
 
   // Logging an application removes the listing from the board and points the
-  // user on to wherever it landed.
+  // user on to wherever it was saved.
   function onLogged(application: Application, listingId: string | null) {
     if (listingId) {
       setListings((prev) => prev?.filter((listing) => listing.id !== listingId) ?? prev)
@@ -257,13 +331,41 @@ export function RemoteJobBoardView({
   return (
     <section className="screen" data-screen="remote-job-board">
       <div className="page-head">
-        <h1>Job board</h1>
+        <div className="job-board-title-wrap">
+          <h1>Job board</h1>
+          {user.isAdmin ? (
+            <KebabMenu menuClassName="board-menu">
+              <button type="button" onClick={() => setMode('board')}>
+                Current board
+              </button>
+              <button type="button" onClick={() => setMode('not-applicable')}>
+                Not applicable jobs
+              </button>
+            </KebabMenu>
+          ) : null}
+        </div>
       </div>
       <div className="watchlist">
         {failed ? (
-          <p className="watch-invite">The remote board is resting for a moment. Try again soon.</p>
-        ) : listings === null ? (
+          <p className="watch-invite">The remote board is paused for a moment. Try again soon.</p>
+        ) : loading ? (
           <p className="watch-invite">Gathering remote openings…</p>
+        ) : reviewMode ? (
+          sortedNotApplicable.length === 0 ? (
+            <p className="watch-invite">No hidden roles to review right now.</p>
+          ) : (
+            <article className="watch-group board-feed">
+              {sortedNotApplicable.map((listing) => (
+                <ListingRow
+                  listing={listing}
+                  key={listing.id}
+                  onLog={openLog}
+                  onSetStatus={setListingStatus}
+                  reviewOnly
+                />
+              ))}
+            </article>
+          )
         ) : sorted.length === 0 ? (
           <p className="watch-invite">
             No remote roles matching your keywords yet. New openings appear here as the curated
@@ -284,7 +386,7 @@ export function RemoteJobBoardView({
               </article>
             ) : (
               <p className="watch-invite">
-                Nothing in your main list right now — everything below is marked irrelevant.
+                Nothing in your main list right now, everything below is marked irrelevant.
               </p>
             )}
             {irrelevant.length > 0 ? (

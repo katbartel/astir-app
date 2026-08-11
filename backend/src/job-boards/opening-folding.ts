@@ -22,6 +22,8 @@ export type FoldableOpening = {
   locations: string[]
   workMode: string | null
   contentLanguage: string | null
+  descriptionText?: string | null
+  remotePolicyStatus?: string | null
   postedAt: Date | null
   firstSeenAt: Date
   matchedKeywords: string[]
@@ -132,6 +134,11 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     locations,
     workMode: best.workMode,
     contentLanguage: best.contentLanguage,
+    descriptionText: [...new Set(group.map((opening) => opening.descriptionText).filter(Boolean))]
+      .join('\n\n') || null,
+    remotePolicyStatus: group.some((opening) => opening.remotePolicyStatus === 'uncertain')
+      ? 'uncertain'
+      : best.remotePolicyStatus,
     postedAt: best.postedAt,
     firstSeenAt: newest,
     matchedKeywords: [...new Set(group.flatMap((opening) => opening.matchedKeywords))],

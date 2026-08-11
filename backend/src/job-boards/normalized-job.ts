@@ -14,6 +14,8 @@ export type NormalizedJob = {
   // country) — the hiring-region match looks at all of them.
   locations: string[]
   workMode: WorkMode | null
+  descriptionText?: string | null
+  descriptionHash?: string | null
   url: string
   postedAt: Date | null
   // ISO 639-1 code of the language the ad is *written in* (e.g. 'en', 'de'),

@@ -26,6 +26,9 @@ type WorkdayPosting = {
   externalPath?: string
   // Either a real place or a count like "3 Locations" for multi-location roles.
   locationsText?: string
+  // Usually relative text from Workday, e.g. "Posted Today" or
+  // "Posted 4 Days Ago".
+  postedOn?: string
   // Typically [reqId], e.g. ["JR2011363"].
   bulletFields?: string[]
 }
@@ -53,6 +56,36 @@ function locationFromWorkday(text: string | undefined): string | null {
 
 function workModeFromWorkday(text: string | null): WorkMode | null {
   return text?.toLowerCase().includes('remote') ? 'Remote' : null
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+export function parseWorkdayPostedOn(value: string | undefined, referenceDate = new Date()): Date | null {
+  if (!value) {
+    return null
+  }
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'posted today') {
+    return startOfUtcDay(referenceDate)
+  }
+  if (normalized === 'posted yesterday') {
+    const date = startOfUtcDay(referenceDate)
+    date.setUTCDate(date.getUTCDate() - 1)
+    return date
+  }
+  const daysMatch = normalized.match(/^posted\s+(\d+)\s+days?\s+ago$/)
+  if (!daysMatch) {
+    return null
+  }
+  const daysAgo = Number(daysMatch[1])
+  if (!Number.isInteger(daysAgo)) {
+    return null
+  }
+  const date = startOfUtcDay(referenceDate)
+  date.setUTCDate(date.getUTCDate() - daysAgo)
+  return date
 }
 
 @Injectable()
@@ -161,7 +194,7 @@ export class WorkdayProvider implements AtsProvider {
       locations: location ? [location] : [],
       workMode: workModeFromWorkday(location),
       url: `https://${hostFor(parsed)}/en-US/${parsed.site}${posting.externalPath}`,
-      postedAt: null,
+      postedAt: parseWorkdayPostedOn(posting.postedOn),
     }
   }
 }

@@ -1238,6 +1238,25 @@ h1 {
   line-height: 1.35;
 }
 
+.meta-key {
+  color: var(--ink2);
+  font-weight: var(--weight-medium);
+}
+
+.meta-value {
+  color: var(--muted);
+}
+
+.meta-value-uncertain {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--muted) 48%, transparent);
+  text-underline-offset: var(--space-1);
+}
+
+.meta-separator {
+  color: var(--muted);
+}
+
 .role-posted {
   margin-top: var(--space-1);
   color: var(--muted);
@@ -2020,7 +2039,8 @@ h1 {
   gap: var(--space-3);
 }
 
-.pipeline-title-wrap {
+.pipeline-title-wrap,
+.job-board-title-wrap {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -4166,6 +4186,12 @@ textarea {
   border-color: transparent;
   background: var(--gold-soft);
   color: var(--gold-text);
+}
+
+.admin-remote-policy-uncertain {
+  border-color: transparent;
+  background: var(--prep-soft);
+  color: var(--prep-text);
 }
 
 .admin-company-list {

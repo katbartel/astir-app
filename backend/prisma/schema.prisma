@@ -25,18 +25,18 @@ model User {
 }
 
 model WatchlistPreferences {
-  id            String   @id @default(cuid())
-  userId        String   @unique @map("user_id")
-  keywords      String[] @default([])
+  id               String   @id @default(cuid())
+  userId           String   @unique @map("user_id")
+  keywords         String[] @default([])
   excludedKeywords String[] @default([]) @map("excluded_keywords")
-  workModes     String[] @default([]) @map("work_modes")
-  contractTypes String[] @default([]) @map("contract_types")
-  terms         String[] @default([])
-  languages     String[] @default([])
-  industryNoGos String[] @default([]) @map("industry_no_gos")
-  hiringRegions String[] @default([]) @map("hiring_regions")
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  workModes        String[] @default([]) @map("work_modes")
+  contractTypes    String[] @default([]) @map("contract_types")
+  terms            String[] @default([])
+  languages        String[] @default([])
+  industryNoGos    String[] @default([]) @map("industry_no_gos")
+  hiringRegions    String[] @default([]) @map("hiring_regions")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -82,19 +82,20 @@ model JobSource {
 // then polls. resolutionStatus mirrors the watchlist: "resolved" (found on an
 // ATS and being polled), "pending", or "unresolved" (not on any ATS).
 model RemoteCompany {
-  id               String   @id @default(cuid())
-  name             String
-  nameKey          String   @unique @map("name_key")
-  careersUrl       String?  @map("careers_url")
-  companyWebsite   String?  @map("company_website")
-  note             String?
-  reviewed         Boolean  @default(false)
-  reviewStatus     String   @default("not_reviewed") @map("review_status")
-  jobSourceId      String?  @map("job_source_id")
-  resolutionStatus String   @default("pending") @map("resolution_status")
-  addedByEmail     String?  @map("added_by_email")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  id                 String   @id @default(cuid())
+  name               String
+  nameKey            String   @unique @map("name_key")
+  careersUrl         String?  @map("careers_url")
+  companyWebsite     String?  @map("company_website")
+  note               String?
+  reviewed           Boolean  @default(false)
+  reviewStatus       String   @default("not_reviewed") @map("review_status")
+  remotePolicyStatus String   @default("clear") @map("remote_policy_status")
+  jobSourceId        String?  @map("job_source_id")
+  resolutionStatus   String   @default("pending") @map("resolution_status")
+  addedByEmail       String?  @map("added_by_email")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
 
   jobSource JobSource? @relation(fields: [jobSourceId], references: [id], onDelete: SetNull)
 
@@ -134,23 +135,25 @@ model WatchlistCompany {
 // consolidated here via the fingerprint; the per-provider records live in
 // JobListingSource.
 model JobListing {
-  id          String    @id @default(cuid())
-  fingerprint String    @unique
-  title       String
-  companyName String    @map("company_name")
-  location    String?
-  locations   String[]  @default([])
-  workMode    String?   @map("work_mode")
+  id              String    @id @default(cuid())
+  fingerprint     String    @unique
+  title           String
+  companyName     String    @map("company_name")
+  location        String?
+  locations       String[]  @default([])
+  workMode        String?   @map("work_mode")
+  descriptionText String?   @map("description_text")
+  descriptionHash String?   @map("description_hash")
   // ISO 639-1 code of the language the ad is written in, when a provider
   // exposes it (Join, the schema.org JobPosting reader). A weak proxy for the
   // language a role expects; null when unknown.
-  contentLanguage String? @map("content_language")
-  url         String
-  postedAt    DateTime? @map("posted_at")
-  firstSeenAt DateTime  @default(now()) @map("first_seen_at")
-  lastSeenAt  DateTime  @default(now()) @map("last_seen_at")
-  createdAt   DateTime  @default(now()) @map("created_at")
-  updatedAt   DateTime  @updatedAt @map("updated_at")
+  contentLanguage String?   @map("content_language")
+  url             String
+  postedAt        DateTime? @map("posted_at")
+  firstSeenAt     DateTime  @default(now()) @map("first_seen_at")
+  lastSeenAt      DateTime  @default(now()) @map("last_seen_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
 
   sources      JobListingSource[]
   users        UserJobListing[]

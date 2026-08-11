@@ -5,6 +5,7 @@ import { useUser } from '../UserProvider'
 
 type ResolutionStatus = 'pending' | 'resolved' | 'unresolved'
 type ReviewStatus = 'reviewed' | 'not_reviewed' | 'to_review'
+type RemotePolicyStatus = 'clear' | 'uncertain'
 
 type RemoteCompany = {
   id: string
@@ -13,6 +14,7 @@ type RemoteCompany = {
   companyWebsite: string | null
   note: string | null
   reviewStatus: ReviewStatus
+  remotePolicyStatus: RemotePolicyStatus
   resolutionStatus: ResolutionStatus
   addedByEmail: string | null
   createdAt: string
@@ -57,6 +59,11 @@ const REVIEW_LABEL: Record<ReviewStatus, string> = {
 }
 
 const REVIEW_STATUS_OPTIONS: ReviewStatus[] = ['not_reviewed', 'to_review', 'reviewed']
+const REMOTE_POLICY_LABEL: Record<RemotePolicyStatus, string> = {
+  clear: 'Use automatic type check',
+  uncertain: 'Always show type uncertain',
+}
+const REMOTE_POLICY_OPTIONS: RemotePolicyStatus[] = ['clear', 'uncertain']
 
 const FILTER_TO_REVIEW_STATUS: Partial<Record<ListFilter, ReviewStatus>> = {
   reviewed: 'reviewed',
@@ -319,6 +326,36 @@ export function AdminPanel() {
       setCompanies((prev) =>
         prev?.map((item) =>
           item.id === company.id ? { ...item, reviewStatus: company.reviewStatus } : item,
+        ) ?? prev,
+      )
+    }
+  }
+
+  async function updateRemotePolicyStatus(
+    company: RemoteCompany,
+    remotePolicyStatus: RemotePolicyStatus,
+  ) {
+    if (company.remotePolicyStatus === remotePolicyStatus) return
+    setCompanies((prev) =>
+      prev?.map((item) =>
+        item.id === company.id ? { ...item, remotePolicyStatus } : item,
+      ) ?? prev,
+    )
+    try {
+      const response = await fetch(`/api/remote-companies/${company.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remotePolicyStatus }),
+      })
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+      const updated = (await response.json()) as RemoteCompany
+      setCompanies((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? prev)
+    } catch {
+      setCompanies((prev) =>
+        prev?.map((item) =>
+          item.id === company.id
+            ? { ...item, remotePolicyStatus: company.remotePolicyStatus }
+            : item,
         ) ?? prev,
       )
     }
@@ -631,6 +668,23 @@ export function AdminPanel() {
                         {REVIEW_STATUS_OPTIONS.map((status) => (
                           <option key={status} value={status}>
                             {REVIEW_LABEL[status]}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className={`admin-review-select admin-remote-policy-${company.remotePolicyStatus}`}
+                        value={company.remotePolicyStatus}
+                        aria-label={`Remote policy status for ${company.name}`}
+                        onChange={(event) =>
+                          updateRemotePolicyStatus(
+                            company,
+                            event.target.value as RemotePolicyStatus,
+                          )
+                        }
+                      >
+                        {REMOTE_POLICY_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {REMOTE_POLICY_LABEL[status]}
                           </option>
                         ))}
                       </select>

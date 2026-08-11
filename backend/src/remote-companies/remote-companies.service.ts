@@ -12,6 +12,7 @@ export type RemoteCompanyView = {
   companyWebsite: string | null
   note: string | null
   reviewStatus: string
+  remotePolicyStatus: string
   // resolved: found on an ATS and being polled; pending: still resolving;
   // unresolved: not on any ATS (its jobs won't surface until it resolves).
   resolutionStatus: string
@@ -131,6 +132,7 @@ export class RemoteCompaniesService {
       companyWebsite?: string
       note?: string
       reviewStatus?: string
+      remotePolicyStatus?: string
     },
   ): Promise<RemoteCompanyView> {
     const company = await this.prisma.remoteCompany.findUnique({ where: { id } })
@@ -144,6 +146,7 @@ export class RemoteCompaniesService {
       companyWebsite?: string | null
       note?: string | null
       reviewStatus?: string
+      remotePolicyStatus?: string
     } = {}
     let shouldResolve = false
     if (input.name !== undefined) {
@@ -177,6 +180,9 @@ export class RemoteCompaniesService {
     }
     if (input.reviewStatus !== undefined) {
       data.reviewStatus = input.reviewStatus
+    }
+    if (input.remotePolicyStatus !== undefined) {
+      data.remotePolicyStatus = input.remotePolicyStatus
     }
     const updated = await this.prisma.remoteCompany.update({ where: { id }, data })
     if (shouldResolve) {
@@ -314,6 +320,7 @@ export class RemoteCompaniesService {
       companyWebsite: company.companyWebsite,
       note: company.note,
       reviewStatus: company.reviewStatus,
+      remotePolicyStatus: company.remotePolicyStatus,
       resolutionStatus: company.resolutionStatus,
       addedByEmail: company.addedByEmail,
       createdAt: company.createdAt,

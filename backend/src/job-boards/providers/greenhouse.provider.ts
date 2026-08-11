@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { NormalizedJob, WorkMode, parseDate } from '../normalized-job'
+import { textFromHtml } from '../description-fetching'
 import {
   AtsProvider,
   JobBoardSourceRef,
@@ -18,6 +19,7 @@ type GreenhouseJob = {
   location?: { name?: string }
   first_published?: string
   updated_at?: string
+  content?: string
 }
 
 type GreenhouseEuJob = {
@@ -53,6 +55,7 @@ function normalizeJob(
     first_published?: string
     published_at?: string
     updated_at?: string
+    content?: string
   },
   source: JobBoardSourceRef,
 ): NormalizedJob | null {
@@ -73,6 +76,7 @@ function normalizeJob(
     workMode: workModeFromLocation(location),
     url: job.absolute_url,
     postedAt: parseDate(job.first_published) ?? parseDate(job.published_at) ?? parseDate(job.updated_at),
+    ...(job.content ? { descriptionText: textFromHtml(job.content) } : {}),
   }
 }
 
@@ -113,7 +117,7 @@ export class GreenhouseProvider implements AtsProvider {
   readonly kind = 'ats' as const
 
   private jobsUrl(handle: string): string {
-    return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(handle)}/jobs`
+    return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(handle)}/jobs?content=true`
   }
 
   private euPageUrl(handle: string): string {

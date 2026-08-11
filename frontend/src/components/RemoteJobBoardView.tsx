@@ -115,16 +115,67 @@ function sortListings(listings: Listing[]): Listing[] {
   return [...listings].sort((a, b) => listedAt(b) - listedAt(a))
 }
 
+function readableReason(reason: string): string {
+  if (reason.startsWith('country:')) return reason.replace('country:', 'Country:')
+  if (reason.startsWith('cluster:')) return reason.replace('cluster:', 'Region cluster:')
+  if (reason.startsWith('no location stated')) return 'No location stated, assuming Europe'
+  if (reason.startsWith('also names non-European location')) {
+    return reason.replace('also names non-European location(s):', 'Also names non-European:')
+  }
+  const labels: Record<string, string> = {
+    'worldwide/global': 'Worldwide or global wording',
+    'Europe/EMEA': 'Europe or EMEA wording',
+    'EU': 'EU wording',
+    'EEA/Schengen': 'EEA or Schengen wording',
+    'location present but not recognized': 'Location not recognized',
+    'description missing': 'Description missing',
+    'description mentions regular presence': 'Description mentions regular presence',
+    'description mentions occasional presence': 'Description mentions occasional presence',
+    'description mentions fully remote': 'Description mentions fully remote',
+    'description location clues': 'Description has location clues',
+    'description review clues': 'Description has review clues',
+    'regular presence required': 'Regular presence required',
+    'restricted outside Europe': 'Restricted outside Europe',
+    'outside selected countries': 'Outside selected countries',
+    'non-European tag with review clue': 'Non-European tag with review clue',
+    'company remote policy marked uncertain': 'Company remote policy marked uncertain',
+  }
+  return labels[reason] ?? reason
+}
+
+function AdminDiagnostics({
+  listing,
+  reviewOnly,
+}: {
+  listing: Listing
+  reviewOnly: boolean
+}) {
+  if (!listing.reasonCodes.length) return null
+  const uniqueReasons = [...new Set(listing.reasonCodes.map(readableReason))]
+  return (
+    <div className="role-diagnostics" aria-label="Admin QA details">
+      <span className="role-diagnostics-label">{reviewOnly ? 'Not applicable' : 'QA'}</span>
+      {uniqueReasons.map((reason) => (
+        <span className="role-diagnostics-chip" key={reason}>
+          {reason}
+        </span>
+      ))}
+    </div>
+  )
+}
+
 function ListingRow({
   listing,
   onLog,
   onSetStatus,
   reviewOnly = false,
+  showDiagnostics = false,
 }: {
   listing: Listing
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
   reviewOnly?: boolean
+  showDiagnostics?: boolean
 }) {
   const isIrrelevant = listing.status === 'irrelevant'
   const opensFoldedPosting = (listing.locationFit.details?.length ?? 0) > 1
@@ -153,6 +204,7 @@ function ListingRow({
         </div>
         <MetaLine listing={listing} />
         <div className="role-posted">Posted: {formatPostedDate(listing.postedAt)}</div>
+        {showDiagnostics ? <AdminDiagnostics listing={listing} reviewOnly={reviewOnly} /> : null}
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
           <div className="role-attribution">
@@ -362,6 +414,7 @@ export function RemoteJobBoardView({
                   onLog={openLog}
                   onSetStatus={setListingStatus}
                   reviewOnly
+                  showDiagnostics={user.isAdmin}
                 />
               ))}
             </article>
@@ -381,6 +434,7 @@ export function RemoteJobBoardView({
                     key={listing.id}
                     onLog={openLog}
                     onSetStatus={setListingStatus}
+                    showDiagnostics={user.isAdmin}
                   />
                 ))}
               </article>
@@ -409,6 +463,7 @@ export function RemoteJobBoardView({
                         key={listing.id}
                         onLog={openLog}
                         onSetStatus={setListingStatus}
+                        showDiagnostics={user.isAdmin}
                       />
                     ))}
                   </article>

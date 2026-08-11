@@ -1264,6 +1264,30 @@ h1 {
   line-height: 1.35;
 }
 
+.role-diagnostics {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+  color: var(--muted);
+  font-size: var(--type-chip);
+  line-height: 1.35;
+}
+
+.role-diagnostics-label {
+  color: var(--ink2);
+  font-weight: var(--weight-medium);
+}
+
+.role-diagnostics-chip {
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-pill);
+  background: var(--paper);
+  color: var(--muted);
+}
+
 .role-attribution {
   margin-top: var(--space-1);
   font-size: var(--type-meta);

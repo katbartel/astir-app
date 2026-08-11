@@ -25,6 +25,7 @@ const LOCATION_CONTEXT_TERMS = [
   'reside',
   'timezone',
   'time zone',
+  'choose where you live',
   'work from',
 ]
 
@@ -56,6 +57,7 @@ const FULLY_REMOTE_TERMS = [
   'fully remote',
   'remote first',
   'remote-first',
+  'choose where you live',
   'work from anywhere',
   'distributed team',
   'distributed company',
@@ -115,9 +117,17 @@ export function analyzeRemoteDescription(descriptionText: string | null | undefi
   const fullyRemote = hasAny(normalized, FULLY_REMOTE_TERMS)
   const locationClues = sentences(descriptionText)
     .filter((sentence) => hasAny(normalizeForIdentity(sentence), LOCATION_CONTEXT_TERMS))
-    .map((sentence) =>
-      normalizeForIdentity(sentence).includes('anywhere in europe') ? 'Europe' : sentence,
-    )
+    .map((sentence) => {
+      const normalizedSentence = normalizeForIdentity(sentence)
+      if (normalizedSentence.includes('anywhere in europe')) return 'Europe'
+      if (
+        normalizedSentence.includes('work from anywhere') ||
+        normalizedSentence.includes('choose where you live')
+      ) {
+        return 'Anywhere'
+      }
+      return sentence
+    })
   const reviewClues = sentences(descriptionText).filter((sentence) =>
     hasAny(normalizeForIdentity(sentence), REVIEW_CONTEXT_TERMS),
   )

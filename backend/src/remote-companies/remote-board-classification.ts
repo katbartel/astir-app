@@ -45,6 +45,10 @@ function listingLocations(listing: ClassifiableListing): string[] {
   return listing.locations.length ? listing.locations : listing.location ? [listing.location] : []
 }
 
+function isPlainRemoteLocation(location: string): boolean {
+  return normalizeForIdentity(location) === 'remote'
+}
+
 function selectedCountrySet(hiringRegions: string[]): Set<string> | null {
   if (!hiringRegions.length) {
     return new Set(EUROPE_ISO)
@@ -157,8 +161,13 @@ export function classifyRemoteBoardListing(
   hiringRegions: string[],
 ): RemoteBoardClassification {
   const analysis = analyzeRemoteDescription(listing.descriptionText)
+  const providerLocations = listingLocations(listing)
+  const hasSpecificProviderLocation = providerLocations.some((location) => !isPlainRemoteLocation(location))
+  const locationClues = hasSpecificProviderLocation
+    ? analysis.locationClues.filter((clue) => normalizeForIdentity(clue) !== 'anywhere')
+    : analysis.locationClues
   const { verdict, escalate } = classifyDeterministic({
-    locations: [...listingLocations(listing), ...analysis.locationClues],
+    locations: [...providerLocations, ...locationClues],
     workMode: listing.workMode,
   })
   const reasonCodes = [...verdict.signals, ...analysis.reasonCodes]
@@ -210,7 +219,7 @@ export function classifyRemoteBoardListing(
   }
 
   const descriptionResolved =
-    analysis.locationClues.length > 0 &&
+    locationClues.length > 0 &&
     (verdict.scope === 'global' || verdict.scope === 'region' || verdict.scope === 'country')
   const hasClearEligibleLocation =
     verdict.scope === 'global' ||

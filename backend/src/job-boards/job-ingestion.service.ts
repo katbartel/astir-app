@@ -174,11 +174,23 @@ export class JobIngestionService implements OnApplicationBootstrap {
     const normalizedJob = normalizeListingLocations(job)
     const fingerprint = jobFingerprint(normalizedJob)
     const existing = await this.prisma.jobListing.findUnique({ where: { fingerprint } })
+    const existingSources = existing
+      ? await this.prisma.jobListingSource.findMany({
+          where: { listingId: existing.id },
+          select: { provider: true, externalId: true },
+        })
+      : []
+    const refreshingOnlyKnownSource =
+      existingSources.length === 1 &&
+      existingSources[0].provider === normalizedJob.provider &&
+      existingSources[0].externalId === normalizedJob.externalId
     const description = await this.descriptionFor(normalizedJob, existing?.descriptionText ?? null)
     const normalizedExisting = existing
       ? normalizeListingLocations({
-          location: existing.location ?? normalizedJob.location,
-          locations: [...existing.locations, ...normalizedJob.locations],
+          location: refreshingOnlyKnownSource ? normalizedJob.location : existing.location ?? normalizedJob.location,
+          locations: refreshingOnlyKnownSource
+            ? normalizedJob.locations
+            : [...existing.locations, ...normalizedJob.locations],
         })
       : null
     const listing = existing

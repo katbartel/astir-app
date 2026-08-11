@@ -180,6 +180,29 @@ describe('AshbyProvider.normalize', () => {
       workMode: 'Remote',
       url: 'https://jobs.ashbyhq.com/linear/d3bc1ced',
       postedAt: new Date('2021-04-27T20:13:45.158+00:00'),
+      descriptionText: null,
+    })
+  })
+
+  it('does not treat Ashby address country as location for plain remote roles', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 'remote-1',
+          title: 'Product Manager',
+          location: 'Remote',
+          secondaryLocations: [],
+          address: { postalAddress: { addressCountry: 'Germany' } },
+          workplaceType: 'Remote',
+          jobUrl: 'https://jobs.ashbyhq.com/acme/remote-1',
+          descriptionPlain: 'Fully remote team, choose where you live.',
+        },
+        source,
+      ),
+    ).toMatchObject({
+      location: 'Remote',
+      locations: ['Remote'],
+      descriptionText: 'Fully remote team, choose where you live.',
     })
   })
 

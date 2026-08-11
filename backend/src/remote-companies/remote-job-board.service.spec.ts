@@ -266,6 +266,42 @@ describe('classifyRemoteBoardListing', () => {
     })
   })
 
+  it('treats choose-where-you-live wording as anywhere when the provider only says remote', () => {
+    expect(
+      classifyRemoteBoardListing(
+        {
+          location: null,
+          locations: [],
+          workMode: 'Remote',
+          descriptionText: 'Benefits include a fully remote team, choose where you live.',
+        },
+        ['Germany'],
+      ),
+    ).toMatchObject({
+      visible: true,
+      location: { label: 'Anywhere', uncertain: false },
+      type: { label: 'Fully remote', uncertain: false },
+    })
+  })
+
+  it('keeps a provider country location over generic choose-where-you-live wording', () => {
+    expect(
+      classifyRemoteBoardListing(
+        {
+          location: 'Remote - Germany',
+          locations: ['Remote - Germany'],
+          workMode: 'Remote',
+          descriptionText: 'Benefits include a fully remote team, choose where you live.',
+        },
+        ['Germany'],
+      ),
+    ).toMatchObject({
+      visible: true,
+      location: { label: 'Germany', uncertain: false },
+      type: { label: 'Fully remote', uncertain: false },
+    })
+  })
+
   it('filters a role when the description requires regular office presence', () => {
     expect(
       classifyRemoteBoardListing(

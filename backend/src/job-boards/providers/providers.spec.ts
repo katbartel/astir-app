@@ -758,6 +758,7 @@ describe('WorkdayProvider.normalize', () => {
       workMode: null,
       url: 'https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-MA-Westford/Senior-ASIC-Timing-Engineer_JR2011363-1',
       postedAt: parseWorkdayPostedOn('Posted 4 Days Ago'),
+      descriptionText: null,
     })
   })
 
@@ -782,6 +783,42 @@ describe('WorkdayProvider.normalize', () => {
     expect(job?.locations).toEqual([])
     expect(job?.externalId).toBe('/job/remote/PM_JR1')
     expect(provider.normalize({ title: 'No path' }, workday)).toBeNull()
+  })
+
+  it('uses Workday detail locations and description when the list row only has a count', () => {
+    expect(
+      provider.normalize(
+        {
+          title: 'Staff Product Manager',
+          externalPath: '/job/Remote-USA/Staff-Product-Manager_001737',
+          locationsText: '2 Locations',
+          postedOn: 'Posted Today',
+          bulletFields: ['001737'],
+        },
+        { externalId: 'blackline:wd108:BlackLineCareers', companyName: 'BlackLine' },
+        {
+          jobPostingInfo: {
+            jobDescription: '<p>Make Your Mark</p><p>This is the full description.</p>',
+            location: 'Remote USA',
+            additionalLocations: ['Remote - Mexico'],
+            postedOn: 'Posted Today',
+            jobReqId: '001737',
+            remoteType: 'Remote',
+          },
+        },
+      ),
+    ).toEqual({
+      provider: 'workday',
+      externalId: '001737',
+      title: 'Staff Product Manager',
+      companyName: 'BlackLine',
+      location: 'Remote USA',
+      locations: ['Remote USA', 'Remote - Mexico'],
+      workMode: 'Remote',
+      url: 'https://blackline.wd108.myworkdayjobs.com/en-US/BlackLineCareers/job/Remote-USA/Staff-Product-Manager_001737',
+      postedAt: parseWorkdayPostedOn('Posted Today'),
+      descriptionText: 'Make Your Mark\nThis is the full description.',
+    })
   })
 
   it('keeps paginating when Workday only reports total on the first page', async () => {

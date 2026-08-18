@@ -42,6 +42,10 @@ export function locationStrings(opening: Pick<FoldableOpening, 'locations' | 'lo
   ])
 }
 
+function effectiveDate(opening: Pick<FoldableOpening, 'postedAt' | 'firstSeenAt'>): number {
+  return (opening.postedAt ?? opening.firstSeenAt).getTime()
+}
+
 // 2 for a specific selected region (e.g. Germany, Poland, Spain), 1 for a
 // generic Europe/EU match, 0 for none. Highest across the posting's locations
 // wins.
@@ -81,7 +85,7 @@ export function foldOpenings(
     }
     combined.push(combineGroup(group, hiringRegions))
   }
-  combined.sort((a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime())
+  combined.sort((a, b) => effectiveDate(b) - effectiveDate(a))
   return combined
 }
 
@@ -104,7 +108,7 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
   const ranked = [...group].sort((a, b) => {
     const score =
       regionScore(locationStrings(b), hiringRegions) - regionScore(locationStrings(a), hiringRegions)
-    return score !== 0 ? score : b.firstSeenAt.getTime() - a.firstSeenAt.getTime()
+    return score !== 0 ? score : effectiveDate(b) - effectiveDate(a)
   })
   const best = ranked[0]
 
@@ -125,6 +129,10 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     (latest, opening) => (opening.firstSeenAt > latest ? opening.firstSeenAt : latest),
     group[0].firstSeenAt,
   )
+  const newestPostedAt = group.reduce<Date | null>((latest, opening) => {
+    if (!opening.postedAt) return latest
+    return !latest || opening.postedAt > latest ? opening.postedAt : latest
+  }, null)
   return {
     id: best.id,
     title: best.title,
@@ -139,7 +147,7 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     remotePolicyStatus: group.some((opening) => opening.remotePolicyStatus === 'uncertain')
       ? 'uncertain'
       : best.remotePolicyStatus,
-    postedAt: best.postedAt,
+    postedAt: newestPostedAt,
     firstSeenAt: newest,
     matchedKeywords: [...new Set(group.flatMap((opening) => opening.matchedKeywords))],
     providers: [...new Set(group.flatMap((opening) => opening.providers ?? []))],

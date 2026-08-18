@@ -268,7 +268,7 @@ export class RemoteJobBoardService {
   }
 
   private effectiveDate(listing: RemoteJobBoardListing): number {
-    return listing.firstSeenAt.getTime()
+    return (listing.postedAt ?? listing.firstSeenAt).getTime()
   }
 
   private async irrelevantListingIds(userId: string): Promise<Set<string>> {

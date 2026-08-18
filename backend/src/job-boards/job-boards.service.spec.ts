@@ -136,7 +136,7 @@ describe('JobBoardsService.listForUser exclusions', () => {
     poland.listing.locations = ['Warsaw, Poland', 'Krakow, Poland', 'Gdansk, Poland']
 
     const spain = row('spain', 'Docplanner', {
-      postedAt: '2026-07-24T00:00:00Z',
+      postedAt: '2026-07-25T00:00:00Z',
       firstSeenAt: '2026-07-24T09:00:00Z',
     })
     spain.listing.title = 'Senior Product Manager - Marketplace (100% Remote within Spain)'
@@ -148,6 +148,7 @@ describe('JobBoardsService.listForUser exclusions', () => {
 
     expect(listings).toHaveLength(1)
     expect(listings[0].id).toBe('poland')
+    expect(listings[0].postedAt).toEqual(new Date('2026-07-25T00:00:00Z'))
     expect(listings[0].locations).toEqual([
       'Warsaw, Poland',
       'Krakow, Poland',

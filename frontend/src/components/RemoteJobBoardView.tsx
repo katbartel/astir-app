@@ -54,11 +54,8 @@ function isFresh(listing: Listing): boolean {
   return Date.now() - new Date(listing.postedAt).getTime() < NEW_WINDOW_MS
 }
 
-// "Newest" on the curated board means when Astir first saw the listing. Some
-// ATS boards keep still-open roles under old provider posting dates, while a
-// new company add should bring those live openings near the top.
 function listedAt(listing: Listing): number {
-  return new Date(listing.firstSeenAt).getTime()
+  return new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
 }
 
 function MetaLine({ listing }: { listing: Listing }) {

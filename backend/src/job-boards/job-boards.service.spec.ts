@@ -148,7 +148,8 @@ describe('JobBoardsService.listForUser exclusions', () => {
 
     expect(listings).toHaveLength(1)
     expect(listings[0].id).toBe('poland')
-    expect(listings[0].postedAt).toEqual(new Date('2026-07-25T00:00:00Z'))
+    expect(listings[0].postedAt).toEqual(new Date('2026-07-24T00:00:00Z'))
+    expect(listings[0].firstSeenAt).toEqual(new Date('2026-07-24T08:00:00Z'))
     expect(listings[0].locations).toEqual([
       'Warsaw, Poland',
       'Krakow, Poland',

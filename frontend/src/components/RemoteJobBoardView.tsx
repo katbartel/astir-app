@@ -8,7 +8,7 @@ import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { OpenIcon, PlusIcon } from './icons'
+import { CalendarIcon, ChevronDownIcon, OpenIcon, PlusIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -46,6 +46,9 @@ export type Listing = {
 }
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
+const RECENCY_WINDOW_MS = 168 * 60 * 60 * 1000
+const UNDATED_AGE_FLOOR_MS = 48 * 60 * 60 * 1000
+const JOB_BOARD_STORAGE_KEY = 'astir.v1.jobBoard'
 
 // "New" means posted at the source within the last 48h. Listings without a
 // provider posting date get no label (we don't fall back to when we pulled it in).
@@ -54,8 +57,14 @@ function isFresh(listing: Listing): boolean {
   return Date.now() - new Date(listing.postedAt).getTime() < NEW_WINDOW_MS
 }
 
-function listedAt(listing: Listing): number {
-  return new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
+function effectiveAgeMs(listing: Listing): number {
+  const date = new Date(listing.postedAt ?? listing.firstSeenAt).getTime()
+  const age = Math.max(0, Date.now() - date)
+  return listing.postedAt ? age : Math.max(UNDATED_AGE_FLOOR_MS, age)
+}
+
+function isMostRecent(listing: Listing): boolean {
+  return effectiveAgeMs(listing) <= RECENCY_WINDOW_MS
 }
 
 function MetaLine({ listing }: { listing: Listing }) {
@@ -109,7 +118,70 @@ function MetaLine({ listing }: { listing: Listing }) {
 }
 
 function sortListings(listings: Listing[]): Listing[] {
-  return [...listings].sort((a, b) => listedAt(b) - listedAt(a))
+  return [...listings].sort((a, b) => effectiveAgeMs(a) - effectiveAgeMs(b))
+}
+
+function DateLine({ listing }: { listing: Listing }) {
+  if (listing.postedAt) {
+    return (
+      <div className="role-posted">
+        <span className="meta-key">Posted:</span> {formatPostedDate(listing.postedAt)}
+      </div>
+    )
+  }
+  return (
+    <div className="role-posted">
+      <span
+        className="meta-key meta-value-uncertain"
+        data-tooltip="Astir only knows when this role first appeared on the board."
+      >
+        Appeared:
+      </span>{' '}
+      {formatPostedDate(listing.firstSeenAt)}
+    </div>
+  )
+}
+
+function ListingSection({
+  title,
+  listings,
+  emptyCopy,
+  onLog,
+  onSetStatus,
+  showDiagnostics,
+}: {
+  title: string
+  listings: Listing[]
+  emptyCopy?: string
+  onLog: (listing: Listing) => void
+  onSetStatus: (listing: Listing, status: ListingStatus) => void
+  showDiagnostics: boolean
+}) {
+  return (
+    <section className="board-section" aria-label={title}>
+      <div className="board-section-head">
+        <span className="board-section-icon" aria-hidden="true">
+          <CalendarIcon />
+        </span>
+        <span>{title}</span>
+      </div>
+      {listings.length > 0 ? (
+        <article className="watch-group board-feed">
+          {listings.map((listing) => (
+            <ListingRow
+              listing={listing}
+              key={listing.id}
+              onLog={onLog}
+              onSetStatus={onSetStatus}
+              showDiagnostics={showDiagnostics}
+            />
+          ))}
+        </article>
+      ) : emptyCopy ? (
+        <p className="board-empty">{emptyCopy}</p>
+      ) : null}
+    </section>
+  )
 }
 
 function readableReason(reason: string): string {
@@ -201,7 +273,7 @@ function ListingRow({
           {isFresh(listing) ? <span className="role-new-chip">New</span> : null}
         </div>
         <MetaLine listing={listing} />
-        <div className="role-posted">Posted: {formatPostedDate(listing.postedAt)}</div>
+        <DateLine listing={listing} />
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
           <div className="role-attribution">
@@ -261,8 +333,20 @@ export function RemoteJobBoardView({
   const [mode, setMode] = useState<'board' | 'not-applicable'>('board')
   const [failed, setFailed] = useState(false)
   const [quietOpen, setQuietOpen] = useState(false)
+  const [olderOpen, setOlderOpen] = useState(false)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(JOB_BOARD_STORAGE_KEY)
+      if (!stored) return
+      const parsed = JSON.parse(stored) as { olderOpen?: boolean }
+      setOlderOpen(parsed.olderOpen === true)
+    } catch {
+      setOlderOpen(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (initialListings !== null) return
@@ -322,6 +406,14 @@ export function RemoteJobBoardView({
   const showQaNotes = user.email === 'bartel.katarzyna@gmail.com'
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
+  const mostRecent = useMemo(
+    () => relevant.filter((listing) => isMostRecent(listing)),
+    [relevant],
+  )
+  const older = useMemo(
+    () => relevant.filter((listing) => !isMostRecent(listing)),
+    [relevant],
+  )
   const reviewMode = mode === 'not-applicable'
   const loading = reviewMode ? notApplicableListings === null : listings === null
 
@@ -364,6 +456,23 @@ export function RemoteJobBoardView({
       role: listing.title,
       link: listing.url,
       status: STAGE_IDS.applied,
+    })
+  }
+
+  function toggleOlder() {
+    setOlderOpen((open) => {
+      const next = !open
+      try {
+        const stored = window.localStorage.getItem(JOB_BOARD_STORAGE_KEY)
+        const parsed = stored ? (JSON.parse(stored) as Record<string, unknown>) : {}
+        window.localStorage.setItem(
+          JOB_BOARD_STORAGE_KEY,
+          JSON.stringify({ ...parsed, olderOpen: next }),
+        )
+      } catch {
+        // The saved preference is only a convenience.
+      }
+      return next
     })
   }
 
@@ -431,23 +540,38 @@ export function RemoteJobBoardView({
           </p>
         ) : (
           <>
-            {relevant.length > 0 ? (
-              <article className="watch-group board-feed">
-                {relevant.map((listing) => (
-                  <ListingRow
-                    listing={listing}
-                    key={listing.id}
+            <ListingSection
+              title="Most recent"
+              listings={mostRecent}
+              emptyCopy="No recent roles matching your keywords right now."
+              onLog={openLog}
+              onSetStatus={setListingStatus}
+              showDiagnostics={showQaNotes}
+            />
+            {older.length > 0 ? (
+              <div className={olderOpen ? 'quiet-section open' : 'quiet-section'}>
+                <button
+                  type="button"
+                  className="quiet-toggle"
+                  aria-expanded={olderOpen}
+                  onClick={toggleOlder}
+                >
+                  <span className="quiet-chevron" aria-hidden="true">
+                    <ChevronDownIcon />
+                  </span>
+                  Older
+                </button>
+                {olderOpen ? (
+                  <ListingSection
+                    title="Older"
+                    listings={older}
                     onLog={openLog}
                     onSetStatus={setListingStatus}
                     showDiagnostics={showQaNotes}
                   />
-                ))}
-              </article>
-            ) : (
-              <p className="watch-invite">
-                Nothing in your main list right now, everything below is marked irrelevant.
-              </p>
-            )}
+                ) : null}
+              </div>
+            ) : null}
             {irrelevant.length > 0 ? (
               <div className="quiet-section">
                 <button
@@ -456,9 +580,7 @@ export function RemoteJobBoardView({
                   aria-expanded={quietOpen}
                   onClick={() => setQuietOpen((open) => !open)}
                 >
-                  {irrelevant.length === 1
-                    ? '1 marked irrelevant'
-                    : `${irrelevant.length} marked irrelevant`}
+                  Marked irrelevant
                 </button>
                 {quietOpen ? (
                   <article className="watch-group board-feed">

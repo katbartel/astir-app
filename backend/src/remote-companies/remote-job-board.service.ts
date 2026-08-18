@@ -7,6 +7,8 @@ import { FoldableOpening, foldOpenings } from '../job-boards/opening-folding'
 import { DEFAULT_WATCHLIST_PREFERENCES } from '../users/watchlist-defaults'
 import { classifyRemoteBoardListing } from './remote-board-classification'
 
+const UNDATED_AGE_FLOOR_MS = 48 * 60 * 60 * 1000
+
 // Like a JobBoardListing, but carries every location the folded opening is
 // available in (the same role posted across regions is bundled into one row).
 export type RemoteJobBoardListing = {
@@ -239,7 +241,7 @@ export class RemoteJobBoardService {
           reasonCodes: classification.reasonCodes,
         }
       })
-      .sort((a, b) => this.effectiveDate(b) - this.effectiveDate(a))
+      .sort((a, b) => this.effectiveAgeMs(a) - this.effectiveAgeMs(b))
   }
 
   // Mark a remote-board listing irrelevant (drops it into the quiet section) or
@@ -267,8 +269,10 @@ export class RemoteJobBoardService {
     })
   }
 
-  private effectiveDate(listing: RemoteJobBoardListing): number {
-    return (listing.postedAt ?? listing.firstSeenAt).getTime()
+  private effectiveAgeMs(listing: RemoteJobBoardListing): number {
+    const date = (listing.postedAt ?? listing.firstSeenAt).getTime()
+    const age = Math.max(0, Date.now() - date)
+    return listing.postedAt ? age : Math.max(UNDATED_AGE_FLOOR_MS, age)
   }
 
   private async irrelevantListingIds(userId: string): Promise<Set<string>> {

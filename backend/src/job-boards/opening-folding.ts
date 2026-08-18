@@ -63,7 +63,7 @@ export function regionScore(locations: string[], hiringRegions: string[]): numbe
 
 // Group openings by company + role title, drop any opening the user has already
 // applied to (any posting in the group counts), and collapse each remaining
-// group into one row linked to the best-matching location. Newest opening
+// group into one row linked to the best-matching location. Newest group date
 // first.
 export function foldOpenings(
   openings: FoldableOpening[],
@@ -104,11 +104,11 @@ function titleKey(opening: FoldableOpening): string {
 
 function combineGroup(group: FoldableOpening[], hiringRegions: string[]): FoldableOpening {
   // Pick the posting whose location best matches the user's selected regions;
-  // break ties by the newest posting.
+  // break ties by the earliest posting.
   const ranked = [...group].sort((a, b) => {
     const score =
       regionScore(locationStrings(b), hiringRegions) - regionScore(locationStrings(a), hiringRegions)
-    return score !== 0 ? score : effectiveDate(b) - effectiveDate(a)
+    return score !== 0 ? score : effectiveDate(a) - effectiveDate(b)
   })
   const best = ranked[0]
 
@@ -125,13 +125,13 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     }
   }
 
-  const newest = group.reduce(
-    (latest, opening) => (opening.firstSeenAt > latest ? opening.firstSeenAt : latest),
+  const earliest = group.reduce(
+    (oldest, opening) => (opening.firstSeenAt < oldest ? opening.firstSeenAt : oldest),
     group[0].firstSeenAt,
   )
-  const newestPostedAt = group.reduce<Date | null>((latest, opening) => {
-    if (!opening.postedAt) return latest
-    return !latest || opening.postedAt > latest ? opening.postedAt : latest
+  const earliestPostedAt = group.reduce<Date | null>((oldest, opening) => {
+    if (!opening.postedAt) return oldest
+    return !oldest || opening.postedAt < oldest ? opening.postedAt : oldest
   }, null)
   return {
     id: best.id,
@@ -147,8 +147,8 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     remotePolicyStatus: group.some((opening) => opening.remotePolicyStatus === 'uncertain')
       ? 'uncertain'
       : best.remotePolicyStatus,
-    postedAt: newestPostedAt,
-    firstSeenAt: newest,
+    postedAt: earliestPostedAt,
+    firstSeenAt: earliest,
     matchedKeywords: [...new Set(group.flatMap((opening) => opening.matchedKeywords))],
     providers: [...new Set(group.flatMap((opening) => opening.providers ?? []))],
   }

@@ -1264,6 +1264,50 @@ h1 {
   line-height: 1.35;
 }
 
+.board-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.board-section + .board-section {
+  margin-top: var(--space-6);
+}
+
+.board-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.board-section-icon {
+  display: grid;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  place-items: center;
+}
+
+.board-section-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.board-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-control);
+  line-height: 1.5;
+}
+
 .role-attribution {
   margin-top: var(--space-1);
   font-size: var(--type-meta);
@@ -1976,6 +2020,10 @@ h1 {
   margin-top: var(--space-3);
 }
 
+.quiet-section .board-section {
+  margin-top: var(--space-3);
+}
+
 .quiet-toggle {
   display: inline-flex;
   align-items: center;
@@ -2009,7 +2057,7 @@ h1 {
 }
 
 .quiet-section.open .quiet-chevron {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 .quiet-list {

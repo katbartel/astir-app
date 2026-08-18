@@ -62,19 +62,23 @@ function normalizeJob(
   if (job.id === undefined || !job.title || !job.absolute_url) {
     return null
   }
+  const externalId = String(job.id)
   const location =
     typeof job.location === 'string'
       ? job.location.trim() || null
       : job.location?.name?.trim() || null
   return {
     provider: 'greenhouse',
-    externalId: String(job.id),
+    externalId,
     title: job.title.trim(),
     companyName: job.company_name?.trim() || source.companyName,
     location,
     locations: location ? [location] : [],
     workMode: workModeFromLocation(location),
-    url: job.absolute_url,
+    url:
+      source.externalId === 'remotecom'
+        ? `https://remote.com/openings/${encodeURIComponent(externalId)}`
+        : job.absolute_url,
     postedAt: parseDate(job.first_published) ?? parseDate(job.published_at) ?? parseDate(job.updated_at),
     ...(job.content ? { descriptionText: textFromHtml(job.content) } : {}),
   }

@@ -88,6 +88,23 @@ describe('GreenhouseProvider.normalize', () => {
     ).toBe('This is a full-time, hybrid position based out of our Oakland office.')
   })
 
+  it('uses Remote.com opening URLs for Remote Greenhouse listings', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 7885095003,
+          title: 'Product Manager, Billing Platform',
+          absolute_url: 'https://job-boards.greenhouse.io/remotecom/jobs/7885095003',
+          location: { name: 'Remote-Germany' },
+        },
+        { externalId: 'remotecom', companyName: 'Remote' },
+      ),
+    ).toMatchObject({
+      externalId: '7885095003',
+      url: 'https://remote.com/openings/7885095003',
+    })
+  })
+
   it('drops Greenhouse jobs whose public posting redirects to the board error page', async () => {
     const fetchMock = jest
       .spyOn(global, 'fetch')

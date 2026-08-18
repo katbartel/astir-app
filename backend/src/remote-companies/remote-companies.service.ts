@@ -102,6 +102,22 @@ export class RemoteCompaniesService {
     }
     const existing = await this.prisma.remoteCompany.findUnique({ where: { nameKey } })
     if (existing) {
+      const careersUrl = input.careersUrl?.trim() || null
+      if (careersUrl && careersUrl !== existing.careersUrl) {
+        const updated = await this.prisma.remoteCompany.update({
+          where: { id: existing.id },
+          data: {
+            careersUrl,
+            ...(input.companyWebsite !== undefined
+              ? { companyWebsite: input.companyWebsite.trim() || null }
+              : {}),
+            ...(input.note !== undefined ? { note: input.note.trim() || null } : {}),
+          },
+        })
+        await this.resolveAndSync(updated, { force: true })
+        const saved = await this.prisma.remoteCompany.findUnique({ where: { id: existing.id } })
+        return this.toView(saved ?? updated)
+      }
       throw new ConflictException('This company is already on the remote job board list')
     }
     const company = await this.prisma.remoteCompany.create({

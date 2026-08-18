@@ -143,7 +143,7 @@ function readableReason(reason: string): string {
   return labels[reason] ?? reason
 }
 
-function AdminDiagnostics({
+function AdminDiagnosticsMenuSection({
   listing,
   reviewOnly,
 }: {
@@ -153,10 +153,10 @@ function AdminDiagnostics({
   if (!listing.reasonCodes.length) return null
   const uniqueReasons = [...new Set(listing.reasonCodes.map(readableReason))]
   return (
-    <div className="role-diagnostics" aria-label="Admin QA details">
-      <span className="role-diagnostics-label">{reviewOnly ? 'Not applicable' : 'QA'}</span>
+    <div className="role-qa-note" role="note" aria-label="QA notes">
+      <span className="role-qa-title">{reviewOnly ? 'Not applicable QA' : 'QA notes'}</span>
       {uniqueReasons.map((reason) => (
-        <span className="role-diagnostics-chip" key={reason}>
+        <span className="role-qa-reason" key={reason}>
           {reason}
         </span>
       ))}
@@ -179,6 +179,7 @@ function ListingRow({
 }) {
   const isIrrelevant = listing.status === 'irrelevant'
   const opensFoldedPosting = (listing.locationFit.details?.length ?? 0) > 1
+  const hasDiagnostics = showDiagnostics && listing.reasonCodes.length > 0
   return (
     <div className="watch-role">
       <div className="role-main">
@@ -204,7 +205,6 @@ function ListingRow({
         </div>
         <MetaLine listing={listing} />
         <div className="role-posted">Posted: {formatPostedDate(listing.postedAt)}</div>
-        {showDiagnostics ? <AdminDiagnostics listing={listing} reviewOnly={reviewOnly} /> : null}
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
           <div className="role-attribution">
@@ -235,8 +235,15 @@ function ListingRow({
                 Mark as irrelevant
               </button>
             )}
+            {hasDiagnostics ? (
+              <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
+            ) : null}
           </KebabMenu>
         </>
+      ) : hasDiagnostics ? (
+        <KebabMenu menuClassName="board-menu">
+          <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
+        </KebabMenu>
       ) : null}
     </div>
   )
@@ -315,6 +322,7 @@ export function RemoteJobBoardView({
     () => sortListings(notApplicableListings ?? []),
     [notApplicableListings],
   )
+  const showQaNotes = user.email === 'bartel.katarzyna@gmail.com'
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
   const reviewMode = mode === 'not-applicable'
@@ -414,7 +422,7 @@ export function RemoteJobBoardView({
                   onLog={openLog}
                   onSetStatus={setListingStatus}
                   reviewOnly
-                  showDiagnostics={user.isAdmin}
+                  showDiagnostics={showQaNotes}
                 />
               ))}
             </article>
@@ -434,7 +442,7 @@ export function RemoteJobBoardView({
                     key={listing.id}
                     onLog={openLog}
                     onSetStatus={setListingStatus}
-                    showDiagnostics={user.isAdmin}
+                    showDiagnostics={showQaNotes}
                   />
                 ))}
               </article>
@@ -463,7 +471,7 @@ export function RemoteJobBoardView({
                         key={listing.id}
                         onLog={openLog}
                         onSetStatus={setListingStatus}
-                        showDiagnostics={user.isAdmin}
+                        showDiagnostics={showQaNotes}
                       />
                     ))}
                   </article>

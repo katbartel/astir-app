@@ -8,7 +8,7 @@ import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { CalendarIcon, ChevronDownIcon, OpenIcon, PlusIcon } from './icons'
+import { CalendarIcon, ChevronDownIcon, OpenIcon, PlusIcon, SearchIcon, XIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -65,6 +65,17 @@ function effectiveAgeMs(listing: Listing): number {
 
 function isMostRecent(listing: Listing): boolean {
   return effectiveAgeMs(listing) <= RECENCY_WINDOW_MS
+}
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+function matchesCompanySearch(listing: Listing, query: string): boolean {
+  return normalizeSearch(listing.companyName).includes(query)
 }
 
 function MetaLine({ listing }: { listing: Listing }) {
@@ -181,6 +192,35 @@ function ListingSection({
         <p className="board-empty">{emptyCopy}</p>
       ) : null}
     </section>
+  )
+}
+
+function SearchResults({
+  listings,
+  onLog,
+  onSetStatus,
+  showDiagnostics,
+}: {
+  listings: Listing[]
+  onLog: (listing: Listing) => void
+  onSetStatus: (listing: Listing, status: ListingStatus) => void
+  showDiagnostics: boolean
+}) {
+  if (listings.length === 0) {
+    return <p className="board-empty">No matching roles right now.</p>
+  }
+  return (
+    <article className="watch-group board-feed">
+      {listings.map((listing) => (
+        <ListingRow
+          listing={listing}
+          key={listing.id}
+          onLog={onLog}
+          onSetStatus={onSetStatus}
+          showDiagnostics={showDiagnostics}
+        />
+      ))}
+    </article>
   )
 }
 
@@ -334,6 +374,7 @@ export function RemoteJobBoardView({
   const [failed, setFailed] = useState(false)
   const [quietOpen, setQuietOpen] = useState(false)
   const [olderOpen, setOlderOpen] = useState(false)
+  const [search, setSearch] = useState('')
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
 
@@ -406,6 +447,12 @@ export function RemoteJobBoardView({
   const showQaNotes = user.email === 'bartel.katarzyna@gmail.com'
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
+  const searchQuery = normalizeSearch(search.trim())
+  const searching = searchQuery.length > 0
+  const searchResults = useMemo(
+    () => (searchQuery ? relevant.filter((listing) => matchesCompanySearch(listing, searchQuery)) : []),
+    [relevant, searchQuery],
+  )
   const mostRecent = useMemo(
     () => relevant.filter((listing) => isMostRecent(listing)),
     [relevant],
@@ -457,6 +504,10 @@ export function RemoteJobBoardView({
       link: listing.url,
       status: STAGE_IDS.applied,
     })
+  }
+
+  function clearSearch() {
+    setSearch('')
   }
 
   function toggleOlder() {
@@ -511,6 +562,36 @@ export function RemoteJobBoardView({
           ) : null}
         </div>
       </div>
+      {!reviewMode ? (
+        <label className="board-search">
+          <span className="board-search-icon" aria-hidden="true">
+            <SearchIcon />
+          </span>
+          <input
+            type="search"
+            value={search}
+            placeholder="Search companies"
+            aria-label="Search companies"
+            onChange={(event) => setSearch(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                clearSearch()
+              }
+            }}
+          />
+          {search ? (
+            <button
+              className="round-icon small board-search-clear"
+              type="button"
+              aria-label="Clear search"
+              data-tooltip="Clear search"
+              onClick={clearSearch}
+            >
+              <XIcon />
+            </button>
+          ) : null}
+        </label>
+      ) : null}
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is paused for a moment. Try again soon.</p>
@@ -540,39 +621,50 @@ export function RemoteJobBoardView({
           </p>
         ) : (
           <>
-            <ListingSection
-              title="Most recent"
-              listings={mostRecent}
-              emptyCopy="No recent roles matching your keywords right now."
-              onLog={openLog}
-              onSetStatus={setListingStatus}
-              showDiagnostics={showQaNotes}
-            />
-            {older.length > 0 ? (
-              <div className={olderOpen ? 'quiet-section open' : 'quiet-section'}>
-                <button
-                  type="button"
-                  className="quiet-toggle"
-                  aria-expanded={olderOpen}
-                  onClick={toggleOlder}
-                >
-                  <span className="quiet-chevron" aria-hidden="true">
-                    <ChevronDownIcon />
-                  </span>
-                  Older
-                </button>
-                {olderOpen ? (
-                  <ListingSection
-                    title="Older"
-                    listings={older}
-                    onLog={openLog}
-                    onSetStatus={setListingStatus}
-                    showDiagnostics={showQaNotes}
-                  />
+            {searching ? (
+              <SearchResults
+                listings={searchResults}
+                onLog={openLog}
+                onSetStatus={setListingStatus}
+                showDiagnostics={showQaNotes}
+              />
+            ) : (
+              <>
+                <ListingSection
+                  title="Most recent"
+                  listings={mostRecent}
+                  emptyCopy="No recent roles matching your keywords right now."
+                  onLog={openLog}
+                  onSetStatus={setListingStatus}
+                  showDiagnostics={showQaNotes}
+                />
+                {older.length > 0 ? (
+                  <div className={olderOpen ? 'quiet-section open' : 'quiet-section'}>
+                    <button
+                      type="button"
+                      className="quiet-toggle"
+                      aria-expanded={olderOpen}
+                      onClick={toggleOlder}
+                    >
+                      <span className="quiet-chevron" aria-hidden="true">
+                        <ChevronDownIcon />
+                      </span>
+                      Older
+                    </button>
+                    {olderOpen ? (
+                      <ListingSection
+                        title="Older"
+                        listings={older}
+                        onLog={openLog}
+                        onSetStatus={setListingStatus}
+                        showDiagnostics={showQaNotes}
+                      />
+                    ) : null}
+                  </div>
                 ) : null}
-              </div>
-            ) : null}
-            {irrelevant.length > 0 ? (
+              </>
+            )}
+            {!searching && irrelevant.length > 0 ? (
               <div className="quiet-section">
                 <button
                   type="button"

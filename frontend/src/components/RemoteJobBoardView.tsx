@@ -1,16 +1,21 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import type { Application } from '@/lib/applications'
-import { formatPostedDate, isPipelineStatus } from '@/lib/applications'
+import { isPipelineStatus } from '@/lib/applications'
 import { STAGE_IDS } from '@/lib/stages'
 import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { CalendarIcon, ChevronDownIcon, OpenIcon, PlusIcon, SearchIcon, XIcon } from './icons'
+import { CalendarIcon, ChevronDownIcon, FlameIcon, OpenIcon, PlusIcon, SearchIcon, XIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
+
+type WatchlistPreferences = {
+  hiringRegions: string[]
+}
 
 // Shape of GET /api/remote-job-board/listings (JobBoardListing on the backend).
 export type Listing = {
@@ -78,14 +83,51 @@ function matchesCompanySearch(listing: Listing, query: string): boolean {
   return normalizeSearch(listing.companyName).includes(query)
 }
 
+function formatRegionList(regions: string[] | null): string {
+  if (regions === null) {
+    return 'your selected countries'
+  }
+  if (regions.length === 0) {
+    return 'Europe'
+  }
+  const normalized = regions.map((region) => (region === 'EU' ? 'the EU' : region))
+  if (normalized.length === 1) {
+    return normalized[0]
+  }
+  if (normalized.length === 2) {
+    return `${normalized[0]} or ${normalized[1]}`
+  }
+  return `${normalized.slice(0, -1).join(', ')} or ${normalized[normalized.length - 1]}`
+}
+
+function relativeDate(value: string | null | undefined): string {
+  if (!value) return ''
+  const time = new Date(value).getTime()
+  if (Number.isNaN(time)) return ''
+  const ageMs = Math.max(0, Date.now() - time)
+  const hourMs = 60 * 60 * 1000
+  const dayMs = 24 * hourMs
+  if (ageMs < hourMs) return 'today'
+  if (ageMs < dayMs) {
+    const hours = Math.max(1, Math.floor(ageMs / hourMs))
+    return hours === 1 ? '1 hour ago' : `${hours} hours ago`
+  }
+  const days = Math.floor(ageMs / dayMs)
+  if (days === 0) return 'today'
+  return days === 1 ? '1 day ago' : `${days} days ago`
+}
+
 function MetaLine({ listing }: { listing: Listing }) {
   const locationDetails = listing.locationFit.details ?? []
   const primaryLocation = locationDetails[0] ?? listing.locationFit.label
   const extraLocationCount = Math.max(0, locationDetails.length - 1)
   const hiddenLocations = locationDetails.slice(1).join(', ')
+  const dateLabel = listing.postedAt ? 'Posted:' : 'Appeared:'
+  const dateValue = relativeDate(listing.postedAt ?? listing.firstSeenAt)
   return (
     <div className="role-loc">
-      <span>{listing.companyName}</span>
+      <span className="meta-key">Company:</span>{' '}
+      <span className="meta-value">{listing.companyName}</span>
       <span className="meta-separator"> · </span>
       <span className="meta-key">Location:</span>{' '}
       <span
@@ -117,6 +159,18 @@ function MetaLine({ listing }: { listing: Listing }) {
       >
         {listing.typeFit.label}
       </span>
+      <span className="meta-separator"> · </span>
+      <span
+        className={listing.postedAt ? 'meta-key' : 'meta-key meta-value-uncertain'}
+        data-tooltip={
+          listing.postedAt
+            ? undefined
+            : 'Astir only knows when this role first appeared on the board.'
+        }
+      >
+        {dateLabel}
+      </span>{' '}
+      <span className="meta-value">{dateValue}</span>
       {listing.contentLanguage ? (
         <>
           <span className="meta-separator"> · </span>
@@ -132,29 +186,9 @@ function sortListings(listings: Listing[]): Listing[] {
   return [...listings].sort((a, b) => effectiveAgeMs(a) - effectiveAgeMs(b))
 }
 
-function DateLine({ listing }: { listing: Listing }) {
-  if (listing.postedAt) {
-    return (
-      <div className="role-posted">
-        <span className="meta-key">Posted:</span> {formatPostedDate(listing.postedAt)}
-      </div>
-    )
-  }
-  return (
-    <div className="role-posted">
-      <span
-        className="meta-key meta-value-uncertain"
-        data-tooltip="Astir only knows when this role first appeared on the board."
-      >
-        Appeared:
-      </span>{' '}
-      {formatPostedDate(listing.firstSeenAt)}
-    </div>
-  )
-}
-
 function ListingSection({
   title,
+  icon = 'calendar',
   listings,
   emptyCopy,
   onLog,
@@ -162,6 +196,7 @@ function ListingSection({
   showDiagnostics,
 }: {
   title: string
+  icon?: 'calendar' | 'flame'
   listings: Listing[]
   emptyCopy?: string
   onLog: (listing: Listing) => void
@@ -172,7 +207,7 @@ function ListingSection({
     <section className="board-section" aria-label={title}>
       <div className="board-section-head">
         <span className="board-section-icon" aria-hidden="true">
-          <CalendarIcon />
+          {icon === 'flame' ? <FlameIcon /> : <CalendarIcon />}
         </span>
         <span>{title}</span>
       </div>
@@ -313,7 +348,6 @@ function ListingRow({
           {isFresh(listing) ? <span className="role-new-chip">New</span> : null}
         </div>
         <MetaLine listing={listing} />
-        <DateLine listing={listing} />
         {listing.providers.includes('adzuna') ? (
           // Adzuna's terms require attribution wherever its listings appear.
           <div className="role-attribution">
@@ -375,6 +409,7 @@ export function RemoteJobBoardView({
   const [quietOpen, setQuietOpen] = useState(false)
   const [olderOpen, setOlderOpen] = useState(false)
   const [search, setSearch] = useState('')
+  const [hiringRegions, setHiringRegions] = useState<string[] | null>(null)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
   const { message: snack, showSnack } = useSnackbar()
 
@@ -438,6 +473,28 @@ export function RemoteJobBoardView({
       cancelled = true
     }
   }, [mode, notApplicableListings, user.isAdmin])
+
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/users/me/watchlist-preferences')
+      .then(async (response) => {
+        if (!response.ok) return null
+        return (await response.json()) as WatchlistPreferences
+      })
+      .then((preferences) => {
+        if (!cancelled && preferences) {
+          setHiringRegions(preferences.hiringRegions)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setHiringRegions(null)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const sorted = useMemo(() => sortListings(listings ?? []), [listings])
   const sortedNotApplicable = useMemo(
@@ -547,51 +604,58 @@ export function RemoteJobBoardView({
 
   return (
     <section className="screen" data-screen="remote-job-board">
-      <div className="page-head">
-        <div className="job-board-title-wrap">
-          <h1>Job board</h1>
-          {user.isAdmin ? (
-            <KebabMenu menuClassName="board-menu">
-              <button type="button" onClick={() => setMode('board')}>
-                Current board
-              </button>
-              <button type="button" onClick={() => setMode('not-applicable')}>
-                Not applicable jobs
-              </button>
-            </KebabMenu>
-          ) : null}
+      <div className="board-hero">
+        <div className="board-hero-copy">
+          <div className="job-board-title-wrap">
+            <h1>Job board</h1>
+            {user.isAdmin ? (
+              <KebabMenu menuClassName="board-menu">
+                <button type="button" onClick={() => setMode('board')}>
+                  Current board
+                </button>
+                <button type="button" onClick={() => setMode('not-applicable')}>
+                  Not applicable jobs
+                </button>
+              </KebabMenu>
+            ) : null}
+          </div>
+          <p className="board-intro">
+            Remote roles hiring in {formatRegionList(hiringRegions)}.{' '}
+            <Link href="/preferences/watchlist">Change preferences</Link> to limit or broaden your
+            search. Postings stay on the board for ninety days.
+          </p>
         </div>
+        {!reviewMode ? (
+          <label className="board-search">
+            <span className="board-search-icon" aria-hidden="true">
+              <SearchIcon />
+            </span>
+            <input
+              type="search"
+              value={search}
+              placeholder="Company"
+              aria-label="Search companies"
+              onChange={(event) => setSearch(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  clearSearch()
+                }
+              }}
+            />
+            {search ? (
+              <button
+                className="round-icon small board-search-clear"
+                type="button"
+                aria-label="Clear search"
+                data-tooltip="Clear search"
+                onClick={clearSearch}
+              >
+                <XIcon />
+              </button>
+            ) : null}
+          </label>
+        ) : null}
       </div>
-      {!reviewMode ? (
-        <label className="board-search">
-          <span className="board-search-icon" aria-hidden="true">
-            <SearchIcon />
-          </span>
-          <input
-            type="search"
-            value={search}
-            placeholder="Search companies"
-            aria-label="Search companies"
-            onChange={(event) => setSearch(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                clearSearch()
-              }
-            }}
-          />
-          {search ? (
-            <button
-              className="round-icon small board-search-clear"
-              type="button"
-              aria-label="Clear search"
-              data-tooltip="Clear search"
-              onClick={clearSearch}
-            >
-              <XIcon />
-            </button>
-          ) : null}
-        </label>
-      ) : null}
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is paused for a moment. Try again soon.</p>
@@ -632,6 +696,7 @@ export function RemoteJobBoardView({
               <>
                 <ListingSection
                   title="Most recent"
+                  icon="flame"
                   listings={mostRecent}
                   emptyCopy="No recent roles matching your keywords right now."
                   onLog={openLog}

@@ -1264,12 +1264,39 @@ h1 {
   line-height: 1.35;
 }
 
+.board-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--modal-max));
+  gap: var(--space-8);
+  align-items: start;
+  margin-bottom: var(--space-12);
+}
+
+.board-hero-copy {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.board-intro {
+  max-width: var(--content-max);
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--type-control);
+  line-height: 1.5;
+}
+
+.board-intro a {
+  color: var(--ink2);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink2) 40%, transparent);
+  text-underline-offset: var(--space-1);
+}
+
 .board-search {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-height: var(--input-height);
-  margin-bottom: var(--space-6);
   padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-md);
@@ -3234,6 +3261,11 @@ textarea {
   .applications-head {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .board-hero {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
   }
 
   .pipeline-actions {

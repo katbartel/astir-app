@@ -33,7 +33,7 @@ const navItems: NavItem[] = [
   { key: 'watchlist', href: '/watchlist', label: 'Watchlist', Icon: BookmarkIcon },
   { key: 'remote-job-board', href: '/remote-job-board', label: 'Job board', Icon: GlobeIcon },
   // Admin-only: the Job board is curated tooling, hidden from non-admin users.
-  { key: 'job-boards', href: '/job-boards', label: 'Admin - Job board', Icon: BriefcaseIcon, adminOnly: true },
+  { key: 'job-boards', href: '/job-boards', label: 'Admin, job board', Icon: BriefcaseIcon, adminOnly: true },
 ]
 
 export function AppNav({ active }: { active: ActiveRoute }) {

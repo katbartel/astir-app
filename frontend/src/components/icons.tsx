@@ -82,6 +82,14 @@ export function CalendarIcon() {
   )
 }
 
+export function FlameIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M13.2 3.5c.5 3.1-1.8 4.7-3.4 6.4-1.3 1.4-2.2 2.9-2.2 5A4.4 4.4 0 0 0 12 19.4a4.6 4.6 0 0 0 4.7-4.8c0-2.4-1.2-4.3-3.5-6.2.1 1.6-.5 2.6-1.5 3.5" />
+    </svg>
+  )
+}
+
 export function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

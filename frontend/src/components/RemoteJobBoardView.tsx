@@ -9,7 +9,7 @@ import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { CalendarIcon, ChevronDownIcon, FlameIcon, OpenIcon, PlusIcon, SearchIcon, XIcon } from './icons'
+import { CalendarIcon, ChevronDownIcon, FlameIcon, OpenIcon, PlusIcon, SearchIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -80,7 +80,9 @@ function normalizeSearch(value: string): string {
 }
 
 function matchesCompanySearch(listing: Listing, query: string): boolean {
-  return normalizeSearch(listing.companyName).includes(query)
+  const terms = query.split(/\s+/).filter(Boolean)
+  const words = normalizeSearch(listing.companyName).split(/\s+/).filter(Boolean)
+  return terms.every((term) => words.some((word) => word.startsWith(term)))
 }
 
 function formatRegionList(regions: string[] | null): string {
@@ -631,7 +633,8 @@ export function RemoteJobBoardView({
               <SearchIcon />
             </span>
             <input
-              type="search"
+              type="text"
+              role="searchbox"
               value={search}
               placeholder="Company"
               aria-label="Search companies"
@@ -642,17 +645,6 @@ export function RemoteJobBoardView({
                 }
               }}
             />
-            {search ? (
-              <button
-                className="round-icon small board-search-clear"
-                type="button"
-                aria-label="Clear search"
-                data-tooltip="Clear search"
-                onClick={clearSearch}
-              >
-                <XIcon />
-              </button>
-            ) : null}
           </label>
         ) : null}
       </div>

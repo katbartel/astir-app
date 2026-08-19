@@ -1296,12 +1296,14 @@ h1 {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  min-height: var(--input-height);
+  height: var(--input-height);
+  box-sizing: border-box;
   padding: 0 var(--space-3);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-md);
   background: var(--paper);
   color: var(--muted);
+  align-self: start;
 }
 
 .board-search:focus-within {
@@ -1328,20 +1330,18 @@ h1 {
 
 .board-search input {
   min-width: 0;
+  height: 100%;
   flex: 1 1 auto;
   border: 0;
   outline: 0;
   background: transparent;
   color: var(--ink);
   font: inherit;
+  line-height: 1;
 }
 
 .board-search input::placeholder {
   color: var(--placeholder);
-}
-
-.board-search-clear {
-  flex: 0 0 auto;
 }
 
 .board-section {

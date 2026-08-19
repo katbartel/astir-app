@@ -85,10 +85,10 @@ Common applications: card padding 24px, gaps between buttons 8px, section gaps 2
 ### 3.4 Type
 
 Two fonts only:
-1. **Bricolage Grotesque** (display): h1 27px/600, modal title and brand 19px/600. Never for body.
-2. **Instrument Sans** (everything else): UI/body 14px, usually 400 or 500. Helper and support copy is normal, not italic.
+1. **Bricolage Grotesque** (display): h1 28px/600, modal title and brand 19px/600. Never for body.
+2. **Instrument Sans** (everything else): UI/body 16px, usually 400 or 500. Helper and support copy is normal, not italic.
 
-Three font sizes total: h1 27px, display title 19px, UI/body 14px. Use color, weight, case, spacing, and layout for hierarchy instead of adding more sizes. Section labels use UI/body size, uppercase, letter-spacing .05em, muted. Closed exception: Watchlist "New" chips use `--type-chip`, 12px. No third font. No Newsreader (reads as a Wispr Flow copy).
+Three font sizes total: h1 28px, display title 19px, UI/body 16px. Use color, weight, case, spacing, and layout for hierarchy instead of adding more sizes. Section labels use UI/body size, uppercase, letter-spacing .05em, muted. Closed exception: Watchlist "New" chips use `--type-chip`, 12px. No third font. No Newsreader (reads as a Wispr Flow copy).
 
 ### 3.5 Elevation and motion
 

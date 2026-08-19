@@ -284,6 +284,25 @@ describe('classifyRemoteBoardListing', () => {
     })
   })
 
+  it('does not treat past retreat locations as hiring countries or occasional presence', () => {
+    expect(
+      classifyRemoteBoardListing(
+        {
+          location: 'Remote',
+          locations: ['Remote'],
+          workMode: 'Remote',
+          descriptionText:
+            'We are a fully remote, global team. Freedom and flexibility. We are a 100% distributed team working from around the world. Our team members can work from wherever they want in the world, as long as they show up on our weekly all hands meeting on Zoom. The perks include an annual company retreat in epic locations. Past trips: Paris, Morocco, Tulum, Iceland.',
+        },
+        ['France', 'Iceland'],
+      ),
+    ).toMatchObject({
+      visible: true,
+      location: { label: 'Anywhere', uncertain: false, details: undefined },
+      type: { label: 'Fully remote', uncertain: false },
+    })
+  })
+
   it('keeps a provider country location over generic choose-where-you-live wording', () => {
     expect(
       classifyRemoteBoardListing(

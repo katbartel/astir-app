@@ -76,6 +76,19 @@ const OCCASIONAL_PRESENCE_TERMS = [
   'company gathering',
 ]
 
+const PRESENCE_ACTION_TERMS = [
+  'attend',
+  'attendance',
+  'gather',
+  'meet',
+  'meeting',
+  'offsite',
+  'onsite',
+  'on-site',
+  'presence',
+  'travel',
+]
+
 const HARD_PRESENCE_PATTERNS = [
   /\bhybrid\b/,
   /\bon[-\s]?site\b/,
@@ -97,6 +110,23 @@ function sentences(text: string): string[] {
     .filter(Boolean)
 }
 
+function isPerkTravelSentence(normalizedSentence: string): boolean {
+  return (
+    (normalizedSentence.includes('past trip') ||
+      normalizedSentence.includes('retreat in') ||
+      normalizedSentence.includes('epic location')) &&
+    !hasAny(normalizedSentence, ['hire', 'hiring', 'work from', 'reside', 'based', 'located'])
+  )
+}
+
+function isOccasionalPresenceSentence(normalizedSentence: string): boolean {
+  return (
+    hasAny(normalizedSentence, OCCASIONAL_PRESENCE_TERMS) &&
+    hasAny(normalizedSentence, PRESENCE_ACTION_TERMS) &&
+    !isPerkTravelSentence(normalizedSentence)
+  )
+}
+
 export function analyzeRemoteDescription(descriptionText: string | null | undefined): DescriptionAnalysis {
   if (!descriptionText?.trim()) {
     return {
@@ -113,15 +143,24 @@ export function analyzeRemoteDescription(descriptionText: string | null | undefi
   const hardPresenceRequired = HARD_PRESENCE_PATTERNS.some((pattern) =>
     pattern.test(descriptionText.toLowerCase()),
   )
-  const occasionalPresence = hasAny(normalized, OCCASIONAL_PRESENCE_TERMS)
+  const occasionalPresence = sentences(descriptionText)
+    .map((sentence) => normalizeForIdentity(sentence))
+    .some(isOccasionalPresenceSentence)
   const fullyRemote = hasAny(normalized, FULLY_REMOTE_TERMS)
   const locationClues = sentences(descriptionText)
-    .filter((sentence) => hasAny(normalizeForIdentity(sentence), LOCATION_CONTEXT_TERMS))
+    .filter((sentence) => {
+      const normalizedSentence = normalizeForIdentity(sentence)
+      return (
+        hasAny(normalizedSentence, LOCATION_CONTEXT_TERMS) &&
+        !isPerkTravelSentence(normalizedSentence)
+      )
+    })
     .map((sentence) => {
       const normalizedSentence = normalizeForIdentity(sentence)
       if (normalizedSentence.includes('anywhere in europe')) return 'Europe'
       if (
         normalizedSentence.includes('work from anywhere') ||
+        normalizedSentence.includes('work from wherever') ||
         normalizedSentence.includes('choose where you live')
       ) {
         return 'Anywhere'

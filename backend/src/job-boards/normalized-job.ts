@@ -36,6 +36,10 @@ export function normalizeForIdentity(value: string): string {
     .trim()
 }
 
+const COMPANY_KEY_ALIASES = new Map([
+  ['chilli piper', 'chili piper'],
+])
+
 // The same opening posted through several providers collapses to one listing
 // via this key. Location is part of the identity: companies routinely post
 // the same title as separate per-region openings (e.g. Linear's "Product
@@ -55,7 +59,8 @@ export function jobFingerprint(
 // Stable key for "the same company", used to dedupe ATS resolution and to
 // match listings back to a watchlist company.
 export function companyKey(companyName: string): string {
-  return normalizeForIdentity(companyName)
+  const key = normalizeForIdentity(companyName)
+  return COMPANY_KEY_ALIASES.get(key) ?? key
 }
 
 export function parseDate(value: unknown): Date | null {

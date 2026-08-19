@@ -1,4 +1,4 @@
-import { jobFingerprint, normalizeForIdentity, parseDate } from './normalized-job'
+import { companyKey, jobFingerprint, normalizeForIdentity, parseDate } from './normalized-job'
 
 describe('normalizeForIdentity', () => {
   it('lowercases, trims, and collapses punctuation and whitespace', () => {
@@ -43,6 +43,12 @@ describe('jobFingerprint', () => {
         location: 'North America',
       }),
     )
+  })
+})
+
+describe('companyKey', () => {
+  it('dedupes known company spelling variants', () => {
+    expect(companyKey('Chilli Piper')).toBe(companyKey('Chili Piper'))
   })
 })
 

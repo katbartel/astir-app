@@ -321,6 +321,25 @@ describe('classifyRemoteBoardListing', () => {
     })
   })
 
+  it('keeps provider countries over company scale and generic flexibility copy', () => {
+    const result = classifyRemoteBoardListing(
+      {
+        location: 'Spain',
+        locations: ['Spain', 'Poznań', 'Warsaw', 'Biskupiec', 'Barcelona', 'Madrid'],
+        workMode: null,
+        descriptionText:
+          'At Docplanner Group, we are the world largest healthcare platform with doctors across 13 countries. Remote work and flexible hours are available. The extent of flexibility depends on your role and team. You are welcome at any of our hubs in Barcelona, Warsaw, Curitiba, Rio de Janeiro, Mexico City, Bogotá, Munich, Rome or Bologna. To apply, you must already have the legal right to work in your country of residence or the location of the role.',
+      },
+      ['Poland', 'Spain'],
+    )
+
+    expect(result).toMatchObject({
+      visible: true,
+      location: { label: 'Poland +1', details: ['Poland', 'Spain'], uncertain: false },
+    })
+    expect(result.location.label).not.toBe('Anywhere')
+  })
+
   it('filters a role when the description requires regular office presence', () => {
     expect(
       classifyRemoteBoardListing(

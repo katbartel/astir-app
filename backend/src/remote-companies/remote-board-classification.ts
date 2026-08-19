@@ -156,6 +156,21 @@ function hasNonEuropeanConflict(verdict: LocationVerdict): boolean {
   return verdict.signals.some((entry) => entry.includes('non-European'))
 }
 
+function isGenericGlobalClue(clue: string): boolean {
+  const normalized = normalizeForIdentity(clue)
+  return (
+    normalized === 'anywhere' ||
+    normalized.includes('work from anywhere') ||
+    normalized.includes('work from wherever') ||
+    normalized.includes('choose where you live') ||
+    normalized.includes('worldwide') ||
+    normalized.includes('globally') ||
+    normalized.includes('global team') ||
+    normalized.includes('distributed team') ||
+    normalized.includes('around the world')
+  )
+}
+
 export function classifyRemoteBoardListing(
   listing: ClassifiableListing,
   hiringRegions: string[],
@@ -164,7 +179,7 @@ export function classifyRemoteBoardListing(
   const providerLocations = listingLocations(listing)
   const hasSpecificProviderLocation = providerLocations.some((location) => !isPlainRemoteLocation(location))
   const locationClues = hasSpecificProviderLocation
-    ? analysis.locationClues.filter((clue) => normalizeForIdentity(clue) !== 'anywhere')
+    ? analysis.locationClues.filter((clue) => !isGenericGlobalClue(clue))
     : analysis.locationClues
   const { verdict, escalate } = classifyDeterministic({
     locations: [...providerLocations, ...locationClues],

@@ -607,25 +607,18 @@ export function RemoteJobBoardView({
   return (
     <section className="screen" data-screen="remote-job-board">
       <div className="board-hero">
-        <div className="board-hero-copy">
-          <div className="job-board-title-wrap">
-            <h1>Job board</h1>
-            {user.isAdmin ? (
-              <KebabMenu menuClassName="board-menu">
-                <button type="button" onClick={() => setMode('board')}>
-                  Current board
-                </button>
-                <button type="button" onClick={() => setMode('not-applicable')}>
-                  Not applicable jobs
-                </button>
-              </KebabMenu>
-            ) : null}
-          </div>
-          <p className="board-intro">
-            Remote roles hiring in {formatRegionList(hiringRegions)}.{' '}
-            <Link href="/preferences/watchlist">Change preferences</Link> to limit or broaden your
-            search. Postings stay on the board for ninety days.
-          </p>
+        <div className="job-board-title-wrap">
+          <h1>Job board</h1>
+          {user.isAdmin ? (
+            <KebabMenu menuClassName="board-menu">
+              <button type="button" onClick={() => setMode('board')}>
+                Current board
+              </button>
+              <button type="button" onClick={() => setMode('not-applicable')}>
+                Not applicable jobs
+              </button>
+            </KebabMenu>
+          ) : null}
         </div>
         {!reviewMode ? (
           <label className="board-search">
@@ -647,6 +640,11 @@ export function RemoteJobBoardView({
             />
           </label>
         ) : null}
+        <p className="board-intro">
+          Remote roles hiring in {formatRegionList(hiringRegions)}.{' '}
+          <Link href="/preferences/watchlist">Change preferences</Link> to limit or broaden your
+          search. Postings stay on the board for ninety days.
+        </p>
       </div>
       <div className="watchlist">
         {failed ? (

@@ -1267,18 +1267,14 @@ h1 {
 .board-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--modal-max));
-  gap: var(--space-8);
-  align-items: start;
+  gap: var(--space-4) var(--space-8);
+  align-items: center;
   margin-bottom: var(--space-12);
 }
 
-.board-hero-copy {
-  display: grid;
-  gap: var(--space-4);
-}
-
 .board-intro {
-  max-width: var(--content-max);
+  grid-column: 1 / -1;
+  max-width: none;
   margin: 0;
   color: var(--ink2);
   font-size: var(--type-control);
@@ -1304,7 +1300,7 @@ h1 {
   border-radius: var(--r-md);
   background: var(--paper);
   color: var(--muted);
-  align-self: start;
+  align-self: center;
 }
 
 .board-search:focus-within {

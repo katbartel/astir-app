@@ -1240,6 +1240,7 @@ h1 {
   overflow: hidden;
   color: var(--ink);
   font-size: var(--type-control);
+  font-weight: var(--weight-medium);
   line-height: var(--watch-title-action-size);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1253,7 +1254,7 @@ h1 {
 }
 
 .meta-key {
-  color: var(--ink2);
+  color: var(--muted);
   font-weight: var(--weight-medium);
 }
 
@@ -1268,7 +1269,16 @@ h1 {
 }
 
 .meta-separator {
+  margin: 0 var(--space-2);
   color: var(--muted);
+}
+
+.board-placeholder-row {
+  pointer-events: none;
+}
+
+.board-placeholder-icon {
+  background: var(--skeleton-base);
 }
 
 .role-posted {
@@ -1279,11 +1289,12 @@ h1 {
 }
 
 .board-hero {
+  --board-search-width: calc(var(--modal-max) * 2 / 3);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, var(--modal-max));
-  gap: var(--space-4) var(--space-8);
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--board-search-width));
+  gap: var(--space-6) var(--space-8);
   align-items: center;
-  margin-bottom: var(--space-12);
+  margin-bottom: var(--space-6);
 }
 
 .board-intro {
@@ -2123,6 +2134,9 @@ h1 {
   background: transparent;
   color: var(--muted);
   font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
 }
 
 .quiet-toggle:hover {

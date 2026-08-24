@@ -90,6 +90,19 @@ export function FlameIcon() {
   )
 }
 
+export function HourglassIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4h10" />
+      <path d="M7 20h10" />
+      <path d="M8 4c0 4 2.8 5.2 4 8-1.2 2.8-4 4-4 8" />
+      <path d="M16 4c0 4-2.8 5.2-4 8 1.2 2.8 4 4 4 8" />
+      <path d="M9.5 8.5h5" />
+      <path d="M10 17h4" />
+    </svg>
+  )
+}
+
 export function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

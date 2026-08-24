@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../database/prisma.service'
 import { UserSettableListingStatus } from '../job-boards/dto/update-listing.dto'
 import { JobMatchingService } from '../job-boards/job-matching.service'
@@ -115,6 +115,8 @@ export function toRemoteBoardMatchableListing(
 // regular Job Board uses.
 @Injectable()
 export class RemoteJobBoardService {
+  private readonly logger = new Logger(RemoteJobBoardService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly matching: JobMatchingService,
@@ -132,9 +134,14 @@ export class RemoteJobBoardService {
     userId: string,
     visible: boolean,
   ): Promise<RemoteJobBoardListing[]> {
+    const startedAt = Date.now()
     const remoteCompanies = await this.remoteCompanySources()
+    const sourcesLoadedAt = Date.now()
     const sourceIds = remoteCompanies.map((company) => company.jobSourceId)
     if (!sourceIds.length) {
+      this.logger.log(
+        `Remote board ${visible ? 'visible' : 'hidden'} list finished in ${Date.now() - startedAt}ms: no curated sources`,
+      )
       return []
     }
     const remotePolicyBySourceId = new Map(
@@ -147,7 +154,18 @@ export class RemoteJobBoardService {
           where: {
             sources: { some: { jobSourceId: { in: sourceIds } } },
           },
-          include: {
+          select: {
+            id: true,
+            title: true,
+            companyName: true,
+            location: true,
+            locations: true,
+            workMode: true,
+            descriptionText: true,
+            contentLanguage: true,
+            url: true,
+            postedAt: true,
+            firstSeenAt: true,
             sources: {
               select: {
                 provider: true,
@@ -163,6 +181,7 @@ export class RemoteJobBoardService {
         this.appliedListingIds(userId),
         this.irrelevantListingIds(userId),
       ])
+    const queryLoadedAt = Date.now()
 
     // Keyword + region matching, but pin work mode to remote so the board is
     // genuinely remote even for a user who normally filters to onsite/hybrid.
@@ -174,6 +193,7 @@ export class RemoteJobBoardService {
         )
         .map((match) => [match.listingId, match.matchedKeywords]),
     )
+    const matchedAt = Date.now()
 
     // Candidate postings, before folding: matched and classified as plausible
     // for the board. Watched companies still stay visible here. Applied ones
@@ -209,10 +229,11 @@ export class RemoteJobBoardService {
         postedAt: listing.postedAt,
         firstSeenAt: listing.firstSeenAt,
         matchedKeywords: matches.get(listing.id) ?? [],
-        providers: [...new Set(listing.sources.map((source) => source.provider))],
+          providers: [...new Set(listing.sources.map((source) => source.provider))],
       }))
+    const classifiedAt = Date.now()
 
-    return foldOpenings(candidates, preferences.hiringRegions, appliedListingIds)
+    const result = foldOpenings(candidates, preferences.hiringRegions, appliedListingIds)
       .map((opening) => {
         const classification = applyRemotePolicyStatus(
           classifyRemoteBoardListing(opening, preferences.hiringRegions),
@@ -242,6 +263,15 @@ export class RemoteJobBoardService {
         }
       })
       .sort((a, b) => this.effectiveAgeMs(a) - this.effectiveAgeMs(b))
+    const finishedAt = Date.now()
+    this.logger.log(
+      `Remote board ${visible ? 'visible' : 'hidden'} list finished in ${finishedAt - startedAt}ms ` +
+        `(sources ${sourcesLoadedAt - startedAt}ms, query ${queryLoadedAt - sourcesLoadedAt}ms, ` +
+        `matching ${matchedAt - queryLoadedAt}ms, classification ${classifiedAt - matchedAt}ms, ` +
+        `folding ${finishedAt - classifiedAt}ms, listings ${listings.length}, candidates ${candidates.length}, ` +
+        `returned ${result.length})`,
+    )
+    return result
   }
 
   // Mark a remote-board listing irrelevant (drops it into the quiet section) or

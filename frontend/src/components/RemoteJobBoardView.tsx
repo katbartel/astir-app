@@ -9,7 +9,15 @@ import { useUser } from './UserProvider'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { CalendarIcon, ChevronDownIcon, FlameIcon, OpenIcon, PlusIcon, SearchIcon } from './icons'
+import { useRememberedCount } from './applications/usePlaceholder'
+import {
+  ChevronDownIcon,
+  FlameIcon,
+  HourglassIcon,
+  OpenIcon,
+  PlusIcon,
+  SearchIcon,
+} from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -54,6 +62,7 @@ const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 const RECENCY_WINDOW_MS = 168 * 60 * 60 * 1000
 const UNDATED_AGE_FLOOR_MS = 48 * 60 * 60 * 1000
 const JOB_BOARD_STORAGE_KEY = 'astir.v1.jobBoard'
+const JOB_BOARD_PLACEHOLDER_COUNT_KEY = 'astir.v1.remoteJobBoard.placeholderCount'
 
 // "New" means posted at the source within the last 48h. Listings without a
 // provider posting date get no label (we don't fall back to when we pulled it in).
@@ -87,7 +96,7 @@ function matchesCompanySearch(listing: Listing, query: string): boolean {
 
 function formatRegionList(regions: string[] | null): string {
   if (regions === null) {
-    return 'your selected countries'
+    return 'Europe'
   }
   if (regions.length === 0) {
     return 'Europe'
@@ -130,7 +139,7 @@ function MetaLine({ listing }: { listing: Listing }) {
     <div className="role-loc">
       <span className="meta-key">Company:</span>{' '}
       <span className="meta-value">{listing.companyName}</span>
-      <span className="meta-separator"> · </span>
+      <span className="meta-separator">·</span>
       <span className="meta-key">Location:</span>{' '}
       <span
         className={listing.locationFit.uncertain ? 'meta-value meta-value-uncertain' : 'meta-value'}
@@ -147,7 +156,7 @@ function MetaLine({ listing }: { listing: Listing }) {
           </span>
         ) : null}
       </span>
-      <span className="meta-separator"> · </span>
+      <span className="meta-separator">·</span>
       <span className="meta-key">Type:</span>{' '}
       <span
         className={listing.typeFit.uncertain ? 'meta-value meta-value-uncertain' : 'meta-value'}
@@ -161,7 +170,7 @@ function MetaLine({ listing }: { listing: Listing }) {
       >
         {listing.typeFit.label}
       </span>
-      <span className="meta-separator"> · </span>
+      <span className="meta-separator">·</span>
       <span
         className={listing.postedAt ? 'meta-key' : 'meta-key meta-value-uncertain'}
         data-tooltip={
@@ -173,13 +182,6 @@ function MetaLine({ listing }: { listing: Listing }) {
         {dateLabel}
       </span>{' '}
       <span className="meta-value">{dateValue}</span>
-      {listing.contentLanguage ? (
-        <>
-          <span className="meta-separator"> · </span>
-          <span className="meta-key">Language:</span>{' '}
-          <span className="meta-value">{listing.contentLanguage.toUpperCase()}</span>
-        </>
-      ) : null}
     </div>
   )
 }
@@ -190,29 +192,33 @@ function sortListings(listings: Listing[]): Listing[] {
 
 function ListingSection({
   title,
-  icon = 'calendar',
+  icon = 'flame',
   listings,
   emptyCopy,
   onLog,
   onSetStatus,
   showDiagnostics,
+  showHeader = true,
 }: {
   title: string
-  icon?: 'calendar' | 'flame'
+  icon?: 'flame' | 'hourglass'
   listings: Listing[]
   emptyCopy?: string
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
   showDiagnostics: boolean
+  showHeader?: boolean
 }) {
   return (
     <section className="board-section" aria-label={title}>
-      <div className="board-section-head">
-        <span className="board-section-icon" aria-hidden="true">
-          {icon === 'flame' ? <FlameIcon /> : <CalendarIcon />}
-        </span>
-        <span>{title}</span>
-      </div>
+      {showHeader ? (
+        <div className="board-section-head">
+          <span className="board-section-icon" aria-hidden="true">
+            {icon === 'hourglass' ? <HourglassIcon /> : <FlameIcon />}
+          </span>
+          <span>{title}</span>
+        </div>
+      ) : null}
       {listings.length > 0 ? (
         <article className="watch-group board-feed">
           {listings.map((listing) => (
@@ -372,12 +378,16 @@ function ListingRow({
           </button>
           <KebabMenu menuClassName="board-menu">
             {isIrrelevant ? (
-              <button type="button" onClick={() => onSetStatus(listing, 'new')}>
-                Back to relevant
+              <button
+                type="button"
+                data-tooltip="Move this role back on my job board"
+                onClick={() => onSetStatus(listing, 'new')}
+              >
+                Show again
               </button>
             ) : (
               <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
-                Mark as irrelevant
+                Skip
               </button>
             )}
             {hasDiagnostics ? (
@@ -394,10 +404,67 @@ function ListingRow({
   )
 }
 
-// `initialListings` is whatever the page already fetched during server
-// rendering, or null when it could not. Seeding from it means a reload arrives
-// with the openings on screen rather than "Gathering openings…", and the browser
-// fetch below is skipped as redundant.
+const PLACEHOLDER_WIDTHS = [
+  ['28ch', '8ch', '9ch', '11ch'],
+  ['20ch', '7ch', '10ch', '12ch'],
+  ['34ch', '10ch', '8ch', '10ch'],
+  ['24ch', '9ch', '12ch', '9ch'],
+]
+
+function ListingRowPlaceholder({ index }: { index: number }) {
+  const [title, company, location, type] = PLACEHOLDER_WIDTHS[index % PLACEHOLDER_WIDTHS.length]
+  return (
+    <div className="watch-role board-placeholder-row" aria-hidden="true">
+      <div className="role-main">
+        <div className="role-title-line">
+          <span className="role-name">
+            <span className="sk-bar" style={{ width: title }} />
+          </span>
+          <span className="round-icon small board-placeholder-icon" />
+        </div>
+        <div className="role-loc">
+          <span className="meta-key">
+            <span className="sk-bar" style={{ width: '6ch' }} />
+          </span>{' '}
+          <span className="meta-value">
+            <span className="sk-bar" style={{ width: company }} />
+          </span>
+          <span className="meta-separator">·</span>
+          <span className="meta-key">
+            <span className="sk-bar" style={{ width: '7ch' }} />
+          </span>{' '}
+          <span className="meta-value">
+            <span className="sk-bar" style={{ width: location }} />
+          </span>
+          <span className="meta-separator">·</span>
+          <span className="meta-key">
+            <span className="sk-bar" style={{ width: '4ch' }} />
+          </span>{' '}
+          <span className="meta-value">
+            <span className="sk-bar" style={{ width: type }} />
+          </span>
+        </div>
+      </div>
+      <span className="round-icon board-placeholder-icon" aria-hidden="true" />
+      <span className="round-icon board-placeholder-icon" aria-hidden="true" />
+    </div>
+  )
+}
+
+function BoardLoadingPlaceholder({ rows }: { rows: number }) {
+  return (
+    <section className="board-section" aria-label="Loading remote openings">
+      <article className="watch-group board-feed sk-shimmer" aria-hidden="true">
+        {Array.from({ length: rows }).map((_, index) => (
+          <ListingRowPlaceholder index={index} key={index} />
+        ))}
+      </article>
+    </section>
+  )
+}
+
+// Listings now load in the browser so the page shell can paint immediately.
+// `initialListings` remains for tests or future preloaded states.
 export function RemoteJobBoardView({
   initialListings = null,
 }: {
@@ -406,13 +473,16 @@ export function RemoteJobBoardView({
   const user = useUser()
   const [listings, setListings] = useState<Listing[] | null>(initialListings)
   const [notApplicableListings, setNotApplicableListings] = useState<Listing[] | null>(null)
-  const [mode, setMode] = useState<'board' | 'not-applicable'>('board')
+  const [mode, setMode] = useState<'board' | 'skipped' | 'not-applicable'>('board')
   const [failed, setFailed] = useState(false)
-  const [quietOpen, setQuietOpen] = useState(false)
   const [olderOpen, setOlderOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [hiringRegions, setHiringRegions] = useState<string[] | null>(null)
   const [logging, setLogging] = useState<LogApplicationInitial | null>(null)
+  const [placeholderRows, rememberPlaceholderRows] = useRememberedCount(
+    JOB_BOARD_PLACEHOLDER_COUNT_KEY,
+    6,
+  )
   const { message: snack, showSnack } = useSnackbar()
 
   useEffect(() => {
@@ -520,8 +590,14 @@ export function RemoteJobBoardView({
     () => relevant.filter((listing) => !isMostRecent(listing)),
     [relevant],
   )
+  const skippedMode = mode === 'skipped'
   const reviewMode = mode === 'not-applicable'
   const loading = reviewMode ? notApplicableListings === null : listings === null
+
+  useEffect(() => {
+    if (reviewMode || listings === null) return
+    rememberPlaceholderRows(relevant.length)
+  }, [listings, relevant.length, rememberPlaceholderRows, reviewMode])
 
   // Mark a listing irrelevant (it drops to the quiet section below) or bring it
   // back to the main feed. Optimistic: flip the local status first, then PATCH;
@@ -543,8 +619,8 @@ export function RemoteJobBoardView({
       }
       showSnack(
         status === 'irrelevant'
-          ? { text: 'Marked irrelevant. Find it below your main list.' }
-          : { text: 'Back in your main list.' },
+          ? { text: 'Skipped. Find it in skipped roles.' }
+          : { text: 'Back on your job board.' },
         4000,
       )
     } catch {
@@ -608,19 +684,41 @@ export function RemoteJobBoardView({
     <section className="screen" data-screen="remote-job-board">
       <div className="board-hero">
         <div className="job-board-title-wrap">
-          <h1>Job board</h1>
+          <h1>{skippedMode ? 'Skipped roles' : reviewMode ? 'Not applicable jobs' : 'Job board'}</h1>
           {user.isAdmin ? (
             <KebabMenu menuClassName="board-menu">
-              <button type="button" onClick={() => setMode('board')}>
-                Current board
-              </button>
-              <button type="button" onClick={() => setMode('not-applicable')}>
-                Not applicable jobs
-              </button>
+              {mode !== 'board' ? (
+                <button type="button" onClick={() => setMode('board')}>
+                  Job board
+                </button>
+              ) : null}
+              {mode !== 'skipped' ? (
+                <button type="button" onClick={() => setMode('skipped')}>
+                  Skipped roles
+                </button>
+              ) : null}
+              {mode !== 'not-applicable' ? (
+                <button type="button" onClick={() => setMode('not-applicable')}>
+                  Not applicable jobs
+                </button>
+              ) : null}
             </KebabMenu>
-          ) : null}
+          ) : (
+            <KebabMenu menuClassName="board-menu">
+              {mode !== 'board' ? (
+                <button type="button" onClick={() => setMode('board')}>
+                  Job board
+                </button>
+              ) : null}
+              {mode !== 'skipped' ? (
+                <button type="button" onClick={() => setMode('skipped')}>
+                  Skipped roles
+                </button>
+              ) : null}
+            </KebabMenu>
+          )}
         </div>
-        {!reviewMode ? (
+        {!reviewMode && !skippedMode ? (
           <label className="board-search">
             <span className="board-search-icon" aria-hidden="true">
               <SearchIcon />
@@ -640,17 +738,35 @@ export function RemoteJobBoardView({
             />
           </label>
         ) : null}
-        <p className="board-intro">
-          Remote roles hiring in {formatRegionList(hiringRegions)}.{' '}
-          <Link href="/preferences/watchlist">Change preferences</Link> to limit or broaden your
-          search. Postings stay on the board for ninety days.
-        </p>
+        {!reviewMode && !skippedMode ? (
+          <p className="board-intro">
+            Remote roles hiring in {formatRegionList(hiringRegions)}.{' '}
+            <Link href="/preferences/watchlist">Change preferences</Link> to limit or broaden your
+            search. Postings stay on the board for ninety days.
+          </p>
+        ) : null}
       </div>
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is paused for a moment. Try again soon.</p>
         ) : loading ? (
-          <p className="watch-invite">Gathering remote openings…</p>
+          <BoardLoadingPlaceholder rows={placeholderRows} />
+        ) : skippedMode ? (
+          irrelevant.length === 0 ? (
+            <p className="watch-invite">No skipped roles right now.</p>
+          ) : (
+            <article className="watch-group board-feed">
+              {irrelevant.map((listing) => (
+                <ListingRow
+                  listing={listing}
+                  key={listing.id}
+                  onLog={openLog}
+                  onSetStatus={setListingStatus}
+                  showDiagnostics={showQaNotes}
+                />
+              ))}
+            </article>
+          )
         ) : reviewMode ? (
           sortedNotApplicable.length === 0 ? (
             <p className="watch-invite">No hidden roles to review right now.</p>
@@ -668,7 +784,7 @@ export function RemoteJobBoardView({
               ))}
             </article>
           )
-        ) : sorted.length === 0 ? (
+        ) : relevant.length === 0 ? (
           <p className="watch-invite">
             No remote roles matching your keywords yet. New openings appear here as the curated
             companies are checked.
@@ -684,15 +800,17 @@ export function RemoteJobBoardView({
               />
             ) : (
               <>
-                <ListingSection
-                  title="Most recent"
-                  icon="flame"
-                  listings={mostRecent}
-                  emptyCopy="No recent roles matching your keywords right now."
-                  onLog={openLog}
-                  onSetStatus={setListingStatus}
-                  showDiagnostics={showQaNotes}
-                />
+                {mostRecent.length > 0 ? (
+                  <ListingSection
+                    title="Most recent"
+                    icon="flame"
+                    listings={mostRecent}
+                    onLog={openLog}
+                    onSetStatus={setListingStatus}
+                    showDiagnostics={showQaNotes}
+                    showHeader={false}
+                  />
+                ) : null}
                 {older.length > 0 ? (
                   <div className={olderOpen ? 'quiet-section open' : 'quiet-section'}>
                     <button
@@ -701,49 +819,31 @@ export function RemoteJobBoardView({
                       aria-expanded={olderOpen}
                       onClick={toggleOlder}
                     >
+                      <span className="board-section-icon" aria-hidden="true">
+                        <HourglassIcon />
+                      </span>
+                      <span>Older</span>
                       <span className="quiet-chevron" aria-hidden="true">
                         <ChevronDownIcon />
                       </span>
-                      Older
                     </button>
                     {olderOpen ? (
-                      <ListingSection
-                        title="Older"
-                        listings={older}
-                        onLog={openLog}
-                        onSetStatus={setListingStatus}
-                        showDiagnostics={showQaNotes}
-                      />
+                      <article className="watch-group board-feed">
+                        {older.map((listing) => (
+                          <ListingRow
+                            listing={listing}
+                            key={listing.id}
+                            onLog={openLog}
+                            onSetStatus={setListingStatus}
+                            showDiagnostics={showQaNotes}
+                          />
+                        ))}
+                      </article>
                     ) : null}
                   </div>
                 ) : null}
               </>
             )}
-            {!searching && irrelevant.length > 0 ? (
-              <div className="quiet-section">
-                <button
-                  type="button"
-                  className="quiet-toggle"
-                  aria-expanded={quietOpen}
-                  onClick={() => setQuietOpen((open) => !open)}
-                >
-                  Marked irrelevant
-                </button>
-                {quietOpen ? (
-                  <article className="watch-group board-feed">
-                    {irrelevant.map((listing) => (
-                      <ListingRow
-                        listing={listing}
-                        key={listing.id}
-                        onLog={openLog}
-                        onSetStatus={setListingStatus}
-                        showDiagnostics={showQaNotes}
-                      />
-                    ))}
-                  </article>
-                ) : null}
-              </div>
-            ) : null}
           </>
         )}
       </div>

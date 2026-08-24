@@ -152,6 +152,20 @@ button {
   color: currentColor;
 }
 
+.nav .nav-label {
+  min-width: 0;
+}
+
+.nav .nav-new-dot {
+  display: inline-block;
+  flex: none;
+  width: calc(var(--space-1) + var(--space-0-5));
+  height: calc(var(--space-1) + var(--space-0-5));
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--r-pill);
+  background: var(--gold-deep);
+}
+
 .nav .nav-icon svg {
   width: 18px;
   height: 18px;

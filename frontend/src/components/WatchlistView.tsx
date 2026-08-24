@@ -53,11 +53,9 @@ const NETWORKING_STAGES: { key: NetworkingStage; label: string; chip: string }[]
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 
-// "New" means posted at the source within the last 48h. Roles without a
-// provider posting date get no label (we don't fall back to when we pulled it in).
+// "New" means first seen by Astir within the last 48h.
 function isFresh(role: Role): boolean {
-  if (!role.postedAt) return false
-  return Date.now() - new Date(role.postedAt).getTime() < NEW_WINDOW_MS
+  return Date.now() - new Date(role.firstSeenAt).getTime() < NEW_WINDOW_MS
 }
 
 // The same opening across several cities is one posting; show the primary

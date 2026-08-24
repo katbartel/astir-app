@@ -1,10 +1,13 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { PrismaService } from '../database/prisma.service'
 import { UserSettableListingStatus } from '../job-boards/dto/update-listing.dto'
 import { JobMatchingService } from '../job-boards/job-matching.service'
-import { companyKey } from '../job-boards/normalized-job'
+import { normalizeForIdentity } from '../job-boards/normalized-job'
 import { FoldableOpening, foldOpenings } from '../job-boards/opening-folding'
 import { DEFAULT_WATCHLIST_PREFERENCES } from '../users/watchlist-defaults'
+import { classifyRemoteBoardListing } from './remote-board-classification'
+
+const UNDATED_AGE_FLOOR_MS = 48 * 60 * 60 * 1000
 
 // Like a JobBoardListing, but carries every location the folded opening is
 // available in (the same role posted across regions is bundled into one row).
@@ -22,19 +25,86 @@ export type RemoteJobBoardListing = {
   providers: string[]
   matchedKeywords: string[]
   status: string
+  remotePolicyStatus: string | null
+  classificationVisible: boolean
+  locationFit: {
+    label: string
+    details?: string[]
+    uncertain: boolean
+  }
+  typeFit: {
+    label: 'Fully remote' | 'Remote, occasional presence' | 'Uncertain'
+    uncertain: boolean
+  }
+  reasonCodes: string[]
 }
-
-// Postings older than this drop off the board — same rationale and window as
-// the regular Job Boards feed.
-const MAX_LISTING_AGE_DAYS = 90
 
 type ListingSourceFreshness = {
   lastSeenAt: Date
+  url?: string
+  jobSourceId?: string | null
   jobSource: { lastSyncedAt: Date | null } | null
+}
+
+type RemoteBoardMatchableListing = {
+  id: string
+  title: string
+  location: string | null
+  locations: string[]
+  workMode: string | null
 }
 
 function sourceStillCurrent(source: ListingSourceFreshness): boolean {
   return !source.jobSource?.lastSyncedAt || source.lastSeenAt >= source.jobSource.lastSyncedAt
+}
+
+export function applyRemotePolicyStatus(
+  classification: ReturnType<typeof classifyRemoteBoardListing>,
+  remotePolicyStatus: string | null | undefined,
+): ReturnType<typeof classifyRemoteBoardListing> {
+  if (remotePolicyStatus !== 'uncertain') {
+    return classification
+  }
+  return {
+    ...classification,
+    type: { label: 'Uncertain', uncertain: true },
+    reasonCodes: [...classification.reasonCodes, 'company remote policy marked uncertain'],
+  }
+}
+
+export function preferredRemoteBoardUrl(
+  fallbackUrl: string,
+  sources: ListingSourceFreshness[],
+  remoteSourceIds: Set<string>,
+): string {
+  return (
+    sources.find((source) => source.jobSourceId && remoteSourceIds.has(source.jobSourceId))?.url ??
+    fallbackUrl
+  )
+}
+
+function isPlainRemoteLocation(location: string): boolean {
+  return normalizeForIdentity(location) === 'remote'
+}
+
+export function toRemoteBoardMatchableListing(
+  listing: RemoteBoardMatchableListing,
+): RemoteBoardMatchableListing {
+  const locations = listing.locations.length
+    ? listing.locations
+    : listing.location
+      ? [listing.location]
+      : []
+  const onlyPlainRemote =
+    locations.length > 0 &&
+    locations.every(isPlainRemoteLocation) &&
+    normalizeForIdentity(listing.workMode ?? '') === 'remote'
+
+  if (!onlyPlainRemote) {
+    return listing
+  }
+
+  return { ...listing, location: null, locations: [] }
 }
 
 // Serves the per-user Remote Job Board feed: openings from the global curated
@@ -45,29 +115,62 @@ function sourceStillCurrent(source: ListingSourceFreshness): boolean {
 // regular Job Board uses.
 @Injectable()
 export class RemoteJobBoardService {
+  private readonly logger = new Logger(RemoteJobBoardService.name)
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly matching: JobMatchingService,
   ) {}
 
   async listForUser(userId: string): Promise<RemoteJobBoardListing[]> {
-    const sourceIds = await this.remoteCompanySourceIds()
+    return this.listForUserByClassification(userId, true)
+  }
+
+  async listNotApplicableForUser(userId: string): Promise<RemoteJobBoardListing[]> {
+    return this.listForUserByClassification(userId, false)
+  }
+
+  private async listForUserByClassification(
+    userId: string,
+    visible: boolean,
+  ): Promise<RemoteJobBoardListing[]> {
+    const startedAt = Date.now()
+    const remoteCompanies = await this.remoteCompanySources()
+    const sourcesLoadedAt = Date.now()
+    const sourceIds = remoteCompanies.map((company) => company.jobSourceId)
     if (!sourceIds.length) {
+      this.logger.log(
+        `Remote board ${visible ? 'visible' : 'hidden'} list finished in ${Date.now() - startedAt}ms: no curated sources`,
+      )
       return []
     }
+    const remotePolicyBySourceId = new Map(
+      remoteCompanies.map((company) => [company.jobSourceId, company.remotePolicyStatus]),
+    )
 
-    const cutoff = new Date(Date.now() - MAX_LISTING_AGE_DAYS * 24 * 60 * 60 * 1000)
-    const [listings, preferences, watchlistKeys, appliedListingIds, irrelevantIds] =
+    const [listings, preferences, appliedListingIds, irrelevantIds] =
       await Promise.all([
         this.prisma.jobListing.findMany({
           where: {
             sources: { some: { jobSourceId: { in: sourceIds } } },
-            OR: [{ postedAt: null }, { postedAt: { gte: cutoff } }],
           },
-          include: {
+          select: {
+            id: true,
+            title: true,
+            companyName: true,
+            location: true,
+            locations: true,
+            workMode: true,
+            descriptionText: true,
+            contentLanguage: true,
+            url: true,
+            postedAt: true,
+            firstSeenAt: true,
             sources: {
               select: {
                 provider: true,
+                jobSourceId: true,
+                url: true,
                 lastSeenAt: true,
                 jobSource: { select: { lastSyncedAt: true } },
               },
@@ -75,70 +178,106 @@ export class RemoteJobBoardService {
           },
         }),
         this.matchingPreferences(userId),
-        this.watchlistCompanyKeys(userId),
         this.appliedListingIds(userId),
         this.irrelevantListingIds(userId),
       ])
+    const queryLoadedAt = Date.now()
 
     // Keyword + region matching, but pin work mode to remote so the board is
     // genuinely remote even for a user who normally filters to onsite/hybrid.
     const matches = new Map(
       this.matching
-        .computeMatches(preferences, listings)
+        .computeMatches(
+          { ...preferences, hiringRegions: [] },
+          listings.map(toRemoteBoardMatchableListing),
+        )
         .map((match) => [match.listingId, match.matchedKeywords]),
     )
+    const matchedAt = Date.now()
 
-    // Candidate postings, before folding: matched, and not on the user's own
-    // watchlist (that takes precedence). Applied ones are dropped by foldOpenings
-    // at the group level, so the same role applied to in one region disappears
-    // entirely — matching the Watchlist's behaviour.
+    // Candidate postings, before folding: matched and classified as plausible
+    // for the board. Watched companies still stay visible here. Applied ones
+    // are dropped by foldOpenings at the group level, so the same role applied
+    // to in one region disappears entirely, matching the Watchlist's behaviour.
     const candidates: FoldableOpening[] = listings
-      .filter(
-        (listing) =>
-          matches.has(listing.id) &&
-          listing.sources.some(sourceStillCurrent) &&
-          !watchlistKeys.has(companyKey(listing.companyName)),
-      )
+      .filter((listing) => {
+        if (!matches.has(listing.id) || !listing.sources.some(sourceStillCurrent)) {
+          return false
+        }
+        const remotePolicyStatus = listing.sources
+          .map((source) => remotePolicyBySourceId.get(source.jobSourceId ?? ''))
+          .find((status) => status === 'uncertain')
+        return applyRemotePolicyStatus(
+          classifyRemoteBoardListing(listing, preferences.hiringRegions),
+          remotePolicyStatus,
+        ).visible === visible
+      })
       .map((listing) => ({
         id: listing.id,
         title: listing.title,
         companyName: listing.companyName,
-        url: listing.url,
+        url: preferredRemoteBoardUrl(listing.url, listing.sources, new Set(sourceIds)),
         location: listing.location,
         locations: listing.locations,
         workMode: listing.workMode ?? 'Remote',
         contentLanguage: listing.contentLanguage,
+        descriptionText: listing.descriptionText,
+        remotePolicyStatus:
+          listing.sources
+            .map((source) => remotePolicyBySourceId.get(source.jobSourceId ?? ''))
+            .find((status) => status === 'uncertain') ?? null,
         postedAt: listing.postedAt,
         firstSeenAt: listing.firstSeenAt,
         matchedKeywords: matches.get(listing.id) ?? [],
-        providers: [...new Set(listing.sources.map((source) => source.provider))],
+          providers: [...new Set(listing.sources.map((source) => source.provider))],
       }))
+    const classifiedAt = Date.now()
 
-    return foldOpenings(candidates, preferences.hiringRegions, appliedListingIds)
-      .map((opening) => ({
-        id: opening.id,
-        title: opening.title,
-        companyName: opening.companyName,
-        location: opening.location,
-        locations: opening.locations,
-        workMode: opening.workMode,
-        contentLanguage: opening.contentLanguage,
-        url: opening.url,
-        postedAt: opening.postedAt,
-        firstSeenAt: opening.firstSeenAt,
-        providers: opening.providers ?? [],
-        matchedKeywords: opening.matchedKeywords,
-        // Folded openings are keyed by a representative posting id; a user who
-        // marked that row irrelevant sees it tucked into the quiet section.
-        status: irrelevantIds.has(opening.id) ? 'irrelevant' : 'new',
-      }))
-      .sort((a, b) => this.effectiveDate(b) - this.effectiveDate(a))
+    const result = foldOpenings(candidates, preferences.hiringRegions, appliedListingIds)
+      .map((opening) => {
+        const classification = applyRemotePolicyStatus(
+          classifyRemoteBoardListing(opening, preferences.hiringRegions),
+          opening.remotePolicyStatus,
+        )
+        return {
+          id: opening.id,
+          title: opening.title,
+          companyName: opening.companyName,
+          location: opening.location,
+          locations: opening.locations,
+          workMode: opening.workMode,
+          contentLanguage: opening.contentLanguage,
+          url: opening.url,
+          postedAt: opening.postedAt,
+          firstSeenAt: opening.firstSeenAt,
+          providers: opening.providers ?? [],
+          matchedKeywords: opening.matchedKeywords,
+          remotePolicyStatus: opening.remotePolicyStatus ?? null,
+          // Folded openings are keyed by a representative posting id; a user who
+          // marked that row irrelevant sees it tucked into the quiet section.
+          status: irrelevantIds.has(opening.id) ? 'irrelevant' : 'new',
+          classificationVisible: classification.visible,
+          locationFit: classification.location,
+          typeFit: classification.type,
+          reasonCodes: classification.reasonCodes,
+        }
+      })
+      .sort((a, b) => this.effectiveAgeMs(a) - this.effectiveAgeMs(b))
+    const finishedAt = Date.now()
+    this.logger.log(
+      `Remote board ${visible ? 'visible' : 'hidden'} list finished in ${finishedAt - startedAt}ms ` +
+        `(sources ${sourcesLoadedAt - startedAt}ms, query ${queryLoadedAt - sourcesLoadedAt}ms, ` +
+        `matching ${matchedAt - queryLoadedAt}ms, classification ${classifiedAt - matchedAt}ms, ` +
+        `folding ${finishedAt - classifiedAt}ms, listings ${listings.length}, candidates ${candidates.length}, ` +
+        `returned ${result.length})`,
+    )
+    return result
   }
 
   // Mark a remote-board listing irrelevant (drops it into the quiet section) or
   // bring it back ({ status: 'new' }). The Remote Job Board computes its feed on
   // the fly, so unlike the regular board there is no pre-seeded UserJobListing
-  // row — we upsert one. Remote-company listings never appear on the regular Job
+  // row, so we upsert one. Remote-company listings never appear on the regular Job
   // Board (it filters them out), so these rows can't leak across boards. A stale
   // click on an id that no longer exists is a no-op rather than a 500.
   async setStatus(
@@ -160,8 +299,10 @@ export class RemoteJobBoardService {
     })
   }
 
-  private effectiveDate(listing: RemoteJobBoardListing): number {
-    return (listing.postedAt ?? listing.firstSeenAt).getTime()
+  private effectiveAgeMs(listing: RemoteJobBoardListing): number {
+    const date = (listing.postedAt ?? listing.firstSeenAt).getTime()
+    const age = Math.max(0, Date.now() - date)
+    return listing.postedAt ? age : Math.max(UNDATED_AGE_FLOOR_MS, age)
   }
 
   private async irrelevantListingIds(userId: string): Promise<Set<string>> {
@@ -172,12 +313,23 @@ export class RemoteJobBoardService {
     return new Set(rows.map((row) => row.listingId))
   }
 
-  private async remoteCompanySourceIds(): Promise<string[]> {
+  private async remoteCompanySources(): Promise<
+    { jobSourceId: string; remotePolicyStatus: string }[]
+  > {
     const rows = await this.prisma.remoteCompany.findMany({
       where: { jobSourceId: { not: null } },
-      select: { jobSourceId: true },
+      select: { jobSourceId: true, remotePolicyStatus: true },
     })
-    return [...new Set(rows.map((row) => row.jobSourceId).filter((id): id is string => id !== null))]
+    const bySourceId = new Map<string, { jobSourceId: string; remotePolicyStatus: string }>()
+    for (const row of rows) {
+      if (row.jobSourceId) {
+        bySourceId.set(row.jobSourceId, {
+          jobSourceId: row.jobSourceId,
+          remotePolicyStatus: row.remotePolicyStatus,
+        })
+      }
+    }
+    return [...bySourceId.values()]
   }
 
   private async matchingPreferences(userId: string) {
@@ -191,14 +343,6 @@ export class RemoteJobBoardService {
       // saved work-mode preference is.
       workModes: ['Remote'],
     }
-  }
-
-  private async watchlistCompanyKeys(userId: string): Promise<Set<string>> {
-    const rows = await this.prisma.watchlistCompany.findMany({
-      where: { userId },
-      select: { nameKey: true },
-    })
-    return new Set(rows.map((row) => row.nameKey))
   }
 
   private async appliedListingIds(userId: string): Promise<Set<string>> {

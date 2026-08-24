@@ -5,6 +5,7 @@ import { PrismaService } from '../database/prisma.service'
 import { JobMatchingService } from './job-matching.service'
 import { NormalizedJob, jobFingerprint } from './normalized-job'
 import { normalizeListingLocations } from './location-normalization'
+import { descriptionHash, fetchDescriptionText } from './description-fetching'
 import {
   AggregatorProvider,
   JOB_BOARD_PROVIDERS,
@@ -173,10 +174,23 @@ export class JobIngestionService implements OnApplicationBootstrap {
     const normalizedJob = normalizeListingLocations(job)
     const fingerprint = jobFingerprint(normalizedJob)
     const existing = await this.prisma.jobListing.findUnique({ where: { fingerprint } })
+    const existingSources = existing
+      ? await this.prisma.jobListingSource.findMany({
+          where: { listingId: existing.id },
+          select: { provider: true, externalId: true },
+        })
+      : []
+    const refreshingOnlyKnownSource =
+      existingSources.length === 1 &&
+      existingSources[0].provider === normalizedJob.provider &&
+      existingSources[0].externalId === normalizedJob.externalId
+    const description = await this.descriptionFor(normalizedJob, existing?.descriptionText ?? null)
     const normalizedExisting = existing
       ? normalizeListingLocations({
-          location: existing.location ?? normalizedJob.location,
-          locations: [...existing.locations, ...normalizedJob.locations],
+          location: refreshingOnlyKnownSource ? normalizedJob.location : existing.location ?? normalizedJob.location,
+          locations: refreshingOnlyKnownSource
+            ? normalizedJob.locations
+            : [...existing.locations, ...normalizedJob.locations],
         })
       : null
     const listing = existing
@@ -191,6 +205,8 @@ export class JobIngestionService implements OnApplicationBootstrap {
             workMode: existing.workMode ?? normalizedJob.workMode,
             postedAt: existing.postedAt ?? normalizedJob.postedAt,
             contentLanguage: existing.contentLanguage ?? normalizedJob.contentLanguage ?? null,
+            descriptionText: description.text ?? existing.descriptionText,
+            descriptionHash: description.hash ?? existing.descriptionHash,
           },
         })
       : await this.prisma.jobListing.create({
@@ -206,6 +222,8 @@ export class JobIngestionService implements OnApplicationBootstrap {
             postedAt: normalizedJob.postedAt,
             firstSeenAt: now,
             lastSeenAt: now,
+            descriptionText: description.text,
+            descriptionHash: description.hash,
           },
         })
     await this.prisma.jobListingSource.upsert({
@@ -226,5 +244,20 @@ export class JobIngestionService implements OnApplicationBootstrap {
       },
     })
     return existing ? 0 : 1
+  }
+
+  private async descriptionFor(
+    job: NormalizedJob,
+    existingDescription: string | null,
+  ): Promise<{ text: string | null; hash: string | null }> {
+    const providerText = job.descriptionText?.trim()
+    if (providerText) {
+      return { text: providerText, hash: job.descriptionHash ?? descriptionHash(providerText) }
+    }
+    if (existingDescription) {
+      return { text: null, hash: null }
+    }
+    const fetched = await fetchDescriptionText(job.url)
+    return fetched ? { text: fetched, hash: descriptionHash(fetched) } : { text: null, hash: null }
   }
 }

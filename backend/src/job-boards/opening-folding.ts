@@ -22,6 +22,8 @@ export type FoldableOpening = {
   locations: string[]
   workMode: string | null
   contentLanguage: string | null
+  descriptionText?: string | null
+  remotePolicyStatus?: string | null
   postedAt: Date | null
   firstSeenAt: Date
   matchedKeywords: string[]
@@ -38,6 +40,10 @@ export function locationStrings(opening: Pick<FoldableOpening, 'locations' | 'lo
     ...(opening.locations.length > 0 ? opening.locations : []),
     opening.location,
   ])
+}
+
+function effectiveDate(opening: Pick<FoldableOpening, 'postedAt' | 'firstSeenAt'>): number {
+  return (opening.postedAt ?? opening.firstSeenAt).getTime()
 }
 
 // 2 for a specific selected region (e.g. Germany, Poland, Spain), 1 for a
@@ -57,7 +63,7 @@ export function regionScore(locations: string[], hiringRegions: string[]): numbe
 
 // Group openings by company + role title, drop any opening the user has already
 // applied to (any posting in the group counts), and collapse each remaining
-// group into one row linked to the best-matching location. Newest opening
+// group into one row linked to the best-matching location. Newest group date
 // first.
 export function foldOpenings(
   openings: FoldableOpening[],
@@ -79,7 +85,7 @@ export function foldOpenings(
     }
     combined.push(combineGroup(group, hiringRegions))
   }
-  combined.sort((a, b) => b.firstSeenAt.getTime() - a.firstSeenAt.getTime())
+  combined.sort((a, b) => effectiveDate(b) - effectiveDate(a))
   return combined
 }
 
@@ -98,11 +104,11 @@ function titleKey(opening: FoldableOpening): string {
 
 function combineGroup(group: FoldableOpening[], hiringRegions: string[]): FoldableOpening {
   // Pick the posting whose location best matches the user's selected regions;
-  // break ties by the newest posting.
+  // break ties by the earliest posting.
   const ranked = [...group].sort((a, b) => {
     const score =
       regionScore(locationStrings(b), hiringRegions) - regionScore(locationStrings(a), hiringRegions)
-    return score !== 0 ? score : b.firstSeenAt.getTime() - a.firstSeenAt.getTime()
+    return score !== 0 ? score : effectiveDate(a) - effectiveDate(b)
   })
   const best = ranked[0]
 
@@ -119,10 +125,14 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     }
   }
 
-  const newest = group.reduce(
-    (latest, opening) => (opening.firstSeenAt > latest ? opening.firstSeenAt : latest),
+  const earliest = group.reduce(
+    (oldest, opening) => (opening.firstSeenAt < oldest ? opening.firstSeenAt : oldest),
     group[0].firstSeenAt,
   )
+  const earliestPostedAt = group.reduce<Date | null>((oldest, opening) => {
+    if (!opening.postedAt) return oldest
+    return !oldest || opening.postedAt < oldest ? opening.postedAt : oldest
+  }, null)
   return {
     id: best.id,
     title: best.title,
@@ -132,8 +142,13 @@ function combineGroup(group: FoldableOpening[], hiringRegions: string[]): Foldab
     locations,
     workMode: best.workMode,
     contentLanguage: best.contentLanguage,
-    postedAt: best.postedAt,
-    firstSeenAt: newest,
+    descriptionText: [...new Set(group.map((opening) => opening.descriptionText).filter(Boolean))]
+      .join('\n\n') || null,
+    remotePolicyStatus: group.some((opening) => opening.remotePolicyStatus === 'uncertain')
+      ? 'uncertain'
+      : best.remotePolicyStatus,
+    postedAt: earliestPostedAt,
+    firstSeenAt: earliest,
     matchedKeywords: [...new Set(group.flatMap((opening) => opening.matchedKeywords))],
     providers: [...new Set(group.flatMap((opening) => opening.providers ?? []))],
   }

@@ -12,7 +12,6 @@ import {
 } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { BellIcon, BellOffIcon, OpenIcon, PlusIcon } from './icons'
-import { PageSkeleton } from './PageSkeleton'
 
 type Role = {
   id: string
@@ -31,7 +30,7 @@ type Role = {
 
 type NetworkingStage = 'none' | 'active' | 'warm'
 
-type Company = {
+export type Company = {
   id: string
   name: string
   careersUrl: string | null
@@ -54,11 +53,9 @@ const NETWORKING_STAGES: { key: NetworkingStage; label: string; chip: string }[]
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
 
-// "New" means posted at the source within the last 48h. Roles without a
-// provider posting date get no label (we don't fall back to when we pulled it in).
+// "New" means first seen by Astir within the last 48h.
 function isFresh(role: Role): boolean {
-  if (!role.postedAt) return false
-  return Date.now() - new Date(role.postedAt).getTime() < NEW_WINDOW_MS
+  return Date.now() - new Date(role.firstSeenAt).getTime() < NEW_WINDOW_MS
 }
 
 // The same opening across several cities is one posting; show the primary
@@ -546,8 +543,16 @@ function QuietRow({
   )
 }
 
-export function WatchlistView() {
-  const [companies, setCompanies] = useState<Company[] | null>(null)
+// `initialCompanies` is whatever the page already fetched during server
+// rendering, or null when it could not. Seeding from it means a reload arrives
+// with the watchlist on screen rather than a loading line, and the browser
+// fetch below is skipped as redundant. Every mutation still calls reload().
+export function WatchlistView({
+  initialCompanies = null,
+}: {
+  initialCompanies?: Company[] | null
+}) {
+  const [companies, setCompanies] = useState<Company[] | null>(initialCompanies)
   const [failed, setFailed] = useState(false)
   const [editor, setEditor] = useState<Editor>(null)
   const [quietOpen, setQuietOpen] = useState(false)
@@ -568,8 +573,9 @@ export function WatchlistView() {
   }
 
   useEffect(() => {
+    if (initialCompanies !== null) return
     void reload()
-  }, [])
+  }, [initialCompanies])
 
   async function addCompany(form: CompanyForm): Promise<string | null> {
     const response = await fetch('/api/watchlist/companies', {
@@ -713,12 +719,6 @@ export function WatchlistView() {
     }
   }, [companies])
 
-  if (!failed && companies === null) {
-    return <PageSkeleton variant="watchlist" />
-  }
-
-  const loadedCompanies = companies ?? []
-
   return (
     <section className="screen" data-screen="watchlist">
       <div className="page-head">
@@ -730,7 +730,9 @@ export function WatchlistView() {
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Your watchlist is resting for a moment. Try again soon.</p>
-        ) : loadedCompanies.length === 0 ? (
+        ) : companies === null ? (
+          <p className="watch-invite">Loading your watchlist…</p>
+        ) : companies.length === 0 ? (
           <p className="watch-invite">
             Add a company you would fight for. We will watch its board for you.
           </p>

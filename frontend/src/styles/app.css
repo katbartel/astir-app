@@ -25,6 +25,18 @@ button {
   cursor: pointer;
 }
 
+/* Live-region text: announced, never seen. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .app {
   display: flex;
   max-width: var(--page-max);
@@ -123,8 +135,7 @@ button {
   gap: var(--space-hairline);
 }
 
-.nav a,
-.nav span {
+.nav a {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -135,14 +146,24 @@ button {
   text-decoration: none;
 }
 
-.nav span {
-  cursor: default;
-}
-
 .nav .nav-icon {
   display: inline-flex;
   flex: none;
   color: currentColor;
+}
+
+.nav .nav-label {
+  min-width: 0;
+}
+
+.nav .nav-new-dot {
+  display: inline-block;
+  flex: none;
+  width: calc(var(--space-1) + var(--space-0-5));
+  height: calc(var(--space-1) + var(--space-0-5));
+  margin-left: calc(-1 * var(--space-1));
+  border-radius: var(--r-pill);
+  background: var(--gold-deep);
 }
 
 .nav .nav-icon svg {
@@ -156,15 +177,7 @@ button {
   opacity: 0.85;
 }
 
-.sk-nav-icon {
-  width: 18px;
-  height: 18px;
-  border-radius: var(--r-pill);
-  background: var(--skeleton-base);
-}
-
-.nav a.active,
-.nav span.active {
+.nav a.active {
   background: var(--nav-active);
   color: var(--ink);
   font-weight: var(--weight-medium);
@@ -208,217 +221,6 @@ button {
 
 .screen[hidden] {
   display: none;
-}
-
-.skeleton-screen {
-  display: block;
-}
-
-.sk-card,
-.sk-bar,
-.sk-button,
-.sk-icon,
-.sk-pill,
-.sk-arc {
-  position: relative;
-  overflow: hidden;
-  background: var(--skeleton-base);
-}
-
-.sk-card::after,
-.sk-bar::after,
-.sk-button::after,
-.sk-icon::after,
-.sk-pill::after,
-.sk-arc::after {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, transparent 0%, var(--skeleton-shine) 50%, transparent 100%);
-  content: "";
-  transform: translateX(-100%);
-  animation: skeleton-shimmer 1.4s ease-in-out infinite;
-}
-
-@keyframes skeleton-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
-.sk-head,
-.sk-card-top,
-.sk-toolbar,
-.sk-pipeline-row,
-.sk-table-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-}
-
-.sk-head {
-  margin-bottom: var(--space-6);
-}
-
-.sk-title {
-  margin-bottom: var(--space-6);
-}
-
-.sk-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-}
-
-.sk-card {
-  padding: var(--pad-card);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--r-lg);
-  background: var(--card);
-  box-shadow: var(--shadow-card);
-}
-
-.sk-home-card,
-.sk-list-card,
-.sk-prefs-card {
-  display: grid;
-  gap: var(--space-3);
-  margin-bottom: var(--space-6);
-}
-
-.sk-bar {
-  display: block;
-  width: 42%;
-  height: var(--r-lg);
-  border-radius: var(--r-pill);
-}
-
-.sk-bar.short {
-  width: 24%;
-}
-
-.sk-bar.medium {
-  width: 42%;
-}
-
-.sk-bar.long {
-  width: 68%;
-}
-
-.sk-bar.full {
-  width: 100%;
-}
-
-.sk-button,
-.sk-pill {
-  display: inline-flex;
-  flex: 0 0 auto;
-  height: var(--input-height);
-  border-radius: var(--r-pill);
-}
-
-.sk-button {
-  width: calc(var(--rail-width) - var(--space-16));
-}
-
-.sk-pill {
-  width: calc(var(--rail-width) - var(--space-8));
-}
-
-.sk-icon {
-  display: inline-flex;
-  flex: 0 0 var(--menu-trigger);
-  width: var(--menu-trigger);
-  height: var(--menu-trigger);
-  border-radius: var(--r-pill);
-}
-
-.sk-goal-grid {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-}
-
-.sk-goal {
-  display: flex;
-  min-height: var(--goal-tile-height);
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-4);
-  padding: var(--space-3) var(--space-3) var(--space-4);
-  border: var(--border-thin) solid var(--line);
-  border-radius: var(--r-md);
-}
-
-.sk-goal .sk-bar {
-  width: 54%;
-}
-
-.sk-arc {
-  display: block;
-  width: var(--goal-gauge-width);
-  height: var(--goal-gauge-height);
-  border-radius: var(--r-pill) var(--r-pill) var(--r-sm) var(--r-sm);
-}
-
-.sk-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding-top: var(--space-3);
-  border-top: var(--border-thin) solid var(--line);
-}
-
-.sk-row-main {
-  display: grid;
-  flex: 1 1 auto;
-  gap: var(--space-2);
-}
-
-.sk-row-main .sk-bar {
-  width: 100%;
-}
-
-.sk-row-main .sk-bar.medium {
-  width: 54%;
-}
-
-.sk-pipeline-row {
-  margin-bottom: var(--space-3);
-}
-
-.sk-table {
-  display: grid;
-  min-width: var(--content-max);
-  border-top: var(--border-thin) solid var(--line);
-}
-
-.sk-table-row {
-  padding: var(--space-3) var(--space-2);
-  border-bottom: var(--border-thin) solid var(--line);
-}
-
-.sk-table-row .sk-bar {
-  flex: 1 1 0;
-}
-
-.sk-pref-row {
-  display: grid;
-  gap: var(--space-2);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sk-card::after,
-  .sk-bar::after,
-  .sk-button::after,
-  .sk-icon::after,
-  .sk-pill::after,
-  .sk-arc::after {
-    animation: none;
-    opacity: 0;
-  }
 }
 
 .today-head {
@@ -1438,6 +1240,7 @@ h1 {
   overflow: hidden;
   color: var(--ink);
   font-size: var(--type-control);
+  font-weight: var(--weight-medium);
   line-height: var(--watch-title-action-size);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1450,11 +1253,161 @@ h1 {
   line-height: 1.35;
 }
 
+.meta-key {
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
+.meta-value {
+  color: var(--muted);
+}
+
+.meta-value-uncertain {
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--muted) 48%, transparent);
+  text-underline-offset: var(--space-1);
+}
+
+.meta-separator {
+  margin: 0 var(--space-2);
+  color: var(--muted);
+}
+
+.board-placeholder-row {
+  pointer-events: none;
+}
+
+.board-placeholder-icon {
+  background: var(--skeleton-base);
+}
+
 .role-posted {
   margin-top: var(--space-1);
   color: var(--muted);
   font-size: var(--type-meta);
   line-height: 1.35;
+}
+
+.board-hero {
+  --board-search-width: calc(var(--modal-max) * 2 / 3);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--board-search-width));
+  gap: var(--space-6) var(--space-8);
+  align-items: center;
+  margin-bottom: var(--space-6);
+}
+
+.board-intro {
+  grid-column: 1 / -1;
+  max-width: none;
+  margin: 0;
+  color: var(--ink2);
+  font-size: var(--type-control);
+  line-height: 1.5;
+}
+
+.board-intro a {
+  color: var(--ink2);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--ink2) 40%, transparent);
+  text-underline-offset: var(--space-1);
+}
+
+.board-search {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--input-height);
+  box-sizing: border-box;
+  padding: 0 var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--paper);
+  color: var(--muted);
+  align-self: center;
+}
+
+.board-search:focus-within {
+  border-color: var(--gold);
+}
+
+.board-search-icon {
+  display: grid;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.board-search-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.board-search input {
+  min-width: 0;
+  height: 100%;
+  flex: 1 1 auto;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  line-height: 1;
+}
+
+.board-search input::placeholder {
+  color: var(--placeholder);
+}
+
+.board-section {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.board-section + .board-section {
+  margin-top: var(--space-6);
+}
+
+.board-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--muted);
+  font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.board-section-icon {
+  display: grid;
+  width: var(--icon-size);
+  height: var(--icon-size);
+  place-items: center;
+}
+
+.board-section-icon svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.board-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-control);
+  line-height: 1.5;
 }
 
 .role-attribution {
@@ -1833,6 +1786,26 @@ h1 {
   color: var(--ink);
 }
 
+.role-qa-note {
+  display: grid;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border-top: var(--border-thin) solid var(--line);
+  color: var(--muted);
+  font-size: var(--type-chip);
+  line-height: 1.35;
+}
+
+.role-qa-title {
+  color: var(--ink2);
+  font-weight: var(--weight-medium);
+}
+
+.role-qa-reason {
+  display: block;
+}
+
 .select-shell,
 .date-shell {
   position: relative;
@@ -2149,6 +2122,10 @@ h1 {
   margin-top: var(--space-3);
 }
 
+.quiet-section .board-section {
+  margin-top: var(--space-3);
+}
+
 .quiet-toggle {
   display: inline-flex;
   align-items: center;
@@ -2157,6 +2134,9 @@ h1 {
   background: transparent;
   color: var(--muted);
   font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
 }
 
 .quiet-toggle:hover {
@@ -2182,7 +2162,7 @@ h1 {
 }
 
 .quiet-section.open .quiet-chevron {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 
 .quiet-list {
@@ -2232,7 +2212,8 @@ h1 {
   gap: var(--space-3);
 }
 
-.pipeline-title-wrap {
+.pipeline-title-wrap,
+.job-board-title-wrap {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -2343,272 +2324,6 @@ h1 {
 
 .pipeline-meta span {
   color: var(--ink2);
-}
-
-.note-field {
-  min-height: calc(var(--input-height) * 3);
-  overflow: auto;
-  resize: vertical;
-  padding: var(--space-3);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--input-radius);
-  background: var(--tile);
-  color: var(--ink);
-  font-size: var(--type-body);
-  line-height: 1.5;
-}
-
-.note-field:focus {
-  border-color: var(--st-dot, var(--gold));
-  box-shadow: var(--focus-ring);
-  outline: none;
-}
-
-.note-field:empty::before {
-  color: var(--placeholder);
-  content: attr(data-placeholder);
-}
-
-.note-field {
-  white-space: pre-wrap;
-}
-
-.note-check {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  height: var(--watch-title-action-size);
-  margin: 0 var(--space-1);
-  vertical-align: middle;
-  cursor: pointer;
-}
-
-/* Six-dot drag handle before a checkbox. Subtle at rest, solid on hover; it is
-   the only draggable part, so reordering starts here rather than on the box. */
-.note-grip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--space-3);
-  color: var(--placeholder);
-  opacity: 0.4;
-  cursor: grab;
-  transition: opacity 0.12s ease, color 0.12s ease;
-}
-
-.note-grip svg {
-  width: 10px;
-  height: 16px;
-  fill: currentColor;
-}
-
-.note-check:hover .note-grip {
-  opacity: 1;
-  color: var(--ink2);
-}
-
-.note-check.note-check-dragging {
-  opacity: 0.4;
-}
-
-/* Floating preview of the row under the cursor while dragging. */
-.note-drag-ghost {
-  position: fixed;
-  top: -1000px;
-  left: -1000px;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-  background: var(--tile);
-  color: var(--ink);
-  font-size: var(--type-body);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-}
-
-.note-drag-ghost .note-box {
-  width: var(--space-4);
-  height: var(--space-4);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-}
-
-/* Line showing where the dragged row will drop. */
-.note-drop-line {
-  position: fixed;
-  z-index: 60;
-  height: 2px;
-  border-radius: 2px;
-  background: var(--gold);
-  pointer-events: none;
-}
-
-.note-box {
-  display: grid;
-  width: var(--space-4);
-  height: var(--space-4);
-  place-items: center;
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--space-1);
-  background: var(--tile);
-  color: var(--gold-deep);
-}
-
-.note-box svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 2.1;
-}
-
-.note-check[data-note-check="true"] .note-box {
-  border-color: transparent;
-  background: var(--gold-soft);
-}
-
-
-/* Floating format toolbar over a text selection. Positioned in JS (fixed, in
-   viewport coordinates); it sits just above the selection. */
-.note-toolbar {
-  position: fixed;
-  z-index: 60;
-  transform: translate(-50%, calc(-100% - var(--space-2)));
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-1);
-  background: var(--tile);
-  border: var(--border-thin) solid var(--line2);
-  border-radius: var(--input-radius);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
-}
-
-.note-toolbar button {
-  display: grid;
-  place-items: center;
-  min-width: var(--watch-title-action-size);
-  height: var(--watch-title-action-size);
-  padding: 0 var(--space-2);
-  border: none;
-  border-radius: var(--space-1);
-  background: transparent;
-  color: var(--ink);
-  font-size: var(--type-body);
-  line-height: 1;
-  cursor: pointer;
-}
-
-.note-toolbar button:hover {
-  background: var(--tile-hover);
-}
-
-/* Pressed/active inline format (bold/italic/etc. under the caret). */
-.note-toolbar button.active {
-  background: var(--gold-soft);
-  color: var(--gold-deep);
-}
-
-.note-toolbar .note-tb-bold {
-  font-weight: 700;
-}
-
-.note-toolbar .note-tb-italic {
-  font-style: italic;
-  font-family: Georgia, 'Times New Roman', serif;
-}
-
-.note-toolbar .note-tb-strike {
-  text-decoration: line-through;
-}
-
-.note-toolbar .note-tb-underline {
-  text-decoration: underline;
-}
-
-.note-toolbar .note-tb-sep {
-  width: var(--border-thin);
-  align-self: stretch;
-  margin: var(--space-1) 0;
-  background: var(--line2);
-}
-
-/* Blockquote inside a note. */
-.note-field blockquote,
-.note-quote {
-  margin: var(--space-2) 0;
-  padding: var(--space-1) 0 var(--space-1) var(--space-3);
-  border-left: 3px solid var(--line2);
-}
-
-/* Collapsible (toggle) section. */
-.note-collapse {
-  margin: var(--space-2) 0;
-}
-
-.note-collapse-head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-1);
-}
-
-.note-collapse-toggle {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--space-6);
-  /* Match the title's line box (font-size × line-height) so the centered arrow
-     lines up with the first line of the summary, even when it wraps. */
-  height: calc(var(--type-body) * 1.5);
-  margin-left: calc(var(--space-1) * -1);
-  border-radius: 6px;
-  color: var(--placeholder);
-  cursor: pointer;
-  user-select: none;
-  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
-}
-
-.note-collapse-toggle:hover {
-  background: var(--hover-soft);
-  color: var(--ink2);
-}
-
-.note-collapse-toggle svg {
-  width: 18px;
-  height: 18px;
-  fill: currentColor;
-}
-
-.note-collapse[data-open='false'] .note-collapse-toggle {
-  transform: rotate(-90deg);
-}
-
-/* The body is every child after the head. Typing Enter lets the browser split
-   it into more lines (extra .note-collapse-body divs, bare <div>s, or <br>s);
-   target them all so a closed section hides its whole body regardless. */
-.note-collapse[data-open='false'] > *:not(.note-collapse-head) {
-  display: none;
-}
-
-.note-collapse-summary {
-  font-weight: 600;
-  flex: 1;
-  outline: none;
-}
-
-.note-collapse-summary:empty::before {
-  content: attr(data-placeholder);
-  color: var(--placeholder);
-  font-weight: 400;
-}
-
-.note-collapse > *:not(.note-collapse-head) {
-  padding-left: var(--space-6);
 }
 
 .pipeline-empty {
@@ -3554,7 +3269,6 @@ textarea {
   }
 
   .goal-grid,
-  .sk-goal-grid,
   .goal-grid.count-1,
   .goal-grid.count-2,
   .goal-grid.count-3,
@@ -3569,13 +3283,14 @@ textarea {
   }
 
   .pipeline-head,
-  .applications-head,
-  .sk-head,
-  .sk-toolbar,
-  .sk-pipeline-row,
-  .sk-table-row {
+  .applications-head {
     align-items: flex-start;
     flex-wrap: wrap;
+  }
+
+  .board-hero {
+    grid-template-columns: 1fr;
+    gap: var(--space-6);
   }
 
   .pipeline-actions {
@@ -3958,11 +3673,14 @@ textarea {
   gap: var(--space-4);
 }
 
+/* Title, stage mark and the row inputs all start at the card's left padding
+   edge, and the +/- buttons end at the matching inset on the right, so the card
+   reads as one aligned column. The drag handle hangs into the left padding. */
 .stage-bucket {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--pad-card-tight);
+  padding: var(--pad-card-tight) var(--pad-card);
   border: var(--border-thin) solid var(--line2);
   border-radius: var(--r-lg);
   background: var(--card);
@@ -3981,24 +3699,83 @@ textarea {
   color: var(--ink2);
   font-size: var(--type-secondary);
   font-weight: var(--weight-medium);
+  line-height: 1.35;
 }
 
+/* Above the title the card padding is followed by two gaps that have no echo
+   under the last row: the head row's slack over its line box, and the leading
+   above the letters' cap height (~4px at this size). Add both back below so the
+   card reads as evenly padded rather than top heavy. */
 .stage-bucket-list {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+  padding-bottom: calc(
+    (var(--menu-trigger) - var(--type-secondary) * 1.35) / 2 + var(--space-1)
+  );
 }
 
 .stage-settings-row {
+  /* The grip hangs in this lane, left of the row. A lifted row takes the lane
+     back as padding so the grip travels inside the card instead of beside it. */
+  --grip-lane: calc(var(--space-3) + var(--space-1));
+  position: relative;
   display: grid;
-  grid-template-columns: var(--menu-trigger) var(--watch-title-action-size) minmax(0, 1fr) var(--menu-trigger);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
   border-radius: var(--r-sm);
+  transition: background .2s ease, opacity .2s ease;
 }
 
-.stage-settings-row.dragging {
-  opacity: .6;
+/* Buckets without a delete button let the field run to the same right edge the
+   +/- buttons end at. */
+.stage-settings-row.no-actions {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+/* The whole row lifts as one card, grip and buttons included. Position, size,
+   shadow and transform are set inline by the sortable hook — it measures the
+   padding and border below to place the card so nothing shifts at lift. */
+.stage-settings-row.lifted {
+  z-index: 5;
+  padding: var(--space-2) var(--grip-lane);
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  cursor: grabbing;
+}
+
+.stage-settings-row.lifted .stage-drag-handle {
+  left: 0;
+  cursor: grabbing;
+}
+
+/* The name reads as plain text in the air; its chrome comes back on drop. */
+.stage-settings-row.lifted input {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.stage-settings-row.lifted .stage-action-cell {
+  opacity: .4;
+  pointer-events: none;
+}
+
+/* Same lifted look for a keyboard pick, which stays in the flow and so cannot
+   take on padding or a border without pushing the list around. */
+.stage-settings-row.picked {
+  z-index: 4;
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+}
+
+/* The slot the lifted row came from: empty space of exactly the row's height,
+   slid to wherever the drop would land. */
+.stage-row-placeholder {
+  flex: 0 0 auto;
 }
 
 .stage-grid-cell,
@@ -4017,19 +3794,34 @@ textarea {
 }
 
 .stage-drag-handle {
+  position: absolute;
+  left: calc(var(--grip-lane) * -1);
   display: grid;
-  width: var(--menu-trigger);
-  height: var(--menu-trigger);
+  width: var(--space-3);
+  height: var(--watch-title-action-size);
   place-items: center;
   border: 0;
-  border-radius: var(--r-pill);
   background: transparent;
   color: var(--muted);
   cursor: grab;
+  opacity: 0;
+  touch-action: none;
+  transition: color .2s ease, opacity .15s ease;
+}
+
+.stage-settings-row:hover .stage-drag-handle,
+.stage-drag-handle:focus-visible,
+.stage-settings-row.picked .stage-drag-handle {
+  opacity: 1;
+}
+
+/* Hover affordance only: once the row is in the air the grip has done its job,
+   and the pointer sits right on top of it, so hover must not bring it back. */
+.stage-settings-row.lifted .stage-drag-handle {
+  opacity: 0;
 }
 
 .stage-drag-handle:hover {
-  background: var(--hover-soft);
   color: var(--ink2);
 }
 
@@ -4039,13 +3831,12 @@ textarea {
 
 .stage-drag-handle:focus-visible {
   color: var(--gold-deep);
-  box-shadow: inset 0 0 0 var(--border-thin) var(--gold);
   outline: none;
 }
 
 .stage-drag-handle svg {
-  width: var(--icon-size);
-  height: var(--icon-size);
+  width: calc(var(--space-3) - var(--space-hairline));
+  height: calc(var(--space-4) - var(--space-hairline));
   fill: currentColor;
   stroke: none;
 }
@@ -4575,6 +4366,12 @@ textarea {
   color: var(--gold-text);
 }
 
+.admin-remote-policy-uncertain {
+  border-color: transparent;
+  background: var(--prep-soft);
+  color: var(--prep-text);
+}
+
 .admin-company-list {
   display: flex;
   flex-direction: column;
@@ -4692,4 +4489,706 @@ textarea {
 .admin-status-unresolved {
   background: var(--net-soft);
   color: var(--net-text);
+}
+
+/* Greeting wording. Both words ship in the HTML and CSS picks one, so the
+   right greeting is painted first time rather than corrected after mount —
+   the blocking script in the root layout sets data-visited before paint. */
+.greet-back {
+  display: none;
+}
+
+:root[data-visited] .greet-first {
+  display: none;
+}
+
+:root[data-visited] .greet-back {
+  display: inline;
+}
+
+/* --- Loading placeholders ---------------------------------------------- */
+
+/* These are never a separate skeleton screen. A real component renders its own
+   markup with its text swapped for these shapes, so the heights are the ones
+   the loaded component will have and nothing shifts when the data lands.
+
+   .sk-bar stands in for a run of text. It is inline-block and sized in `em`, so
+   the parent's font-size and line-height still set the line box — a row of
+   placeholder bars is exactly as tall as the same row of real text. */
+.sk-bar {
+  display: inline-block;
+  width: 100%;
+  height: 1em;
+  border-radius: var(--r-sm);
+  background: var(--skeleton-base);
+  vertical-align: -0.15em;
+}
+
+/* The goal tile's arc, drawn in the placeholder grey. Same path and same box as
+   the real gauge, so the tile does not change shape when the goals load. */
+.sk-gauge .gauge-track {
+  stroke: var(--skeleton-base);
+}
+
+/* Stands in for a control (the stage select), matching its outer box. */
+.sk-pill {
+  display: block;
+  width: 100%;
+  min-height: var(--input-height);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  background: var(--skeleton-base);
+}
+
+/* One sweep across the whole group, so the bars read as a single surface
+   loading rather than as unrelated blinking boxes. */
+.sk-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.sk-shimmer::after {
+  position: absolute;
+  animation: sk-sweep 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, transparent, var(--skeleton-shine), transparent);
+  content: '';
+  inset: 0;
+  transform: translateX(-100%);
+}
+
+@keyframes sk-sweep {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-shimmer::after {
+    animation: none;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+   Notes editor. See docs/notes-editor.md section 5.
+
+   Everything here is scoped under .note-editor so it cannot reach the editor
+   being replaced, whose .note-* rules are still live above until its call sites
+   move over.
+
+   The load-bearing rule is the shared left edge: inside any one container a
+   checkbox row and a plain paragraph line up, and the checkbox box is what
+   defines that edge. The grip (arriving with the drag) is absolutely positioned
+   in the gutter for exactly that reason, so its width can never shift a row.
+   --------------------------------------------------------------------------- */
+
+/* Component tokens, scoped to the field rather than added to the global table:
+   they describe this component's geometry and nothing else uses them.
+
+   --note-disclosure-icon exists only because the system has no icon size scale.
+   Adding one is a foundations task, not this job's. */
+/* THE ROW STYLING CONTEXT.
+   Row markup renders in two places: inside the editor, and inside the lifted drag card,
+   which is absolutely positioned on the body and therefore has NO editor ancestor. Every
+   row rule and every component token lives on this class rather than on .note-editor, and
+   both places carry it.
+
+   This is not a style preference. When the rules were scoped as .note-editor descendants
+   the card matched none of them: the box collapsed to a near-zero-width sliver, the line
+   wrapped below it, and the grip clone rendered as a bare vertical mark, because
+   --note-* was declared on the shell too and did not inherit across the body. The DOM was
+   correct in every respect and the card was unreadable.
+
+   THE RULE: any element rendered outside .note-editor that reuses row markup must carry
+   the row styling context with it, by carrying this class. See docs/notes-editor.md 8. */
+.note-surface {
+  --note-disclosure-icon: 18px;
+  --note-quote-rule: 3px;
+  --note-underline-offset: 2px;
+  /* The link bar's own geometry. Neither is on a scale: 46 is the height that fits a
+     control row plus its padding without looking like an input, and 6 is the air the
+     icons need on the right against 16 on the text side. */
+  --note-linkbar-height: 46px;
+  --note-linkbar-pad-right: 6px;
+  /* A focus ring sits one pixel off the control so the two outlines stay legible. */
+  --note-focus-offset: 1px;
+}
+
+.note-editor-shell .note-editor {
+  min-height: calc(var(--input-height) * 3);
+  padding: var(--space-3) var(--space-3) var(--space-3)
+    calc(var(--space-3) + var(--note-grip-gap));
+  overflow: auto;
+  resize: vertical;
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--input-radius);
+  /* The input recipe, per AGENTS.md. The old field used --tile, which was drift:
+     every other input surface in the app is paper. */
+  background: var(--paper);
+  color: var(--ink);
+  font-size: var(--type-body);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.note-editor-shell .note-editor:focus {
+  /* Recovered: the focus border takes the card's own stage colour, falling back to
+     gold. An expanded stage-2 card gets a stage-2 focus ring, which is why the field
+     looked like part of its card rather than a generic input. */
+  border-color: var(--st-dot, var(--gold));
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+/* One row per row node. A marker row is a flex pair of marker and line; a
+   paragraph holds its inline content directly, so it must NOT be a flex
+   container, or every inline run becomes a flex item and text stops wrapping. */
+.note-surface .note-row {
+  position: relative;
+  /* Recovered from .note-check: a marker row stood a control tall, not a line tall,
+     which is what gave the rows their air. The line box is the floor for a plain
+     paragraph; a marker row gets the control height below. */
+  min-height: calc(var(--type-body) * 1.5);
+}
+
+.note-surface .note-check-row,
+.note-surface .note-bullet-row {
+  display: flex;
+  /* Recovered: the marker sits on the row's first line and is centred against it,
+     so a wrapping row keeps its marker beside the first line rather than the middle. */
+  align-items: flex-start;
+  gap: var(--space-1);
+  min-height: var(--watch-title-action-size);
+}
+
+.note-surface .note-line {
+  flex: 1;
+  min-width: 0;
+}
+
+/* An empty row keeps full line height: selectable, focusable, and never collapsed
+   away. Invariant 2. */
+.note-surface .note-row:empty::after,
+.note-surface .note-line:empty::after {
+  content: '';
+  display: inline-block;
+}
+
+/* The box defines the row's left edge, so a paragraph indents to match it rather
+   than the box hanging off to one side. */
+.note-surface .note-box,
+.note-surface .note-bullet {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--space-4);
+  /* Match the row's control height so a marker sits on the first line of a row that
+     wraps, centred against it. */
+  height: var(--watch-title-action-size);
+}
+
+/* THE SHARED LEFT EDGE, and it is one edge, not two.
+   Every row's content starts at the left edge of the checkbox: a plain paragraph's
+   text, a bullet's glyph, a checkbox's box, and the placeholder. Nothing sits inboard
+   of it. A paragraph therefore takes no indent at all: aligning its text to a
+   checkbox's TEXT is the other reading of this rule and it is the wrong one. */
+.note-surface .note-para {
+  padding-left: 0;
+}
+
+.note-surface .note-box {
+  height: var(--space-4);
+  /* Recovered: the box is centred in the row's control height, which is what put it
+     on the text's optical centre instead of its cap line. */
+  margin-top: calc((var(--watch-title-action-size) - var(--space-4)) / 2);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--space-1);
+  background: var(--tile);
+  color: var(--gold-deep);
+  cursor: pointer;
+}
+
+.note-surface .note-box svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.1;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.note-surface .note-check-row[data-checked='true'] .note-box {
+  border-color: transparent;
+  background: var(--gold-soft);
+}
+
+.note-surface .note-check-row[data-checked='true'] .note-box svg {
+  opacity: 1;
+}
+
+.note-surface .note-bullet {
+  color: var(--placeholder);
+}
+
+.note-surface .note-bullet svg {
+  width: var(--space-2);
+  height: var(--space-2);
+}
+
+/* Quote: unchanged recipe from the field being replaced. */
+.note-editor .note-blockquote {
+  margin: var(--space-2) 0;
+  padding: var(--space-1) 0 var(--space-1) var(--space-3);
+  border-left: var(--note-quote-rule) solid var(--line2);
+}
+
+/* Section. The disclosure control is the only thing that opens or closes it
+   (invariant 15), and the body stays in the document either way: this attribute
+   is all that hides it, so a toggle serialises nothing. */
+.note-editor .note-section {
+  position: relative;
+  margin: var(--space-2) 0;
+}
+
+.note-editor .note-disclosure {
+  position: absolute;
+  top: 0;
+  left: calc(var(--space-1) * -1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--space-6);
+  height: calc(var(--type-body) * 1.5);
+  border: none;
+  background: transparent;
+  color: var(--placeholder);
+  cursor: pointer;
+  transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+/* The arrow alone: no chip behind it, in any state including hover. Only the colour
+   answers the pointer. */
+.note-editor .note-disclosure:hover {
+  color: var(--ink2);
+}
+
+.note-editor .note-disclosure svg {
+  width: var(--note-disclosure-icon);
+  height: var(--note-disclosure-icon);
+  fill: currentColor;
+}
+
+/* Recovered: the arrow points down at rest and rotates a quarter turn anticlockwise
+   when the section is closed. It is never rotated while open: the open state is the
+   glyph's own orientation, which is why open sections read as settled and closed ones
+   as pointing at their title. */
+.note-editor .note-section[data-collapsed='true'] .note-disclosure {
+  transform: rotate(-90deg);
+}
+
+.note-editor .note-section-title {
+  font-weight: 600;
+  padding-left: var(--space-6);
+}
+
+.note-editor .note-section[data-collapsed='true'] .note-section-body {
+  display: none;
+}
+
+/* Child rows indent one step, from the section in the document and never from a
+   tab in the text. */
+.note-editor .note-section-body {
+  padding-left: var(--space-6);
+}
+
+/* A link: gold, solid 1px underline at 40% opacity. Never blue. There is no
+   underline mark in notes, so nothing else here is underlined. */
+.note-surface .note-link {
+  color: var(--gold-text);
+  text-decoration-line: underline;
+  text-decoration-thickness: var(--border-thin);
+  text-decoration-color: color-mix(in srgb, var(--gold-text) 40%, transparent);
+  text-underline-offset: var(--note-underline-offset);
+  cursor: text;
+}
+
+/* "Add a note" shows on exactly one condition: the document is a single empty
+   paragraph. The decoration that carries this class is applied on that condition
+   and no other. */
+/* Recovered from .note-collapse-summary:empty::before: the placeholder in an empty
+   section header reads at normal weight against the header's 600, so it does not look
+   like a filled-in title. */
+.note-editor .note-title-placeholder::before {
+  font-weight: 400;
+}
+
+.note-editor .note-placeholder::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  color: var(--placeholder);
+  pointer-events: none;
+  height: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-editor .note-disclosure,
+  .note-surface .note-box svg {
+    transition: none;
+  }
+}
+
+/* Notes selection toolbar and link popover. See docs/notes-editor.md 6.8 and 7.
+   Both use the menu recipe from AGENTS.md 4.7: card surface, r-md, menu shadow. */
+
+.note-toolbar,
+.note-linkbar {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1);
+  /* Exactly one border, a hairline in the divider tone: the same --line2 as the
+     internal divider and the link bar's outline. */
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+}
+
+/* Above the selection and below it when there is no room above. The horizontal
+   position is computed and clamped in JS, so the transform is vertical only. */
+.note-toolbar {
+  transform: translateY(calc(-100% - var(--space-2)));
+}
+
+.note-toolbar[data-below='true'] {
+  transform: translateY(var(--space-2));
+}
+
+/* ONE surface, and the surface is the field. Under the link it belongs to, so it never
+   covers the text being read. See docs/notes-editor.md 5.6. */
+.note-linkbar {
+  transform: translateY(var(--space-1));
+  height: var(--note-linkbar-height);
+  padding: 0 var(--note-linkbar-pad-right) 0 var(--space-4);
+  gap: var(--space-2);
+  border-radius: var(--r-lg);
+  border-color: var(--line2);
+}
+
+/* The field has no border, no background and no ring of its own: the surface is already
+   the field, and an input inside a bordered box reads as a box inside a box. */
+.note-linkbar-field {
+  flex: 1;
+  min-width: calc(var(--space-16) * 3);
+  border: none;
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-body);
+  outline: none;
+}
+
+.note-linkbar-field::placeholder {
+  color: var(--placeholder);
+}
+
+/* The one divider, in the same tone as the surface's own outline. */
+.note-linkbar-divider {
+  align-self: stretch;
+  width: var(--border-thin);
+  margin: var(--space-2) 0;
+  background: var(--line2);
+}
+
+/* Outline icons. Resting is the bare glyph; hover adds the tinted square. No gold fill,
+   no solid button. */
+.note-linkbar-icon {
+  display: grid;
+  place-items: center;
+  width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
+  padding: 0;
+  border: none;
+  border-radius: var(--space-1);
+  background: transparent;
+  color: var(--ink2);
+  cursor: pointer;
+}
+
+.note-linkbar-icon:hover {
+  background: var(--hover-soft);
+  color: var(--ink);
+}
+
+.note-linkbar-icon:focus-visible {
+  outline: var(--border-thin) solid var(--gold);
+  outline-offset: var(--note-focus-offset);
+}
+
+.note-linkbar-icon svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
+}
+
+/* Buttons carry no chrome of their own. Resting is the bare glyph: no border, no
+   outline, no background, in any state. The container is the only outlined thing.
+   See docs/notes-editor.md 5.7. */
+.note-toolbar button {
+  display: grid;
+  place-items: center;
+  min-width: var(--watch-title-action-size);
+  height: var(--watch-title-action-size);
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--space-1);
+  background: transparent;
+  color: var(--ink);
+  font-size: var(--type-body);
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Hover is a soft tinted square, and nothing else. */
+.note-toolbar button:hover {
+  background: var(--hover-soft);
+}
+
+/* Keyboard focus is the one exception, and it is not a resting state: a control that
+   cannot be seen when focused is unusable from the keyboard (AGENTS.md, stack rule 4). */
+.note-toolbar button:focus-visible {
+  outline: var(--border-thin) solid var(--gold);
+  outline-offset: var(--note-focus-offset);
+}
+
+/* Pressed formatting under the caret: a gold-soft square with a gold-text glyph. The
+   only gold in the toolbar. */
+.note-toolbar button.active {
+  background: var(--gold-soft);
+  color: var(--gold-text);
+}
+
+.note-toolbar button:disabled {
+  color: var(--line2);
+  cursor: default;
+}
+
+.note-toolbar button:disabled:hover {
+  background: transparent;
+}
+
+.note-toolbar button svg {
+  width: var(--space-4);
+  height: var(--space-4);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+/* The three mark buttons are letterforms, not icons: the character IS the content,
+   per AGENTS.md 4.6. Each renders in the format it names, each has an aria-label,
+   and the size comes from the type scale (the shared button rule above), never a
+   hardcoded value. The body font is used: a serif stack for the italic would be a
+   second, unnamed typeface. */
+.note-toolbar .note-tb-bold {
+  font-weight: 700;
+}
+
+.note-toolbar .note-tb-italic {
+  font-style: italic;
+}
+
+.note-toolbar .note-tb-strike {
+  text-decoration: line-through;
+}
+
+.note-toolbar .note-tb-sep {
+  width: var(--border-thin);
+  align-self: stretch;
+  margin: var(--space-1) 0;
+  background: var(--line2);
+}
+
+
+
+
+
+
+/* Notes drag. See docs/notes-editor.md section 8.
+
+   The grip is one element, moved to the hovered row from ProseMirror coordinates
+   rather than rendered per row. It is absolutely positioned in the gutter, so its
+   width can never shift a row: that is the shared left edge rule in section 5. */
+
+.note-editor-shell {
+  position: relative;
+}
+
+/* Recovered from .note-grip, .note-check:hover .note-grip and .note-grip:hover.
+   Subtle at rest, solid on hover, and absolutely placed in the gutter left of the
+   row's own left edge so its width can never shift the row.
+
+   The visibility rule is the recovered one and it matters: the grip appears on hover
+   of a row that HAS something to drag. It never appears on an empty row. Keying it to
+   the field being hovered, as the rebuild did, put a grip beside every blank line the
+   pointer passed. */
+/* The hit target is the WHOLE gutter, not the width of the dots.
+   The dots stay 8px and stay exactly where they were: the box grows leftwards to fill
+   the field's left padding and the glyph is pinned to its right-hand end. An 8px-wide
+   button is one column of pixels for a hand aiming at a 14px gutter, and every press
+   that misses lands on the row behind it. The right edge stops at the row's own left
+   edge, so it can never overlap the checkbox or shift the row. */
+.note-surface .note-grip {
+  position: absolute;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  width: calc(var(--space-3) + var(--note-grip-gap));
+  padding-right: var(--note-grip-gap);
+  height: var(--watch-title-action-size);
+  margin-left: calc((var(--space-3) + var(--note-grip-gap)) * -1);
+  border: none;
+  background: transparent;
+  color: var(--placeholder);
+  cursor: grab;
+  opacity: 0;
+  /* Painted means pressable. Visibility, not pointer-events, is what takes the grip out
+     of the way: a grip that is fading out is still under the cursor, and switching
+     pointer-events off mid-fade sends the press to the row behind it. That is the whole
+     of the "dragging does nothing" report. */
+  visibility: hidden;
+  touch-action: none;
+  transition: opacity 0.12s ease, color 0.12s ease, visibility 0s linear 0.12s;
+}
+
+.note-surface .note-grip[data-on='true'] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.12s ease, color 0.12s ease;
+}
+
+.note-surface .note-grip[data-on='true']:hover {
+  color: var(--ink2);
+}
+
+/* Recovered: the six-dot glyph, as SVG, filled from currentColor so it follows the
+   colour above. */
+.note-surface .note-grip svg {
+  width: var(--space-2);
+  height: var(--space-3);
+  fill: currentColor;
+}
+
+/* Recovered: the grip has done its job once the row is in the air, and the pointer is
+   still over it, so hover must not bring it back. */
+.note-surface .note-grip[data-dragging='true'] {
+  opacity: 0;
+}
+
+/* Nothing renders at the origin. The row stays in the document, out of flow while it is
+   in the air, and the gap holds the space at the target instead. A ghosted copy at the
+   origin plus a gap at the target is two holes for one row.
+
+   Deliberately scoped to .note-editor and NOT to .note-surface: the card carries the
+   surface class, so if a clone ever kept this class the card itself would be hidden. Only
+   a row still in the document may be hidden by it. */
+.note-editor .note-dragging {
+  display: none;
+}
+
+/* The gap is EMPTY SPACE at the target indent: no fill, no grey bar, no dashed outline.
+   It is the shape of the row that will land there, and nothing else. */
+.note-drag-gap {
+  background: none;
+  border: none;
+  pointer-events: none;
+}
+
+/* The lifted row: the whole row as one card, at the row's own width. Card surface,
+   r-md, menu shadow. It eases across to the target indent, which is the only horizontal
+   movement in a drag. */
+.note-drag-card {
+  position: fixed;
+  z-index: 70;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+  color: var(--ink);
+  font-size: var(--type-body);
+  pointer-events: none;
+  transform: translate(var(--space-4), -50%) scale(1.01);
+  transition: transform 0.15s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The lift and the reorder still happen. Only the durations go. */
+  .note-surface .note-grip,
+  .note-editor .note-disclosure,
+  .note-drag-card {
+    transition-duration: 0s;
+  }
+}
+
+/* The grip rides along at the card's own gutter, outside its width so the card still
+   measures the width of the row. */
+.note-drag-card .note-drag-card-grip {
+  position: absolute;
+  top: var(--space-1);
+  left: calc((var(--space-3) + var(--note-grip-gap)) * -1);
+  opacity: 1;
+  visibility: visible;
+}
+
+.note-drag-card[data-reduce-motion='true'] {
+  transition-duration: 0s;
+}
+
+/* A note whose stored shape the mapping does not recognise. It is shown read-only
+   and the stored value is left byte-identical: the migration script halts because a
+   person is watching it, and a render is not a script. See docs/notes-editor.md 4.5. */
+.note-editor-shell .note-unreadable {
+  padding: var(--space-3);
+  border: var(--border-thin) dashed var(--line2);
+  border-radius: var(--input-radius);
+  color: var(--muted);
+  font-size: var(--type-body);
+}
+
+/* A tooltip that names a keyboard shortcut. Two parts, weighted apart: jammed into one
+   string the shortcut competes with the label instead of supporting it. See
+   docs/notes-editor.md 5.5. Keyboard symbols are allowed here under AGENTS.md 4.6: the
+   character IS the content, not a drawing standing in for an icon. */
+.tooltip-bubble[data-has-key='true'] {
+  display: flex;
+  align-items: baseline;
+  gap: var(--tooltip-key-gap);
+}
+
+.tooltip-bubble[data-has-key='true'] .tooltip-label {
+  /* Brighter than the bubble's base colour, so the name leads. */
+  color: var(--snack-text);
+  font-weight: 500;
+}
+
+.tooltip-key {
+  /* Dimmer, derived from the snackbar text token rather than a new one: the sanctioned
+     way to take a token to partial strength (AGENTS.md 3.1, token exception 5). */
+  color: color-mix(in srgb, var(--snack-text) 58%, var(--snack-bg));
+  white-space: nowrap;
+}
+
+.tooltip-bubble[data-has-key='false'] .tooltip-key {
+  display: none;
 }

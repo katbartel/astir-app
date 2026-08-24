@@ -1,6 +1,7 @@
 import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator'
 
 const REVIEW_STATUSES = ['reviewed', 'not_reviewed', 'to_review'] as const
+const REMOTE_POLICY_STATUSES = ['clear', 'uncertain'] as const
 
 export class CreateRemoteCompanyDto {
   @IsString()
@@ -26,6 +27,10 @@ export class CreateRemoteCompanyDto {
   @IsOptional()
   @IsIn(REVIEW_STATUSES)
   reviewStatus?: string
+
+  @IsOptional()
+  @IsIn(REMOTE_POLICY_STATUSES)
+  remotePolicyStatus?: string
 }
 
 // Edit an existing company: both fields optional so the admin can change just
@@ -55,6 +60,10 @@ export class UpdateRemoteCompanyDto {
   @IsOptional()
   @IsIn(REVIEW_STATUSES)
   reviewStatus?: string
+
+  @IsOptional()
+  @IsIn(REMOTE_POLICY_STATUSES)
+  remotePolicyStatus?: string
 }
 
 // Bulk paste: one company per line. Each line is either a bare name

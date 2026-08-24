@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   type Application,
   type Status,
@@ -12,12 +12,13 @@ import { compactLocationLabel, displayLocationParts } from '@/lib/location-displ
 import { HeardBackModal } from './applications/HeardBackModal'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal } from './applications/LogApplicationModal'
-import { NoteField } from './applications/NoteField'
+import { NoteEditor } from './applications/NoteEditor'
+import { useNoteAutosave } from './applications/useNoteAutosave'
 import { StageSelect } from './applications/StageSelect'
 import { useApplications } from './applications/useApplications'
+import { useLoadingPlaceholder, useRememberedCount } from './applications/usePlaceholder'
 import { useStageConfig } from '@/lib/stages'
 import { OpenIcon } from './icons'
-import { PageSkeleton } from './PageSkeleton'
 
 // "Posted · Applied · Location · Type" for the expanded card, from the linked
 // posting when we have one.
@@ -36,7 +37,39 @@ function ApplicationMeta({ application }: { application: Application }) {
   return <>{parts.join(' · ')}</>
 }
 
-function PipelineCard({
+/**
+ * The note field and its autosave, mounted only while the card is expanded.
+ *
+ * The autosave lives here rather than in the card on purpose. Collapsing the
+ * container removes the field but leaves the card mounted, so a hook in the card
+ * would never see the unmount and the pending edit would sit in memory until
+ * something else flushed it. Here, one mechanism covers all three of the container
+ * collapsing, the card closing, and a route change: they all unmount this.
+ */
+function CardNote({
+  application,
+  onNote,
+}: {
+  application: Application
+  onNote: (note: NonNullable<Application['note']>) => void
+}) {
+  const autosave = useNoteAutosave({ save: onNote })
+  return (
+    <NoteEditor
+      note={application.note}
+      onChange={autosave.onChange}
+      ariaLabel={`Note for ${application.company}`}
+    />
+  )
+}
+
+/**
+ * Exported for the regression harness, which mounts the real card rather than a
+ * stand-in: the rules being asserted (the note not closing the card, the autosave
+ * flush) are properties of this component, and a copy of it in a test would prove
+ * nothing about the app.
+ */
+export function PipelineCard({
   application,
   expanded,
   onToggle,
@@ -53,9 +86,24 @@ function PipelineCard({
 }) {
   const openUrl = application.link || application.posting?.url || ''
 
+  // Whether the gesture that produced this click began inside the note field. A text
+  // selection that starts in the note and ends outside it releases the pointer on the
+  // card, which the browser reports as a click on the card. Toggling on that is what
+  // closed the note "intermittently": it was not intermittent, it was every selection
+  // drag that left the field. Invariant 15.
+  const fromNote = useRef(false)
+
+  function onCardPointerDown(event: React.PointerEvent) {
+    fromNote.current = !!(event.target as HTMLElement).closest('.note-editor-shell')
+  }
+
   // Expand only when the click landed on the card body, not on a control.
   function onCardClick(event: React.MouseEvent) {
-    if ((event.target as HTMLElement).closest('button, a, .select-shell, .note-field')) return
+    if (fromNote.current) {
+      fromNote.current = false
+      return
+    }
+    if ((event.target as HTMLElement).closest('button, a, .select-shell, .note-editor-shell')) return
     onToggle()
   }
 
@@ -67,6 +115,7 @@ function PipelineCard({
       aria-expanded={expanded}
       aria-label={`${application.company}, ${application.role}`}
       onClick={onCardClick}
+      onPointerDown={onCardPointerDown}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
           event.preventDefault()
@@ -105,15 +154,50 @@ function PipelineCard({
           <div className="pipeline-meta">
             <ApplicationMeta application={application} />
           </div>
-          <NoteField note={application.note} onChange={onNote} />
+          <CardNote application={application} onNote={onNote} />
         </div>
       ) : null}
     </article>
   )
 }
 
+// The loading stand-in for PipelineCard. Deliberately the same element and the
+// same class names as the card above — .pipeline-card, .pipeline-card-row,
+// .pipeline-company, .pipeline-role, .stage-select — so its height is the card's
+// height and swapping in the real data cannot shift the layout. If the card's
+// row structure changes, change it here too; nothing else stands in for a card.
+// Text widths are varied per row so a stack of these does not read as a grid.
+const PLACEHOLDER_WIDTHS = [
+  ['5ch', '19ch'],
+  ['8ch', '14ch'],
+  ['6ch', '23ch'],
+]
+
+function PipelinePlaceholderCard({ index }: { index: number }) {
+  const [company, role] = PLACEHOLDER_WIDTHS[index % PLACEHOLDER_WIDTHS.length]
+  return (
+    <article className="pipeline-card sk-shimmer" aria-hidden="true">
+      <div className="pipeline-card-row">
+        <div className="pipeline-card-main">
+          <span className="pipeline-company">
+            <span className="sk-bar" style={{ width: company }} />
+          </span>
+          <span className="dot-sep" />
+          <span className="pipeline-role">
+            <span className="sk-bar" style={{ width: role }} />
+          </span>
+        </div>
+        <span className="stage-select">
+          <span className="sk-pill" />
+        </span>
+      </div>
+    </article>
+  )
+}
+
 export function PipelineView() {
-  const { applications, failed, changeStage, saveNote, reload, showSnack, overlay } = useApplications()
+  const { applications, failed, changeStage, saveNote, reload, showSnack, overlay } =
+    useApplications()
   const { isPipeline, rankOf, colorFor } = useStageConfig()
   const [expandedId, setExpandedId] = useState('')
   const [logging, setLogging] = useState(false)
@@ -130,11 +214,20 @@ export function PipelineView() {
       })
   }, [applications, isPipeline, rankOf])
 
-  if (!failed && applications === null) {
-    return <PageSkeleton variant="pipeline" />
-  }
+  // We only get here with no applications at all when the server could not
+  // fetch them (backend down at render time) and the browser is retrying — the
+  // normal path arrives with the rows already in the HTML. `empty` stays false
+  // while that is happening so the "nothing in motion" state is never shown to
+  // someone who simply has not loaded yet.
+  const loading = applications === null && !failed
+  const showPlaceholders = useLoadingPlaceholder(loading)
+  const [placeholderCount, rememberCount] = useRememberedCount('astir.counts.pipeline', 3)
 
-  const empty = pipeline.length === 0
+  useEffect(() => {
+    if (applications !== null) rememberCount(pipeline.length)
+  }, [applications, pipeline.length, rememberCount])
+
+  const empty = !loading && pipeline.length === 0
 
   return (
     <section className="screen" data-screen="pipeline">
@@ -165,8 +258,12 @@ export function PipelineView() {
           </div>
         ) : null}
       </div>
-      <div className="pipeline-list">
-        {empty ? (
+      <div className="pipeline-list" aria-busy={showPlaceholders || undefined}>
+        {showPlaceholders ? (
+          Array.from({ length: placeholderCount }, (_, index) => (
+            <PipelinePlaceholderCard index={index} key={index} />
+          ))
+        ) : empty ? (
           <div className="pipeline-empty">
             <div className="sleepy-orb" aria-hidden="true">
               <span className="sleepy-core" />

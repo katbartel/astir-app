@@ -22,6 +22,17 @@ describe('matchesHiringRegions', () => {
     expect(matchesHiringRegions(['Remote'], regions)).toBe(false)
   })
 
+  it('accepts global remote wording for any selected region', () => {
+    expect(matchesHiringRegions(['Global'], regions)).toBe(true)
+    expect(matchesHiringRegions(['Remote worldwide'], regions)).toBe(true)
+    expect(matchesHiringRegions(['Work from anywhere'], regions)).toBe(true)
+  })
+
+  it('does not treat a US-only remote posting as global', () => {
+    expect(matchesHiringRegions(['Remote', 'United States'], regions)).toBe(false)
+    expect(matchesHiringRegions(['Remote US only'], regions)).toBe(false)
+  })
+
   it('keeps postings with no location data and users with no regions', () => {
     expect(matchesHiringRegions([], regions)).toBe(true)
     expect(matchesHiringRegions(['San Francisco'], [])).toBe(true)
@@ -31,11 +42,18 @@ describe('matchesHiringRegions', () => {
     expect(matchesHiringRegions(['Zurich, Switzerland'], ['Switzerland'])).toBe(true)
   })
 
-  it('treats "Europe" the same as "EU"', () => {
+  it('matches broad Europe when the region is "Europe"', () => {
     expect(matchesHiringRegions(['Dublin, Ireland'], ['Europe'])).toBe(true)
     expect(matchesHiringRegions(['Remote - EMEA'], ['Europe'])).toBe(true)
     expect(matchesHiringRegions(['Munich, Germany'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['London, United Kingdom'], ['Europe'])).toBe(true)
+    expect(matchesHiringRegions(['Zurich, Switzerland'], ['Europe'])).toBe(true)
     expect(matchesHiringRegions(['San Francisco'], ['Europe'])).toBe(false)
+  })
+
+  it('keeps "EU" narrower than broad Europe', () => {
+    expect(matchesHiringRegions(['Dublin, Ireland'], ['EU'])).toBe(true)
+    expect(matchesHiringRegions(['London, United Kingdom'], ['EU'])).toBe(false)
   })
 
   it('matches a bare EU city (no country named) against "Europe"', () => {

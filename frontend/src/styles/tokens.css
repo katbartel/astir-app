@@ -45,8 +45,8 @@
   --ember-light: #F0CE8B;
   --ember-mid: #DCA246;
   --ember-deep: #B87B1F;
-  /* Application stage colors: cool blue at entry, gold through Offer, a warm
-     hired green for the celebration state, neutral grey once closed. */
+  /* Application stage colors: cool blue at entry, gold through progress, green
+     for Offer and Hired, neutral grey once closed. */
   --stage-applied: #5B7A99;
   --stage-applied-soft: rgba(91,122,153,.11);
   --stage-applied-text: #46617D;
@@ -65,9 +65,9 @@
   --stage-progress: var(--gold-deep);
   --stage-progress-soft: var(--gold-soft);
   --stage-progress-text: var(--gold-text);
-  --stage-offer: var(--gold-deep);
-  --stage-offer-soft: var(--gold-soft);
-  --stage-offer-text: var(--gold-text);
+  --stage-offer: var(--hired);
+  --stage-offer-soft: var(--hired-soft);
+  --stage-offer-text: var(--hired-text);
   --stage-hired: var(--hired);
   --stage-hired-soft: var(--hired-soft);
   --stage-hired-text: var(--hired-text);
@@ -119,6 +119,10 @@
   --prefs-avatar-size: 40px;
   --dot-size: 30px;
   --icon-size: 13px;
+  /* Air between a note's drag grip and the checkbox it belongs to. The field's
+     left padding carries the same value, so widening the gap moves the content
+     right and leaves the grip where it was. */
+  --note-grip-gap: 2px;
   --watch-action-icon-size: 17px;
   --watch-open-icon-size: 14px;
   --kebab-size: 17px;
@@ -145,6 +149,10 @@
   --border-dot: 1.5px;
   --inset-hairline: 1px;
   --space-hairline: 2px;
+  /* Air between a tooltip's label and the shortcut beside it. Not on the space scale:
+     the two need more separation than 12 and less than 16 to read as one line with two
+     weights. */
+  --tooltip-key-gap: 14px;
   --button-pad-y: 9px;
   --input-radius: 10px;
   --input-height: 32px;
@@ -157,7 +165,7 @@
   --tooltip-max-width: 25ch;
   --font-display: "Bricolage Grotesque", sans-serif;
   --font-body: "Instrument Sans", system-ui, sans-serif;
-  --type-h1: 27px;
+  --type-h1: 28px;
   --type-modal-title: 19px;
   --type-brand: 19px;
   --type-body: 14px;
@@ -237,9 +245,9 @@
   --stage-progress: var(--gold-deep);
   --stage-progress-soft: var(--gold-soft);
   --stage-progress-text: var(--gold-text);
-  --stage-offer: var(--gold-deep);
-  --stage-offer-soft: var(--gold-soft);
-  --stage-offer-text: var(--gold-text);
+  --stage-offer: var(--hired);
+  --stage-offer-soft: var(--hired-soft);
+  --stage-offer-text: var(--hired-text);
   --stage-hired: var(--hired);
   --stage-hired-soft: var(--hired-soft);
   --stage-hired-text: var(--hired-text);

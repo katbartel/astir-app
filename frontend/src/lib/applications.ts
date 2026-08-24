@@ -3,6 +3,7 @@
 // (/api/applications). The backend persists; these helpers are the only place
 // the frontend talks to it.
 
+import { isV2, type StoredNote } from './noteMigration'
 import {
   DEFAULT_STAGE_CATALOG,
   DEFAULT_STAGE_IDS,
@@ -38,7 +39,17 @@ export type NoteBlock =
   | { type: 'quote'; blocks: NoteBlock[] }
   | { type: 'collapse'; summary: string; open: boolean; blocks: NoteBlock[] }
 
-export type Note = { kind: string; text?: string; blocks: NoteBlock[] }
+/**
+ * A v1 note: a flat block list. Still the shape of most stored rows, and read through
+ * noteMigration.ts. See docs/notes-editor.md section 4.
+ */
+export type NoteV1 = { kind: string; text?: string; blocks: NoteBlock[] }
+
+/**
+ * What the editor writes now. The column holds a mix of both for as long as it takes
+ * to open every note, which is the expected state and not a transition to survive.
+ */
+export type Note = NoteV1 | StoredNote
 
 export type Posting = {
   url: string
@@ -127,9 +138,18 @@ function blockPlainText(block: NoteBlock): string {
   return block.text || ''
 }
 
-// Blocks -> flat text, used to seed the modal textarea.
+// A note -> flat text, used to seed the modal textarea. Reads either version: the
+// column holds a mix until every note has been opened once.
 export function noteText(note: Note | null | undefined): string {
   if (!note) return ''
+  if (isV2(note)) {
+    const walk = (nodes: { type?: string; text?: string; content?: unknown[] }[]): string =>
+      nodes
+        .map((node) => (node.type === 'text' ? (node.text ?? '') : walk((node.content ?? []) as never)))
+        .join('')
+    const doc = note.doc as { content?: unknown[] }
+    return walk((doc.content ?? []) as never)
+  }
   if (Array.isArray(note.blocks) && note.blocks.length > 0) {
     return note.blocks.map(blockPlainText).join('')
   }
@@ -148,12 +168,19 @@ async function asJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T
 }
 
-export async function fetchApplications(): Promise<Application[]> {
-  const rows = await asJson<Application[]>(await fetch('/api/applications'))
+// Rows as the API returns them -> rows the screens can use. Shared by the
+// browser fetch below and by ApplicationsProvider when it seeds itself from
+// data the server already fetched (see lib/applications-server.ts), so both
+// paths produce identical objects.
+export function normalizeApplications(rows: Application[]): Application[] {
   return rows.map((application) => {
     const stageId = normalizeStageId(application.stageId, application.status)
     return { ...application, stageId, status: stageId }
   })
+}
+
+export async function fetchApplications(): Promise<Application[]> {
+  return normalizeApplications(await asJson<Application[]>(await fetch('/api/applications')))
 }
 
 function applicationBody(input: Partial<ApplicationInput>): Partial<ApplicationInput> {
@@ -228,12 +255,28 @@ export function parseDateKey(key: string): Date {
   return new Date(year, (month || 1) - 1, day || 1)
 }
 
+// The calendar day a stored value refers to, independent of who is looking.
+// Date-only keys ("2026-07-09") are already local. Full ISO timestamps are read
+// in UTC rather than local time: these strings are rendered during server-side
+// rendering too, and the server runs UTC while the browser does not — reading
+// them locally makes the two disagree by a day for late-evening timestamps and
+// produces a hydration mismatch.
+function calendarDate(value: string): Date | null {
+  if (value.length === 10) {
+    const key = parseDateKey(value)
+    return Number.isNaN(key.getTime()) ? null : key
+  }
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return null
+  return new Date(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate())
+}
+
 // Posted-date metadata for watchlist roles and job-board listings: "DD Month"
 // (e.g. "09 July"). Missing or unparseable dates show an em-dash.
 export function formatPostedDate(value: string | null | undefined): string {
   if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return '—'
+  const date = calendarDate(value)
+  if (!date) return '—'
   const day = String(date.getDate()).padStart(2, '0')
   return `${day} ${MONTH_NAMES[date.getMonth()]}`
 }
@@ -241,8 +284,8 @@ export function formatPostedDate(value: string | null | undefined): string {
 // "9 July 2026" — the plain display form used across the tables and cards.
 export function plainDate(value: string | null | undefined): string {
   if (!value) return ''
-  const date = value.length === 10 ? parseDateKey(value) : new Date(value)
-  if (Number.isNaN(date.getTime())) return value
+  const date = calendarDate(value)
+  if (!date) return value
   return `${date.getDate()} ${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`
 }
 

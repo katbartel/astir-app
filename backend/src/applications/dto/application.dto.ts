@@ -1,15 +1,4 @@
-import { Type } from 'class-transformer'
-import {
-  IsArray,
-  IsBoolean,
-  IsIn,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-  MinLength,
-  ValidateNested,
-} from 'class-validator'
+import { IsObject, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator'
 
 // Kept in sync with the client's statusOptions. "Applied" and "Closed" sit
 // outside the active pipeline; the stages between them show on Pipeline.
@@ -35,77 +24,16 @@ export const STAGE_IDS = [
 
 const DATE_KEY = /^\d{4}-\d{2}-\d{2}$/
 
-// One block of the rich-text note: a run of text, a checkbox, or a container
-// (quote / collapse) holding nested blocks.
-class NoteBlockDto {
-  @IsIn(['text', 'check', 'quote', 'collapse'])
-  type!: 'text' | 'check' | 'quote' | 'collapse'
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(4000)
-  text?: string
-
-  @IsOptional()
-  @IsBoolean()
-  checked?: boolean
-
-  @IsOptional()
-  @IsBoolean()
-  bold?: boolean
-
-  @IsOptional()
-  @IsBoolean()
-  italic?: boolean
-
-  @IsOptional()
-  @IsBoolean()
-  underline?: boolean
-
-  @IsOptional()
-  @IsBoolean()
-  strike?: boolean
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  href?: string
-
-  // Collapse (toggle section) title.
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  summary?: string
-
-  // Collapse open/closed state.
-  @IsOptional()
-  @IsBoolean()
-  open?: boolean
-
-  // Nested blocks for quote/collapse containers.
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => NoteBlockDto)
-  blocks?: NoteBlockDto[]
-}
-
-class NoteDto {
-  @IsOptional()
-  @IsString()
-  kind?: string
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(8000)
-  text?: string
-
-  @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => NoteBlockDto)
-  blocks?: NoteBlockDto[]
-}
+// The note is stored opaquely. It is a v2 envelope `{ v, kind, doc }`, or a v1
+// note during the mixed-version window, and the editor's document is the source
+// of truth: the load path (readNote) validates and migrates it. So the API
+// persists the JSON verbatim rather than modelling it here.
+//
+// Modelling only the v1 shape (kind/text/blocks) is exactly what broke: under
+// `whitelist: true` the ValidationPipe stripped every property not on the DTO,
+// so a v2 note lost its `v` and `doc` and was saved as `{ kind: 'blocks' }`. A
+// passthrough object keeps the whole envelope. `@IsObject` refuses a string or
+// array; the shape itself is the read path's job, not the wire's.
 
 export class CreateApplicationDto {
   @IsOptional()
@@ -141,9 +69,8 @@ export class CreateApplicationDto {
   appliedDate!: string
 
   @IsOptional()
-  @ValidateNested()
-  @Type(() => NoteDto)
-  note?: NoteDto
+  @IsObject()
+  note?: Record<string, unknown>
 }
 
 export class UpdateApplicationDto {
@@ -179,7 +106,6 @@ export class UpdateApplicationDto {
   appliedDate?: string
 
   @IsOptional()
-  @ValidateNested()
-  @Type(() => NoteDto)
-  note?: NoteDto
+  @IsObject()
+  note?: Record<string, unknown>
 }

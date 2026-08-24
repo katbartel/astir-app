@@ -2,10 +2,10 @@
 
 import { useEffect, useState, type FormEvent } from 'react'
 import { useUser } from '../UserProvider'
-import { PageSkeleton } from '../PageSkeleton'
 
 type ResolutionStatus = 'pending' | 'resolved' | 'unresolved'
 type ReviewStatus = 'reviewed' | 'not_reviewed' | 'to_review'
+type RemotePolicyStatus = 'clear' | 'uncertain'
 
 type RemoteCompany = {
   id: string
@@ -14,6 +14,7 @@ type RemoteCompany = {
   companyWebsite: string | null
   note: string | null
   reviewStatus: ReviewStatus
+  remotePolicyStatus: RemotePolicyStatus
   resolutionStatus: ResolutionStatus
   addedByEmail: string | null
   createdAt: string
@@ -58,6 +59,11 @@ const REVIEW_LABEL: Record<ReviewStatus, string> = {
 }
 
 const REVIEW_STATUS_OPTIONS: ReviewStatus[] = ['not_reviewed', 'to_review', 'reviewed']
+const REMOTE_POLICY_LABEL: Record<RemotePolicyStatus, string> = {
+  clear: 'Use automatic type check',
+  uncertain: 'Always show type uncertain',
+}
+const REMOTE_POLICY_OPTIONS: RemotePolicyStatus[] = ['clear', 'uncertain']
 
 const FILTER_TO_REVIEW_STATUS: Partial<Record<ListFilter, ReviewStatus>> = {
   reviewed: 'reviewed',
@@ -325,6 +331,36 @@ export function AdminPanel() {
     }
   }
 
+  async function updateRemotePolicyStatus(
+    company: RemoteCompany,
+    remotePolicyStatus: RemotePolicyStatus,
+  ) {
+    if (company.remotePolicyStatus === remotePolicyStatus) return
+    setCompanies((prev) =>
+      prev?.map((item) =>
+        item.id === company.id ? { ...item, remotePolicyStatus } : item,
+      ) ?? prev,
+    )
+    try {
+      const response = await fetch(`/api/remote-companies/${company.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ remotePolicyStatus }),
+      })
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+      const updated = (await response.json()) as RemoteCompany
+      setCompanies((prev) => prev?.map((item) => (item.id === updated.id ? updated : item)) ?? prev)
+    } catch {
+      setCompanies((prev) =>
+        prev?.map((item) =>
+          item.id === company.id
+            ? { ...item, remotePolicyStatus: company.remotePolicyStatus }
+            : item,
+        ) ?? prev,
+      )
+    }
+  }
+
   function toggleFilter(filter: ListFilter) {
     setFilters((prev) =>
       prev.includes(filter) ? prev.filter((item) => item !== filter) : [...prev, filter],
@@ -541,7 +577,7 @@ export function AdminPanel() {
         {loadFailed ? (
           <p className="watch-invite">Couldn’t load the list. Try refreshing.</p>
         ) : companies === null ? (
-          <PageSkeleton variant="preferences" />
+          <p className="watch-invite">Loading…</p>
         ) : companies.length === 0 ? (
           <p className="watch-invite">No companies yet. Add some above.</p>
         ) : visibleCompanies && visibleCompanies.length === 0 ? (
@@ -635,6 +671,23 @@ export function AdminPanel() {
                           </option>
                         ))}
                       </select>
+                      <select
+                        className={`admin-review-select admin-remote-policy-${company.remotePolicyStatus}`}
+                        value={company.remotePolicyStatus}
+                        aria-label={`Remote policy status for ${company.name}`}
+                        onChange={(event) =>
+                          updateRemotePolicyStatus(
+                            company,
+                            event.target.value as RemotePolicyStatus,
+                          )
+                        }
+                      >
+                        {REMOTE_POLICY_OPTIONS.map((status) => (
+                          <option key={status} value={status}>
+                            {REMOTE_POLICY_LABEL[status]}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                     {company.careersUrl ? (
                       <a
@@ -668,16 +721,17 @@ export function AdminPanel() {
                     <button className="text-button" type="button" onClick={() => startEdit(company)}>
                       Edit
                     </button>
-                    {company.resolutionStatus !== 'resolved' ? (
-                      <button
-                        className="text-button"
-                        type="button"
-                        disabled={retryingId === company.id}
-                        onClick={() => retryOne(company)}
-                      >
-                        {retryingId === company.id ? 'Retrying…' : 'Retry'}
-                      </button>
-                    ) : null}
+                    {/* Offered on Active rows too: a company can be linked to a
+                        board that resolved but has never returned a job, and
+                        re-resolving is how it gets re-probed from scratch. */}
+                    <button
+                      className="text-button"
+                      type="button"
+                      disabled={retryingId === company.id}
+                      onClick={() => retryOne(company)}
+                    >
+                      {retryingId === company.id ? 'Retrying…' : 'Retry'}
+                    </button>
                     <button className="text-button" type="button" onClick={() => remove(company)}>
                       Remove
                     </button>

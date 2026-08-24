@@ -8,6 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common'
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator'
+import { AdminGuard } from '../auth/admin.guard'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { UpdateListingStatusDto } from '../job-boards/dto/update-listing.dto'
 import { RemoteJobBoardListing, RemoteJobBoardService } from './remote-job-board.service'
@@ -23,6 +24,14 @@ export class RemoteJobBoardController {
   @Get('listings')
   getListings(@CurrentUser() authUser: AuthenticatedUser): Promise<RemoteJobBoardListing[]> {
     return this.remoteJobBoard.listForUser(authUser.userId)
+  }
+
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @Get('not-applicable-listings')
+  getNotApplicableListings(
+    @CurrentUser() authUser: AuthenticatedUser,
+  ): Promise<RemoteJobBoardListing[]> {
+    return this.remoteJobBoard.listNotApplicableForUser(authUser.userId)
   }
 
   // Mark a listing irrelevant (drops it to the quiet section) or bring it back

@@ -97,6 +97,7 @@ export class JobBoardsService {
         locations: row.listing.locations,
         workMode: row.listing.workMode,
         contentLanguage: row.listing.contentLanguage,
+        descriptionText: row.listing.descriptionText,
         postedAt: row.listing.postedAt,
         firstSeenAt: row.listing.firstSeenAt,
         providers: [...new Set(row.listing.sources.map((source) => source.provider))],

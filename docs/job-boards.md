@@ -202,3 +202,15 @@ company has a bell (alerts) and a kebab with Edit and Remove (Remove confirms fi
 Companies with matching roles render as cards with those roles; companies with none
 collapse into the quiet disclosure. An unresolved company shows a gentle note asking
 for its careers link. Per the product rules there are no counts anywhere.
+
+## Later to-dos
+
+1. **Remote Job Board, folded location rows.** On `/remote-job-board`, the board can
+   merge several provider postings for the same company and title into one row, for
+   example `Poland +3`. The external-link icon currently opens only the representative
+   posting, so the opened source page may show just one country even though Astir
+   found sibling postings for the other countries. Short-term: add a tooltip to the
+   extra-locations marker listing the hidden countries, and add a tooltip to the
+   external-link icon when a row is folded: "Opens one posting. Other locations may
+   have separate links." Longer-term: add a quiet row action, likely in the kebab, to
+   choose a specific location posting to open.

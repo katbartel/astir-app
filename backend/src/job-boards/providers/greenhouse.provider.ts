@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common'
 import { NormalizedJob, WorkMode, parseDate } from '../normalized-job'
+import { textFromHtml } from '../description-fetching'
 import {
   AtsProvider,
   JobBoardSourceRef,
@@ -18,6 +19,7 @@ type GreenhouseJob = {
   location?: { name?: string }
   first_published?: string
   updated_at?: string
+  content?: string
 }
 
 type GreenhouseEuJob = {
@@ -53,26 +55,32 @@ function normalizeJob(
     first_published?: string
     published_at?: string
     updated_at?: string
+    content?: string
   },
   source: JobBoardSourceRef,
 ): NormalizedJob | null {
   if (job.id === undefined || !job.title || !job.absolute_url) {
     return null
   }
+  const externalId = String(job.id)
   const location =
     typeof job.location === 'string'
       ? job.location.trim() || null
       : job.location?.name?.trim() || null
   return {
     provider: 'greenhouse',
-    externalId: String(job.id),
+    externalId,
     title: job.title.trim(),
     companyName: job.company_name?.trim() || source.companyName,
     location,
     locations: location ? [location] : [],
     workMode: workModeFromLocation(location),
-    url: job.absolute_url,
+    url:
+      source.externalId === 'remotecom'
+        ? `https://remote.com/openings/${encodeURIComponent(externalId)}`
+        : job.absolute_url,
     postedAt: parseDate(job.first_published) ?? parseDate(job.published_at) ?? parseDate(job.updated_at),
+    ...(job.content ? { descriptionText: textFromHtml(job.content) } : {}),
   }
 }
 
@@ -107,13 +115,30 @@ export function greenhouseEuJobsFromHtml(
   }
 }
 
+async function isLiveGreenhouseJobUrl(url: string): Promise<boolean> {
+  if (!/\/\/job-boards\.greenhouse\.io\/[^/]+\/jobs\/[^/?#]+/i.test(url)) {
+    return true
+  }
+  try {
+    const response = await fetch(url, {
+      method: 'HEAD',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
+    })
+    const location = response.headers.get('location') ?? ''
+    return (response.status || 200) < 400 && !location.includes('error=true')
+  } catch {
+    return true
+  }
+}
+
 @Injectable()
 export class GreenhouseProvider implements AtsProvider {
   readonly provider = 'greenhouse'
   readonly kind = 'ats' as const
 
   private jobsUrl(handle: string): string {
-    return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(handle)}/jobs`
+    return `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(handle)}/jobs?content=true`
   }
 
   private euPageUrl(handle: string): string {
@@ -177,9 +202,11 @@ export class GreenhouseProvider implements AtsProvider {
     if (!Array.isArray(payload.jobs)) {
       throw new Error(`Greenhouse board "${source.externalId}" returned no jobs array`)
     }
-    return payload.jobs
+    const jobs = payload.jobs
       .map((job) => this.normalize(job, source))
       .filter((job): job is NormalizedJob => job !== null)
+    const live = await Promise.all(jobs.map(async (job) => isLiveGreenhouseJobUrl(job.url)))
+    return jobs.filter((_, index) => live[index])
   }
 
   normalize(job: GreenhouseJob, source: JobBoardSourceRef): NormalizedJob | null {

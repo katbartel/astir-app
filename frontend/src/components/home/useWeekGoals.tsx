@@ -22,16 +22,23 @@ import {
 } from '@/lib/goals'
 
 // Owns this week's goal state. Starts empty on the server and first client
-// render (so hydration matches, same as the Greeting), then hydrates from
-// localStorage and persists every mutation back to the shared store.
+// render (so hydration matches), then hydrates from localStorage and persists
+// every mutation back to the shared store.
+//
+// `ready` is false until that first read has happened. Callers need it because
+// an empty week means two different things — "we have not looked yet" and "this
+// week genuinely has no goals" — and showing the second while the first is true
+// tells someone their goals are unset when they are not.
 export function useWeekGoals() {
   const [week, setWeek] = useState<Week>(emptyWeek)
   const [key, setKey] = useState('')
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     const currentKey = weekKeyFor()
     setKey(currentKey)
     setWeek(readCurrentWeek(currentKey))
+    setReady(true)
   }, [])
 
   const mutate = useCallback(
@@ -91,5 +98,5 @@ export function useWeekGoals() {
     ),
   }
 
-  return { week, setGoals, stepRest, tasks }
+  return { week, ready, setGoals, stepRest, tasks }
 }

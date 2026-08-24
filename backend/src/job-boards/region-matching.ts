@@ -33,6 +33,41 @@ const EU_COUNTRIES = [
   'sweden',
 ]
 
+// Broader Europe for users who select "Europe" rather than "EU". Keep this in
+// step with the deterministic classifier's Europe scope.
+const NON_EU_EUROPE_COUNTRIES = [
+  'united kingdom',
+  'uk',
+  'great britain',
+  'britain',
+  'england',
+  'scotland',
+  'wales',
+  'northern ireland',
+  'london',
+  'manchester',
+  'birmingham',
+  'edinburgh',
+  'glasgow',
+  'leeds',
+  'bristol',
+  'cardiff',
+  'belfast',
+  'switzerland',
+  'swiss',
+  'zurich',
+  'geneva',
+  'basel',
+  'bern',
+  'lausanne',
+  'norway',
+  'oslo',
+  'bergen',
+  'trondheim',
+  'iceland',
+  'reykjavik',
+]
+
 // Cities matter because many postings only name a city ("Berlin Office",
 // "Dublin"). Each country entry lists its own cities so selecting the country
 // alone catches city-only postings.
@@ -76,9 +111,9 @@ const COUNTRY_TOKENS: Record<string, string[]> = {
   ],
 }
 
-// "EU"/"Europe" accepts the generic bloc phrasings, every member country name,
-// AND every city we know for those countries — so a bare "Dublin" or "Berlin"
-// posting matches "Europe", not just the ones that spell out the country.
+// "EU" accepts the generic bloc phrasings, every member country name, and
+// every city we know for those countries, so a bare "Dublin" or "Berlin"
+// posting matches.
 const EU_TOKENS = [
   'eu',
   'european union',
@@ -88,12 +123,24 @@ const EU_TOKENS = [
   ...Object.values(COUNTRY_TOKENS).flat(),
 ]
 
+const EUROPE_TOKENS = [
+  'europe',
+  'emea',
+  ...EU_TOKENS,
+  ...NON_EU_EUROPE_COUNTRIES,
+]
+
+const GLOBAL_TOKENS = [
+  'global',
+  'worldwide',
+  'anywhere',
+  'international',
+]
+
 const REGION_TOKENS: Record<string, string[]> = {
-  // All the generic ways users and postings spell the bloc resolve to the same
-  // set, so "EU", "Europe", "EMEA" behave identically.
   eu: EU_TOKENS,
-  europe: EU_TOKENS,
-  emea: EU_TOKENS,
+  europe: EUROPE_TOKENS,
+  emea: EUROPE_TOKENS,
   'european union': EU_TOKENS,
   ...COUNTRY_TOKENS,
 }
@@ -109,19 +156,26 @@ function containsToken(normalizedLocation: string, token: string): boolean {
   return ` ${normalizedLocation} `.includes(` ${token} `)
 }
 
+function isGlobalLocation(normalizedLocation: string): boolean {
+  return GLOBAL_TOKENS.some((token) => containsToken(normalizedLocation, token))
+}
+
 // A listing is region-eligible when one of its location strings names a
 // selected region — this covers "Berlin", "Remote, Germany", and US-based
 // postings that explicitly state EU hiring ("Remote (US) / Europe"). Postings
 // whose locations carry no selected-region signal (e.g. plain "San Francisco"
-// or a bare "Remote") are excluded: hiring elsewhere must be stated, not
-// assumed. Listings with no location data at all are kept — unknown is not
-// the same as elsewhere.
+// or a bare "Remote") are excluded unless they explicitly state global hiring.
+// Listings with no location data at all are kept — unknown is not the same as
+// elsewhere.
 export function matchesHiringRegions(locations: string[], hiringRegions: string[]): boolean {
   if (!hiringRegions.length) {
     return true
   }
   const normalizedLocations = locations.map(normalizeForIdentity).filter(Boolean)
   if (!normalizedLocations.length) {
+    return true
+  }
+  if (normalizedLocations.some(isGlobalLocation)) {
     return true
   }
   const tokens = hiringRegions.flatMap(tokensForRegion)

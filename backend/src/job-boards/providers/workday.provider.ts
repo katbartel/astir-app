@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { textFromHtml } from '../description-fetching'
 import { NormalizedJob, WorkMode } from '../normalized-job'
 import { AtsProvider, JobBoardSourceRef } from './job-board-provider'
 
@@ -26,8 +27,22 @@ type WorkdayPosting = {
   externalPath?: string
   // Either a real place or a count like "3 Locations" for multi-location roles.
   locationsText?: string
+  // Usually relative text from Workday, e.g. "Posted Today" or
+  // "Posted 4 Days Ago".
+  postedOn?: string
   // Typically [reqId], e.g. ["JR2011363"].
   bulletFields?: string[]
+}
+
+type WorkdayPostingDetail = {
+  jobPostingInfo?: {
+    jobDescription?: string
+    location?: string
+    additionalLocations?: string[]
+    postedOn?: string
+    jobReqId?: string
+    remoteType?: string
+  }
 }
 
 function parseHandle(handle: string): WorkdayHandle | null {
@@ -53,6 +68,48 @@ function locationFromWorkday(text: string | undefined): string | null {
 
 function workModeFromWorkday(text: string | null): WorkMode | null {
   return text?.toLowerCase().includes('remote') ? 'Remote' : null
+}
+
+function detailLocations(detail: WorkdayPostingDetail | null): string[] {
+  const info = detail?.jobPostingInfo
+  return [
+    info?.location,
+    ...(info?.additionalLocations ?? []),
+  ].map((location) => location?.trim()).filter((location): location is string => Boolean(location))
+}
+
+function shouldFetchDetail(posting: WorkdayPosting): boolean {
+  return !locationFromWorkday(posting.locationsText)
+}
+
+function startOfUtcDay(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()))
+}
+
+export function parseWorkdayPostedOn(value: string | undefined, referenceDate = new Date()): Date | null {
+  if (!value) {
+    return null
+  }
+  const normalized = value.trim().toLowerCase()
+  if (normalized === 'posted today') {
+    return startOfUtcDay(referenceDate)
+  }
+  if (normalized === 'posted yesterday') {
+    const date = startOfUtcDay(referenceDate)
+    date.setUTCDate(date.getUTCDate() - 1)
+    return date
+  }
+  const daysMatch = normalized.match(/^posted\s+(\d+)\s+days?\s+ago$/)
+  if (!daysMatch) {
+    return null
+  }
+  const daysAgo = Number(daysMatch[1])
+  if (!Number.isInteger(daysAgo)) {
+    return null
+  }
+  const date = startOfUtcDay(referenceDate)
+  date.setUTCDate(date.getUTCDate() - daysAgo)
+  return date
 }
 
 @Injectable()
@@ -118,6 +175,24 @@ export class WorkdayProvider implements AtsProvider {
     return response.json() as Promise<{ total?: number; jobPostings?: WorkdayPosting[] }>
   }
 
+  private async queryJobDetail(
+    parsed: WorkdayHandle,
+    externalPath: string,
+  ): Promise<WorkdayPostingDetail | null> {
+    try {
+      const response = await fetch(`https://${hostFor(parsed)}/wday/cxs/${parsed.tenant}/${parsed.site}${externalPath}`, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+      })
+      if (!response.ok) {
+        return null
+      }
+      return response.json() as Promise<WorkdayPostingDetail>
+    } catch {
+      return null
+    }
+  }
+
   async fetchListings(source: JobBoardSourceRef): Promise<NormalizedJob[]> {
     const parsed = parseHandle(source.externalId)
     if (!parsed) {
@@ -134,7 +209,10 @@ export class WorkdayProvider implements AtsProvider {
         total = payload.total
       }
       for (const posting of payload.jobPostings) {
-        const normalized = this.normalize(posting, source)
+        const detail = posting.externalPath && shouldFetchDetail(posting)
+          ? await this.queryJobDetail(parsed, posting.externalPath)
+          : null
+        const normalized = this.normalize(posting, source, detail)
         if (normalized) {
           jobs.push(normalized)
         }
@@ -146,22 +224,31 @@ export class WorkdayProvider implements AtsProvider {
     return jobs
   }
 
-  normalize(posting: WorkdayPosting, source: JobBoardSourceRef): NormalizedJob | null {
+  normalize(
+    posting: WorkdayPosting,
+    source: JobBoardSourceRef,
+    detail: WorkdayPostingDetail | null = null,
+  ): NormalizedJob | null {
     const parsed = parseHandle(source.externalId)
     if (!parsed || !posting.title || !posting.externalPath) {
       return null
     }
-    const location = locationFromWorkday(posting.locationsText)
+    const locations = detailLocations(detail)
+    const location = locations[0] ?? locationFromWorkday(posting.locationsText)
+    const descriptionText = detail?.jobPostingInfo?.jobDescription
+      ? textFromHtml(detail.jobPostingInfo.jobDescription)
+      : null
     return {
       provider: this.provider,
-      externalId: posting.bulletFields?.[0]?.trim() || posting.externalPath,
+      externalId: detail?.jobPostingInfo?.jobReqId?.trim() || posting.bulletFields?.[0]?.trim() || posting.externalPath,
       title: posting.title.trim(),
       companyName: source.companyName,
       location,
-      locations: location ? [location] : [],
-      workMode: workModeFromWorkday(location),
+      locations: locations.length ? locations : location ? [location] : [],
+      workMode: workModeFromWorkday(detail?.jobPostingInfo?.remoteType ?? location),
       url: `https://${hostFor(parsed)}/en-US/${parsed.site}${posting.externalPath}`,
-      postedAt: null,
+      postedAt: parseWorkdayPostedOn(detail?.jobPostingInfo?.postedOn ?? posting.postedOn),
+      descriptionText,
     }
   }
 }

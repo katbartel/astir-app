@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common'
-import { NormalizedJob, WorkMode, parseDate } from '../normalized-job'
+import { NormalizedJob, WorkMode, normalizeForIdentity, parseDate } from '../normalized-job'
 import {
   AtsProvider,
   JobBoardSourceRef,
@@ -42,14 +42,21 @@ type AshbyJob = {
   workplaceType?: string
   jobUrl?: string
   publishedAt?: string
+  descriptionPlain?: string
 }
 
 function locationsFromAshby(job: AshbyJob): string[] {
-  const locations = [
+  const explicitLocations = [
     job.location,
     ...(job.secondaryLocations ?? []).map((secondary) => secondary.location),
-    job.address?.postalAddress?.addressCountry,
   ]
+  const explicit = explicitLocations
+    .map((value) => value?.trim())
+    .filter((value): value is string => !!value)
+  const onlyPlainRemote =
+    explicit.length > 0 && explicit.every((location) => normalizeForIdentity(location) === 'remote')
+  const addressCountry = job.address?.postalAddress?.addressCountry?.trim()
+  const locations = [...explicit, ...(!onlyPlainRemote && addressCountry ? [addressCountry] : [])]
   return [...new Set(locations.map((value) => value?.trim()).filter((value): value is string => !!value))]
 }
 
@@ -193,6 +200,7 @@ export class AshbyProvider implements AtsProvider {
       workMode: workModeFromAshby(job),
       url: job.jobUrl,
       postedAt: parseDate(job.publishedAt),
+      descriptionText: job.descriptionPlain?.trim() || null,
     }
   }
 }

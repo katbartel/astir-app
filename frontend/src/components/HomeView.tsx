@@ -20,15 +20,17 @@ import {
   taskInviteCopy,
   taskTileIds,
 } from '@/lib/goals'
+import { noteHasContent } from '@/lib/noteMigration'
 import { Greeting } from './Greeting'
 import { HeardBackModal } from './applications/HeardBackModal'
 import { LogApplicationModal } from './applications/LogApplicationModal'
-import { NoteField } from './applications/NoteField'
+import { NoteEditor } from './applications/NoteEditor'
+import { NOTE_TOOLS_COMPACT } from './applications/NoteToolbar'
+import { useNoteAutosave } from './applications/useNoteAutosave'
 import { useApplications } from './applications/useApplications'
 import { GoalsSetupModal } from './home/GoalsSetupModal'
 import { useWeekGoals } from './home/useWeekGoals'
 import { CheckIcon, InfoIcon, MinusIcon, PencilIcon, PlusIcon } from './icons'
-import { PageSkeleton } from './PageSkeleton'
 
 type TaskOps = ReturnType<typeof useWeekGoals>['tasks']
 
@@ -156,14 +158,70 @@ function PlaceholderTile({
   )
 }
 
+// The goals card while this week's goals are still being read out of
+// localStorage. Reuses .goals-support, .goal-grid, .goal-tile, .goal-gauge and
+// .goal-title so the card is exactly the height and shape it will be a moment
+// later — including the same gauge arc, drawn in the placeholder grey. Without
+// this the card renders "Set up your goals for this week" first, which is a
+// lie to anyone who already has goals.
+function GoalsPlaceholder() {
+  return (
+    <>
+      <div className="goals-support sk-shimmer">
+        <span className="sk-bar" style={{ width: '24ch' }} />
+      </div>
+      <div className="goal-grid sk-shimmer" aria-hidden="true">
+        {activityOrder.map((id) => (
+          <article className="goal-tile" key={id}>
+            <svg className="goal-gauge sk-gauge" viewBox="0 0 96 56">
+              <path className="gauge-track" pathLength={126} d="M8 48a40 40 0 0 1 80 0" />
+            </svg>
+            <div className="goal-title-row">
+              <div className="goal-title">
+                <span className="sk-bar" style={{ width: '6ch' }} />
+              </div>
+            </div>
+          </article>
+        ))}
+      </div>
+    </>
+  )
+}
+
 function hasDetail(task: Task): boolean {
-  return task.steps.length > 0 || Boolean(task.note?.blocks?.length)
+  return task.steps.length > 0 || noteHasContent(task.note)
+}
+
+/**
+ * A task's note and its autosave.
+ *
+ * Mounted only while the task detail is open, so closing the detail, a week rollover,
+ * a route change, and the tab closing all flush the same way: they unmount this. The
+ * store is localStorage, so the write is synchronous and a flush cannot fail halfway.
+ *
+ * Same component and same schema as the pipeline field, with a reduced toolbar: a
+ * task note is a short scratchpad and the goals card has no room to render a section.
+ */
+function TaskNote({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
+  const autosave = useNoteAutosave({
+    // Scoped to this task by construction: setTaskNote takes the tile and the task id,
+    // so one task's note cannot reach another's.
+    save: (note) => ops.setNote(tile, task.id, note),
+  })
+  return (
+    <NoteEditor
+      note={task.note}
+      onChange={autosave.onChange}
+      tools={NOTE_TOOLS_COMPACT}
+      ariaLabel={`Note for ${task.text}`}
+    />
+  )
 }
 
 // The private detail of a task: a note (the same rich editor as the pipeline
 // card) and a flat step list. Neither ever touches the count — only the parent
 // checkbox does. Step-draft state is local so each open task keeps its own.
-function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
+export function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: TaskOps }) {
   const [stepDraft, setStepDraft] = useState('')
 
   const submitStep = () => {
@@ -174,7 +232,7 @@ function TaskDetail({ tile, task, ops }: { tile: TaskTileId; task: Task; ops: Ta
 
   return (
     <div className="goal-tdetail">
-      <NoteField note={task.note} onChange={(note) => ops.setNote(tile, task.id, note)} />
+      <TaskNote tile={tile} task={task} ops={ops} />
       {task.steps.length > 0 ? (
         <div className="goal-steps">
           {task.steps.map((step) => (
@@ -426,17 +484,13 @@ function GoalPanel({
 }
 
 export function HomeView() {
-  const { applications, failed, reload, changeStage, showSnack, overlay } = useApplications()
-  const { week, setGoals, stepRest, tasks } = useWeekGoals()
+  const { applications, reload, changeStage, showSnack, overlay } = useApplications()
+  const { week, ready: goalsReady, setGoals, stepRest, tasks } = useWeekGoals()
 
   const [logging, setLogging] = useState(false)
   const [heardOpen, setHeardOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [selected, setSelected] = useState<ActivityId | ''>('')
-
-  if (!failed && applications === null) {
-    return <PageSkeleton variant="home" />
-  }
 
   const apps = applications ?? []
   const hasApplications = apps.length > 0
@@ -503,7 +557,9 @@ export function HomeView() {
           </button>
         </div>
         <div>
-          {hasGoals ? (
+          {!goalsReady ? (
+            <GoalsPlaceholder />
+          ) : hasGoals ? (
             <>
               <div className="goals-support">{support}</div>
               <div className="goal-grid">

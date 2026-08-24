@@ -17,5 +17,9 @@
     "lint": "npm run lint --workspaces",
     "test": "npm run test --workspaces",
     "pr": "scripts/pr.sh"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "playwright-core": "^1.62.1"
   }
 }

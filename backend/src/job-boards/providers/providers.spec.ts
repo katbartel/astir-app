@@ -28,7 +28,7 @@ import { TeamtailorProvider } from './teamtailor.provider'
 import { TheMuseProvider } from './themuse.provider'
 import { TraffitProvider } from './traffit.provider'
 import { WorkableProvider } from './workable.provider'
-import { WorkdayProvider } from './workday.provider'
+import { WorkdayProvider, parseWorkdayPostedOn } from './workday.provider'
 import { ZohoRecruitProvider, zohoRecruitJobsFromHtml } from './zohorecruit.provider'
 
 const source = { externalId: 'acme', companyName: 'Acme' }
@@ -69,6 +69,76 @@ describe('GreenhouseProvider.normalize', () => {
     )
     expect(job?.companyName).toBe('Acme')
     expect(provider.normalize({ title: 'No id' }, source)).toBeNull()
+  })
+
+  it('keeps Greenhouse content as plain description text when available', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 7524547003,
+          title: 'Senior Product Manager, Data & Integrations',
+          absolute_url: 'https://www.fivetran.com/careers/job?gh_jid=7524547003',
+          company_name: 'Fivetran',
+          location: { name: 'Oakland, California, United States, AMER' },
+          content:
+            '<p>This is a full-time, <strong>hybrid</strong> position based out of our Oakland office.</p>',
+        },
+        source,
+      )?.descriptionText,
+    ).toBe('This is a full-time, hybrid position based out of our Oakland office.')
+  })
+
+  it('uses Remote.com opening URLs for Remote Greenhouse listings', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 7885095003,
+          title: 'Product Manager, Billing Platform',
+          absolute_url: 'https://job-boards.greenhouse.io/remotecom/jobs/7885095003',
+          location: { name: 'Remote-Germany' },
+        },
+        { externalId: 'remotecom', companyName: 'Remote' },
+      ),
+    ).toMatchObject({
+      externalId: '7885095003',
+      url: 'https://remote.com/openings/7885095003',
+    })
+  })
+
+  it('drops Greenhouse jobs whose public posting redirects to the board error page', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            {
+              id: 1,
+              title: 'Live Product Manager',
+              absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/1',
+              location: { name: 'Remote - Europe' },
+            },
+            {
+              id: 2,
+              title: 'Closed Product Manager',
+              absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/2',
+              location: { name: 'Remote - Europe' },
+            },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        headers: { get: () => null },
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        headers: { get: () => '/acme?error=true' },
+      } as unknown as Response)
+
+    await expect(provider.fetchListings(source)).resolves.toMatchObject([
+      { externalId: '1', title: 'Live Product Manager' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    fetchMock.mockRestore()
   })
 
   it('extracts EU Greenhouse handles and jobs from the rendered board payload', () => {
@@ -127,6 +197,29 @@ describe('AshbyProvider.normalize', () => {
       workMode: 'Remote',
       url: 'https://jobs.ashbyhq.com/linear/d3bc1ced',
       postedAt: new Date('2021-04-27T20:13:45.158+00:00'),
+      descriptionText: null,
+    })
+  })
+
+  it('does not treat Ashby address country as location for plain remote roles', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 'remote-1',
+          title: 'Product Manager',
+          location: 'Remote',
+          secondaryLocations: [],
+          address: { postalAddress: { addressCountry: 'Germany' } },
+          workplaceType: 'Remote',
+          jobUrl: 'https://jobs.ashbyhq.com/acme/remote-1',
+          descriptionPlain: 'Fully remote team, choose where you live.',
+        },
+        source,
+      ),
+    ).toMatchObject({
+      location: 'Remote',
+      locations: ['Remote'],
+      descriptionText: 'Fully remote team, choose where you live.',
     })
   })
 
@@ -215,6 +308,29 @@ describe('LeverProvider.normalize', () => {
   it('preserves dotted board handles from Lever URLs', () => {
     expect(provider.handleFromUrl('https://jobs.lever.co/Smile.io')).toBe('Smile.io')
     expect(provider.handleFromUrl('https://jobs.lever.co/ro/bde27362-0652')).toBe('ro')
+  })
+
+  it('tags EU-hosted boards so they are fetched from the EU instance', () => {
+    expect(provider.handleFromUrl('https://jobs.eu.lever.co/pnlfin')).toBe('eu:pnlfin')
+    expect(provider.handleFromUrl('https://jobs.eu.lever.co/pnlfin/abc-123')).toBe('eu:pnlfin')
+    // The US host must not pick up an EU handle, and vice versa.
+    expect(provider.handleFromUrl('https://jobs.lever.co/pnlfin')).toBe('pnlfin')
+  })
+
+  it('routes an eu: handle to the EU API host and a plain one to the US host', async () => {
+    const fetchMock = jest
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(new Response('[]')))
+    try {
+      await provider.fetchListings({ externalId: 'eu:pnlfin', companyName: 'Finom' })
+      await provider.fetchListings({ externalId: 'pnlfin', companyName: 'Finom' })
+      expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+        'https://api.eu.lever.co/v0/postings/pnlfin?mode=json',
+        'https://api.lever.co/v0/postings/pnlfin?mode=json',
+      ])
+    } finally {
+      fetchMock.mockRestore()
+    }
   })
 
   it('maps the postings payload into a normalized job', () => {
@@ -644,6 +760,7 @@ describe('WorkdayProvider.normalize', () => {
           title: 'Senior ASIC Timing Engineer',
           externalPath: '/job/US-MA-Westford/Senior-ASIC-Timing-Engineer_JR2011363-1',
           locationsText: 'US-MA-Westford',
+          postedOn: 'Posted 4 Days Ago',
           bulletFields: ['JR2011363'],
         },
         workday,
@@ -657,8 +774,21 @@ describe('WorkdayProvider.normalize', () => {
       locations: ['US-MA-Westford'],
       workMode: null,
       url: 'https://nvidia.wd5.myworkdayjobs.com/en-US/NVIDIAExternalCareerSite/job/US-MA-Westford/Senior-ASIC-Timing-Engineer_JR2011363-1',
-      postedAt: null,
+      postedAt: parseWorkdayPostedOn('Posted 4 Days Ago'),
+      descriptionText: null,
     })
+  })
+
+  it('parses exact Workday relative posting dates', () => {
+    const reference = new Date('2026-08-10T13:45:00Z')
+    expect(parseWorkdayPostedOn('Posted Today', reference)).toEqual(new Date('2026-08-10T00:00:00Z'))
+    expect(parseWorkdayPostedOn('Posted Yesterday', reference)).toEqual(
+      new Date('2026-08-09T00:00:00Z'),
+    )
+    expect(parseWorkdayPostedOn('Posted 4 Days Ago', reference)).toEqual(
+      new Date('2026-08-06T00:00:00Z'),
+    )
+    expect(parseWorkdayPostedOn('Posted 30+ Days Ago', reference)).toBeNull()
   })
 
   it('drops a location count, falls back to the external path for id, and drops incomplete postings', () => {
@@ -670,6 +800,42 @@ describe('WorkdayProvider.normalize', () => {
     expect(job?.locations).toEqual([])
     expect(job?.externalId).toBe('/job/remote/PM_JR1')
     expect(provider.normalize({ title: 'No path' }, workday)).toBeNull()
+  })
+
+  it('uses Workday detail locations and description when the list row only has a count', () => {
+    expect(
+      provider.normalize(
+        {
+          title: 'Staff Product Manager',
+          externalPath: '/job/Remote-USA/Staff-Product-Manager_001737',
+          locationsText: '2 Locations',
+          postedOn: 'Posted Today',
+          bulletFields: ['001737'],
+        },
+        { externalId: 'blackline:wd108:BlackLineCareers', companyName: 'BlackLine' },
+        {
+          jobPostingInfo: {
+            jobDescription: '<p>Make Your Mark</p><p>This is the full description.</p>',
+            location: 'Remote USA',
+            additionalLocations: ['Remote - Mexico'],
+            postedOn: 'Posted Today',
+            jobReqId: '001737',
+            remoteType: 'Remote',
+          },
+        },
+      ),
+    ).toEqual({
+      provider: 'workday',
+      externalId: '001737',
+      title: 'Staff Product Manager',
+      companyName: 'BlackLine',
+      location: 'Remote USA',
+      locations: ['Remote USA', 'Remote - Mexico'],
+      workMode: 'Remote',
+      url: 'https://blackline.wd108.myworkdayjobs.com/en-US/BlackLineCareers/job/Remote-USA/Staff-Product-Manager_001737',
+      postedAt: parseWorkdayPostedOn('Posted Today'),
+      descriptionText: 'Make Your Mark\nThis is the full description.',
+    })
   })
 
   it('keeps paginating when Workday only reports total on the first page', async () => {

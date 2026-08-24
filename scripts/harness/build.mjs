@@ -1,0 +1,56 @@
+// Bundles the real NoteEditor for the harness. See docs/notes-editor.md 14.
+import { build } from 'esbuild'
+import { copyFileSync, mkdirSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
+const repo = resolve(here, '../..')
+const out = resolve(repo, 'scripts/.harness')
+
+mkdirSync(out, { recursive: true })
+
+const processShim = 'globalThis.__harnessProcess = { env: {} };'
+
+await build({
+  entryPoints: [
+    resolve(here, 'mount.tsx'),
+    resolve(here, 'card.tsx'),
+    resolve(here, 'goal.tsx'),
+    resolve(here, 'store.tsx'),
+  ],
+  outdir: out,
+  bundle: true,
+  format: 'iife',
+  jsx: 'automatic',
+  target: 'es2022',
+  logLevel: 'warning',
+  define: {
+    'process.env.NODE_ENV': '"development"',
+    // The card pulls in server-side helpers that read process.env for the API target.
+    // They are never called here (the harness fakes the save), but the reference has
+    // to resolve or the bundle throws on load.
+    'process.env.API_TARGET': '"http://localhost:3000"',
+    // A whole-object literal is not a valid define value, so shim the global instead.
+    process: 'globalThis.__harnessProcess',
+  },
+  banner: { js: processShim },
+  alias: {
+    // Same alias Next resolves, so the component's own imports work unchanged.
+    '@': resolve(repo, 'frontend/src'),
+    // One React copy. Two is a hook-dispatcher error that reads as a Tiptap bug.
+    react: resolve(repo, 'node_modules/react'),
+    'react-dom': resolve(repo, 'node_modules/react-dom'),
+  },
+})
+
+// The real stylesheets, not a copy of the rules: a layout assertion against
+// hand-written CSS would prove nothing about the app.
+copyFileSync(resolve(repo, 'frontend/src/styles/tokens.css'), resolve(out, 'tokens.css'))
+copyFileSync(resolve(repo, 'frontend/src/styles/app.css'), resolve(out, 'app.css'))
+copyFileSync(resolve(here, 'harness.html'), resolve(out, 'harness.html'))
+copyFileSync(resolve(here, 'card.html'), resolve(out, 'card.html'))
+copyFileSync(resolve(here, 'goal.html'), resolve(out, 'goal.html'))
+copyFileSync(resolve(here, 'store.html'), resolve(out, 'store.html'))
+
+console.log('harness built: harness.html, card.html, goal.html, store.html')

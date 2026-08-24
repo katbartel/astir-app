@@ -1,0 +1,2012 @@
+# Notes editor
+
+Source of truth for the rich note field. There is exactly one notes editor in
+this repo and exactly one spec for it: this file.
+
+It is one component,
+[`frontend/src/components/applications/NoteField.tsx`](../frontend/src/components/applications/NoteField.tsx),
+built on Tiptap (ProseMirror). The component takes a value and an `onChange` and
+knows nothing about storage. Two callers supply two adapters:
+
+| Caller | Persists to |
+|---|---|
+| Pipeline card expansion ([`PipelineView.tsx`](../frontend/src/components/PipelineView.tsx)) | `applications.note`, Postgres `jsonb`, through `/api/applications` |
+| Home weekly-goals task detail ([`HomeView.tsx`](../frontend/src/components/HomeView.tsx)) | `localStorage`, key `astir.v1`, on the task record |
+
+This file absorbed `docs/astir-notes-block-model.md` (the block model rebuild
+brief, now deleted) and the session notes that used to live outside the repo.
+Everything below is load-bearing. Sections 11 and 13 are the acceptance
+criteria. Section 15 records which shipped bug each rule prevents. Read it
+before "simplifying" anything here.
+
+---
+
+## 1. Scope and history
+
+### 1.1 The six bugs that caused the rewrite
+
+The editor being replaced stored its data in the DOM of a single
+contenteditable. Structure (order, nesting, type, collapse) was read back out of
+HTML on every operation. That is the cause of every reported bug, not a
+coincidence between them:
+
+1. Empty lines vanish on collapse and reopen. An empty block node has no
+   identity and gets normalised away on any HTML round trip.
+2. Two checkboxes end up in one line. Nothing forbids it, because "line" is not
+   a thing that exists in the data.
+3. Enter inside a section inserts indentation instead of a new line. The
+   browser's default contenteditable behaviour is running.
+4. Applying a link only recolors the text. No `href` is stored anywhere.
+5. Converting a checkbox to a section creates a second, empty section.
+   Conversion is implemented as insertion because there is no block to convert.
+6. The note closes intermittently when a selection leaves the field. State lives
+   in event handlers rather than in a model.
+
+After this rewrite those are not fixed. They are unrepresentable. Section 15
+records which invariant makes each one impossible.
+
+### 1.2 What replaced what
+
+| Superseded | By |
+|---|---|
+| `NoteBlock[]` with line breaks as `"\n"` inside text blocks | A ProseMirror schema, section 3 |
+| A flat array with `parent` pointers and `runs` (the block model brief, sections 1 to 3) | The same semantics expressed as a schema. Structure is enforced, not conventional |
+| One contenteditable that React seeds once and never re-renders | One editable owned by ProseMirror, which owns its own rendering |
+| `execCommand` for every programmatic edit | ProseMirror transactions. `execCommand` is banned |
+| A hand-rolled `{ html, caret }` undo stack | Tiptap history, section 9 |
+| `blocksToLines` / `linesToBlocks` / `reseedListLines` / `serializeContainer` / `splitCaretLines` | Nothing. The line model existed to compensate for the DOM being the model |
+
+The block model brief proposed one contenteditable per line. That is superseded
+too: it fixed the structural problem but broke cross-line selection and left the
+field with no single element to carry a focus ring. One editable on a real schema
+gets the structural guarantee without either cost.
+
+---
+
+## 2. Architecture
+
+Tiptap 3.29.2 on ProseMirror. MIT. Peer range covers React 19.
+
+```
+@tiptap/core  @tiptap/pm  @tiptap/react  @tiptap/starter-kit
+@tiptap/extension-link
+```
+
+`extension-link` is a direct dependency rather than StarterKit's copy for one
+reason: the mark has to be trimmed to `href`, `target`, and `rel`, and only an
+extended extension can do that. See 3.2.
+
+That is the whole dependency list. **`@tiptap/extension-drag-handle` was
+evaluated and rejected**, so nobody adopts it later without rediscovering why: it
+declares hard peers on `@tiptap/extension-collaboration` and `@tiptap/y-tiptap`
+with no `peerDependenciesMeta` marking them optional, which drags yjs into the
+tree for a single-user field. The drag is our own code instead (section 8).
+
+Why, in the order the reasons matter:
+
+1. **The schema enforces structure instead of a convention list.** "One marker
+   per row" is not vigilance, it is the fact that `check` and `bullet` are
+   distinct node types and a node cannot be two types. "Sections do not nest" is
+   not a guard clause, it is the section node being absent from the content
+   expression of every node that a section can contain.
+2. **Undo, IME, selection, and paste are solved.** All four were hand-rolled and
+   all four broke, section 15.
+3. **One editable, one focus ring.** The field keeps the standard input recipe.
+4. **Positions, not DOM probes.** Every "where is the caret" question is
+   answered against the document, which is what invariant 5 asks for.
+
+Non-negotiable, both banned outright:
+
+- No `execCommand` anywhere in notes code.
+- No operation reads structure (order, type, nesting, checked, collapsed) or
+  inline content out of the DOM. The document is the only source of truth.
+
+And one that looks like a style preference and is not:
+
+- **The keys are a raw ProseMirror `keymap` plugin at priority 1000, not
+  `addKeyboardShortcuts`.** Do not "simplify" it back. These handlers are
+  ProseMirror commands that build and dispatch their own transaction. Tiptap's
+  command wrapper maintains a transaction of its own and dispatches that too, so
+  routing them through it turns one operation into two dispatches: two undo steps
+  where the spec promises one (invariant 11), and the second one silently empty.
+  The priority puts the plugin ahead of everything StarterKit brings, so these
+  handlers see each key first and no default ever gets to modify structure.
+
+The section node is written by hand (section 3.3). It is not a customised
+`details` extension.
+
+### 2.1 The app runs in Docker, and the host is not the app
+
+**`node_modules` on your machine is not the app's `node_modules`.** The frontend runs
+in a container, and `docker-compose.yml` mounts three things over it:
+
+```
+- .:/app                                        the repo, bind-mounted
+- root_node_modules:/app/node_modules           a NAMED VOLUME
+- frontend_node_modules:/app/frontend/node_modules
+```
+
+**A named volume is populated from the image only when it is first created.** After
+that it keeps what it has, for good. So `docker compose build` updates the image and
+changes nothing the running container reads. Adding a dependency on the host and
+running the suites proves nothing about whether the app can start.
+
+Adding or changing a dependency therefore needs one of these:
+
+```
+docker compose exec frontend npm install        # populate the mounted volume in place
+```
+
+or, to make the container match the image exactly:
+
+```
+docker compose stop frontend
+docker volume rm careerapp_july_root_node_modules
+docker compose up -d frontend
+```
+
+> **Never `docker compose down -v`.** It removes every volume in the project,
+> including `careerapp_july_astir_db`, which is where the notes live. If a
+> `node_modules` volume has to go, remove that volume **by name**. The database volume
+> is never part of a dependency fix.
+
+`@tiptap/*` is declared in `frontend/package.json` and npm workspace hoisting puts it
+at the repo root, so it lands in `/app/node_modules`: the `root_node_modules` volume,
+not the frontend one. `/app/frontend/node_modules` is empty in both the image and the
+container, which is why the frontend volume is not the one that goes stale.
+
+### 2.2 Which checks run where
+
+| Suite | Runs in | Proves |
+|---|---|---|
+| `container-smoke.test.mts` | **the container** | the app starts, the pages render, the editor mounts |
+| `note-persistence.test.mts` | **the container** + Chrome | a v2 note round-trips through the real API to Postgres, and through real `localStorage`, identical |
+| `migrate-notes.test.mts` | host | the mapping, as pure functions |
+| `note-schema.test.mts` | host | the schema, built without an editor |
+| `note-editing.test.mts` | host | section 6, against ProseMirror state with no DOM |
+| `note-regression.test.mts` | host | section 13, against an esbuild bundle in real Chrome |
+| `note-css-lint.test.mts` | host | the notes CSS scope: no raw hex, no rgba, no non-token px |
+
+`node scripts/notes-suite.mts` runs all seven, **smoke first** then persistence, and
+stops if the smoke check fails.
+
+**The persistence check exists because every other suite fakes the save.** The four
+editor suites bundle the component and hand it an `onChange` that writes to a variable
+(`window.SAVED`) or an in-memory object, never to Postgres or `localStorage`. That is
+correct for testing the editor, and it is exactly why a real note had never once made
+the trip through the adapter, the API, Prisma, the column, and back — the gap that let
+a v2 note be silently saved as `{ kind: 'blocks' }` for the length of the rebuild
+(section 15). This suite makes that trip, with no fakes, for both stores.
+
+**The four editor suites are host-only by nature, and that is a real limit.** They
+bundle the component with esbuild and drive it in Chrome on the host: they never touch
+the container, its `node_modules`, its Next build, or its module resolution. They are
+evidence about the editor's behaviour and **not** evidence that the app works. Only
+the smoke check is evidence of that. Do not read a green suite as a working app: that
+mistake has already been made once here, and it is recorded in the failure log.
+
+---
+
+## 3. Schema
+
+The schema lives in
+[`frontend/src/components/applications/noteSchema.ts`](../frontend/src/components/applications/noteSchema.ts)
+and is asserted against in [`scripts/note-schema.test.mts`](../scripts/note-schema.test.mts),
+which also parses every migrated row through it. That file is this section,
+executed.
+
+### 3.1 Nodes
+
+```
+doc         (block | section)+
+```
+
+| Node | Group | Content | Attrs |
+|---|---|---|---|
+| `paragraph` | `row`, `block` | `inline*` | none |
+| `check` | `row`, `block` | `inline*` | `checked: boolean` |
+| `bullet` | `row`, `block` | `inline*` | none |
+| `quote` | `block` | `row+` | none |
+| `section` | (none) | `sectionTitle sectionBody` | `collapsed: boolean` |
+| `sectionTitle` | (none) | `inline*` | none |
+| `sectionBody` | (none) | `block+` | none |
+| `text` | `inline` | n/a | n/a |
+| `hardBreak` | `inline` | n/a | n/a |
+
+Two groups do the structural work:
+
+- `row` is the set of nodes that hold inline content directly and render as one
+  row: `paragraph`, `check`, `bullet`. Exactly the nodes that can carry a marker.
+- `block` is `row` plus `quote`.
+
+`section` is in no group, and no content expression other than `doc` mentions it.
+That single fact is what makes sections unable to nest, unable to sit inside a
+quote, and unable to sit inside another section's body. It is a schema
+impossibility, not a rule anyone has to remember.
+
+`quote` takes `row+`, not `block+`, so quotes do not nest either.
+
+### 3.2 Marks
+
+`bold`, `italic`, `strike`, `link`.
+
+**`link` stores `href`, `target`, and `rel`, and nothing else.** Tiptap's default
+also stores `class` and `title`. Neither is ever set or read here (the class comes
+from the render options, nothing writes a title), so they would be stored surface,
+and every stored attribute is one more thing canonicalisation has to agree about for
+a note to round trip. That is why `extension-link` is a direct dependency: the mark
+is extended to trim it.
+
+**`underline` is cut.** One stored row used it, and that occurrence migrates to no
+mark (section 4.3). It went because an underline mark collides with the only
+sensible styling for a link, and a link is worth more than an underline. `strike`
+and `quote` both stay: they ship, they are in the toolbar, and they are in stored
+notes.
+
+Because nothing else underlines, links get the obvious treatment:
+
+> Links render `--gold-text` with a **solid 1px** underline at 40% opacity. Blue
+> is not in the palette and must not be introduced for links.
+
+### 3.3 The section node
+
+```
+section[collapsed]
+  sectionTitle   inline only, the header text
+  sectionBody    block+
+```
+
+- `collapsed` is a node attribute. Toggling it is a transaction, so it is
+  undoable and it never touches the body.
+- The body **stays in the document and in the DOM** when collapsed, hidden by
+  `[data-collapsed="true"]`. ProseMirror needs a `contentDOM` to keep the node
+  editable and to keep positions valid. What the invariant actually requires is
+  that toggling never serialises, parses, or regenerates the body, and a CSS
+  toggle satisfies that more strictly than not rendering would. Consequence to
+  know: browser find-in-page can still reach hidden text.
+- `sectionBody` is `block+`, so a section always has at least one row. A section
+  that loses its last child keeps an empty paragraph and stays on screen as a
+  header with one empty row under it. The alternative, `block*`, leaves the body
+  with no caret target. See section 12, decision 3.
+- Sections are not draggable and have no grip.
+
+### 3.4 What is deliberately not in the schema
+
+- **No block ids.** See section 12, decision 2.
+- **No list nodes.** `bullet` is a flat row type, not a `list_item` inside a
+  `bullet_list`. Notes have exactly one level of nesting (section membership) and
+  list nodes would import a second, plus lift and sink semantics nobody asked
+  for.
+- **No nested quotes, no nested sections, no section inside a quote.**
+- **No hard break outside inline content.** `hardBreak` is the Shift+Enter soft
+  break and nothing else.
+
+StarterKit ships several of those, so they are switched off by name in
+`noteExtensions`: `heading`, `blockquote` (replaced by `quote` with `row+`
+content), `bulletList`, `orderedList`, `listItem`, `listKeymap`, `code`,
+`codeBlock`, `horizontalRule`, `underline`, and `trailingNode`. `document` and
+`paragraph` are replaced rather than disabled, because sections and rows need
+different groups than the defaults give. What StarterKit is kept for: `text`,
+`hardBreak`, `bold`, `italic`, `strike`, `link`, dropcursor, gapcursor, and
+undo/redo.
+
+Switching an extension off matters as much as leaving a node out of the schema. An
+enabled extension brings its own input rules and shortcuts, so a live `heading`
+would let `## ` build a node the document cannot hold.
+
+`trailingNode` is off for a reason worth keeping: it appends an empty paragraph
+after a trailing block. An empty last row is real content when the user made one
+and must never be conjured, which is invariant 2 read from the other direction.
+
+---
+
+## 4. Storage and migration
+
+### 4.1 The envelope
+
+```ts
+type StoredNote = {
+  v: 2
+  kind: string          // kept from v1
+  text?: string         // kept from v1
+  doc: ProseMirrorJSON  // replaces blocks
+}
+```
+
+`kind` and `text` are carried forward unchanged. They are in the column and in
+every stored row; dropping them is a separate decision nobody has made.
+
+Rules:
+
+- The load path accepts `v: 2` and un-versioned v1. It migrates v1 in memory
+  (section 4.3) and never writes HTML in either direction.
+- The save path writes `v: 2` only.
+- Save and reload produce an identical `doc`. Invariant 12.
+- **Everything written to a store is canonical**, meaning the form the schema itself
+  produces. `canonicalDoc()` in `noteSchema.ts` is the single gate. The migration
+  mapping is dependency-free and so cannot know three things the schema does: a
+  mark's default attributes (Tiptap's link carries `target`, `rel`, `class`, and
+  `title` beyond the `href`), that two adjacent text runs with identical marks are
+  one text node, and that marked text serialises as `{type, marks, text}` in that
+  order. Its output is valid but not canonical, and storing it would make the first
+  save after opening any migrated note produce a diff for no reason. The editor
+  canonicalises on load for free; the migration runner does it explicitly, and
+  asserts that doing it twice changes nothing.
+- **A null note is an empty document.** A `note` column holding JSON `null`, or
+  missing entirely, loads as one empty paragraph with the placeholder showing. It
+  is not an error and it is not a migration case. **The save path never writes
+  `null` back**: once a note is touched it is a `v: 2` envelope with an empty
+  document. This is a rule about the shape of the store, not an accommodation for
+  the one row that happens to be null today.
+
+### 4.2 The v1 shape, exactly as it is on disk
+
+```ts
+type NoteBlock =
+  | { type: 'text';  text: string; bold?; italic?; underline?; strike?; href? }
+  | { type: 'check'; checked: boolean; text: string }
+  | { type: 'quote'; blocks: NoteBlock[] }
+  | { type: 'collapse'; summary: string; open: boolean; blocks: NoteBlock[] }
+```
+
+Four details the migration must get right, all verified against the real column:
+
+1. **Line breaks are `"\n"` inside `text` blocks**, so one `text` block can span
+   several lines and one line can span several `text` blocks.
+2. **A checkbox is two blocks**: `{ type: 'check', checked, text: '' }` followed
+   by `{ type: 'text', text: ' ' }`. The check block's own `text` is always
+   empty; the row's words live in the following text blocks, and the first of them
+   opens with one space that existed only to give the caret somewhere to land.
+   That space is marker syntax and is stripped.
+   **That space is `U+0020` in some rows and `U+00A0` in others**, 15 and 12
+   respectively in the real column, because contenteditable rewrote a trailing
+   space as a non-breaking one before the field was serialized. Stripping only
+   `U+0020` would leave a stray non-breaking space in front of nearly half the
+   checkbox rows. Anything beyond that one space is content and is preserved,
+   and the dry run counts the rows where it happens.
+3. **A bullet is a text block whose text starts with `U+2022 U+0020`** (`"• "`,
+   bullet glyph then a space). There is no bullet block type in v1. That prefix is
+   marker syntax and is stripped. **No row in the real column uses it**, so this
+   path is exercised against a fixture rather than live data, and the dry run says
+   so instead of quietly reporting zero.
+4. **The marker space belongs to the text after the box, and text can also sit
+   before it.** v1 stored a line as a sequence, so a stray text block could
+   precede the checkbox. Stripping the first text *on the line* rather than the
+   first text *after the box* takes a space from in front of the box and leaves the
+   real marker space in place. That reads as correct in a screenshot and is wrong
+   in the data. Whitespace before the box is dropped, because the box is the row's
+   left edge (section 5) and there is nowhere for it to go: unrepresentable by
+   design, like an indent tab in the text. One row in the real column has this.
+   **Real words before the box halt the run.** There is no defined conversion and
+   no row needs one.
+
+### 4.3 The mapping
+
+Group the flat list into lines first, the way `blocksToLines` did: split `text`
+on `"\n"`, and give every `quote` and `collapse` a line of its own. Then each
+line becomes one node.
+
+| v1 line | v2 node |
+|---|---|
+| Text blocks only | `paragraph` with the text as inline content |
+| Empty line | `paragraph` with no content. It is preserved, not merged away |
+| Line whose first block is `check` | `check` with `checked` carried over, the leading marker space stripped, the rest as inline content |
+| Text line starting `"• "` | `bullet`, prefix stripped, the rest as inline content |
+| `quote` | `quote`, its own blocks migrated by this same table |
+| `collapse` | `section` with `collapsed: !open`, `summary` as `sectionTitle` inline content, its blocks migrated into `sectionBody` |
+
+Marks: `bold`, `italic`, and `strike` become the same marks on the text that
+carried them. `href` becomes a `link` mark carrying that href. Per-block booleans
+become per-run marks, which is a widening, not a loss.
+
+**`underline` is dropped, deliberately.** The mark is gone from the schema (3.2),
+so text that carried `underline: true` migrates to text with no mark. Its
+characters are preserved; only the styling is lost. Exactly one stored row is
+affected, and the dry run counts it.
+
+Two cases the schema cannot represent, both defensive:
+
+- **A nested `collapse`.** Promoted to top level, inserted immediately after its
+  former parent section, keeping its title, body, and collapsed state. Zero rows
+  in the real column need this (checked).
+- **A `quote` or `collapse` inside a `quote`.** Same treatment: the inner
+  container is lifted out and placed after the quote. Zero rows need this.
+
+An empty `sectionBody` after migration gets one empty paragraph, per 3.3.
+
+#### Whitespace: dropped in one place, preserved in another
+
+These two look inconsistent and are not, so the distinction is written down rather
+than left to be rediscovered as an oversight.
+
+- **Whitespace in front of a checkbox is dropped.** The box is the row's left edge
+  (section 5), so there is nowhere for that space to live. It is unrepresentable
+  in the same way an indent tab in the text is not an indent.
+- **Whitespace at the start of a paragraph is preserved.** It is inside the text,
+  where the user can see it, put the caret after it, and delete it. Nothing about
+  the row's structure conflicts with it.
+
+The rule underneath both: whitespace that would have to live outside a row's
+inline content cannot survive, and whitespace inside it always does.
+
+#### Considered and rejected: normalising all-whitespace notes
+
+One stored note is three empty rows and nothing else. It migrates to three empty
+paragraphs, which is exactly what v1 rendered, and because its document is not a
+single empty paragraph it will not show the `Add a note` placeholder.
+
+**A migration-only rule collapsing an all-whitespace note into one paragraph was
+considered and rejected. Do not add it later as a tidy-up.** It would be the only
+place in the system where a blank row is discarded, and invariant 2 is worth more
+than a placeholder on one note. The rows in question get deleted by hand, in the
+editor, like any other content.
+
+### 4.4 How the migration runs
+
+It is two files. The mapping is
+[`frontend/src/lib/noteMigration.ts`](../frontend/src/lib/noteMigration.ts), pure
+and dependency-free, so the app's load path and the database script call the same
+code and cannot disagree about what a v1 note means. The runner is
+[`scripts/migrate-notes.mts`](../scripts/migrate-notes.mts).
+
+- One script, versioned, idempotent. Running it twice changes nothing, because
+  `v: 2` rows are skipped.
+- **Dry run by default.** Writing requires an explicit flag.
+- **v1 is never overwritten in place.** The table is snapshotted before any write.
+- **The write is the cutover, and it goes last.** The migration was finished before
+  the editor was, and it stayed parked: converting the column while the shipped
+  editor still spoke v1 would have made every note unreadable in the running app
+  until the new one landed. The column stays v1 until the new editor passes all
+  twelve steps of section 13, and `--write` runs in the same change as the switch.
+  Steps in between are built against fixtures and a restored copy of the dump, not
+  against the live column.
+- **The dry run reports counts per encoding**, not just a total: rows matching the
+  empty-check plus `U+0020` pattern, rows matching the `U+2022 U+0020` bullet
+  pattern, rows containing a collapse, a quote, an underline, a strike, an href,
+  and rows matching none of the known shapes.
+- **An unknown shape halts the run.** There is no fallback conversion path and
+  there must never be one. A row the script does not recognise is shown and looked
+  at by hand. Migrating all but one row and inspecting that one beats guessing at
+  it.
+- **Five samples get reviewed before anything is written**, chosen to cover the
+  encodings rather than the first five: one with a collapse, one with a quote, one
+  with the checkbox encoding, one with the bullet encoding, one plain. v1 and v2
+  side by side.
+- Reads are non-destructive and the v1 payload is logged before the write, so a
+  bad migration is recoverable from the log as well as from the snapshot.
+
+#### The snapshot, and proving it exists
+
+`--snapshot-only` takes the snapshot without converting anything, and `--write`
+runs the identical code path first. Before a single row is touched:
+
+1. Write the v1 dump to `scripts/.note-migration/note-v1-<stamp>.json`, and the
+   planned v2 alongside it as `note-v2-<stamp>.json`.
+2. Create the backup table `applications_note_v1_<stamp>`.
+3. **Verify, and halt on any failure:** the dump parses as an array, the dump holds
+   as many rows as the source table, the backup table holds as many rows as the
+   source table, and the row count read matches the row count counted.
+
+A snapshot nobody verified is not a safety net, it is a belief about one. If a
+check fails the run stops before writing and leaves the backup table in place to
+inspect.
+
+Rollback is one line, to paste as it stands with the stamp filled in:
+
+```sql
+update applications a set note = b.note from applications_note_v1_<stamp> b where a.id = b.id;
+```
+
+`scripts/.note-migration/` is gitignored: it holds real note content.
+
+#### The order the call sites move, and why
+
+Pipeline first, then Home, then the deletion of the old editor, as three revertible
+commits.
+
+**Not because Home is riskier.** That was the original reasoning and it is false:
+Home's notes were all empty at cutover (4.5), so there is nothing there to lose.
+Pipeline goes first because it is the surface in daily use and the one holding real
+content, so it is the surface that should be exercised first and longest. The old
+editor stays mounted on Home while pipeline is proven, and is deleted only once both
+call sites pass.
+
+#### Mixed versions are the expected state
+
+From the moment the new editor is mounted, a v1 note migrates on read and the next
+save writes v2, so the column converts **one note at a time, as the app is used**.
+That is deliberate and better than a big-bang conversion: it exercises the mapping on
+real data, one note at a time, with the person who owns the data watching, before any
+bulk write runs.
+
+Three consequences, all of them load-bearing:
+
+1. **The mapping is idempotent.** A v2 document passes through `readNote` unchanged,
+   for both stores. Asserted, not assumed.
+2. **The sweep reports v1 and v2 separately** and converts only what is still v1.
+   Unknown shapes still halt.
+3. **The sweep is not the cutover.** The cutover is the moment the new editor mounts.
+   The sweep is what picks up whatever was never opened.
+
+#### The sweep procedure, in this order
+
+By the time the sweep runs, most rows will already be v2 and the remainder will be
+rows nobody has opened in weeks. **Those are also the oldest notes, written by the
+oldest version of the editor.** Every row the mapping has already handled was handled
+because someone opened it recently; what is left is the least-tested content in the
+column, produced by code that no longer exists. That is why the halt is
+non-negotiable here specifically: a fallback conversion at the sweep would guess at
+exactly the shapes nobody has looked at in the longest time. The order is therefore
+not optional:
+
+1. Fresh snapshot and dump, from live data.
+2. Fresh dry run against live data, with v1 and v2 counted separately.
+3. Halt on any unknown shape. Look at it by hand. There is still no fallback.
+4. Re-run the schema validity check against the **fresh** dump, not an older one.
+5. `--write`, which touches only rows that are still v1.
+
+A snapshot is also taken immediately before the new editor is mounted, because that
+is the last moment the column is uniformly v1.
+
+**Earlier dumps are artifacts and the input to nothing.** The snapshot taken on
+3 August 2026 is kept as a recovery artifact from that date and must not be used as
+the source for a later verification: it was already four notes behind reality within
+a day.
+
+**The two stores are migrated two different ways, and only one of them by the
+script.** A script cannot read a browser's `localStorage`, so `astir.v1` task
+notes are not in its report and never will be. They migrate lazily on load,
+through `readNote()` in the same module, and are written back as `v: 2` on the
+next save of that task. The Postgres rows are migrated once, by the script, and
+the same lazy path protects them too if one is ever missed.
+
+### 4.4a Step 9: deleting the version union
+
+The `Note` type is `NoteV1 | StoredNote`, and compatibility code with no death date is
+how "temporary" becomes permanent. This one has a trigger.
+
+**Precondition:** the sweep has run, so nothing writes v1 and no unopened v1 row
+remains.
+
+**Then, as its own change:**
+
+1. Narrow `Note` to the v2 envelope.
+2. Delete the v1 branches in `noteText` and `noteHasContent`.
+3. Keep `noteMigration.ts` on the read path only, for a stored value that predates the
+   sweep: a browser profile restored from backup, or an `astir.v1` copied from another
+   machine. The mapping stays; the union does not.
+
+Scheduled, with a precondition, so it is a deletion waiting on an event rather than a
+wish.
+
+### 4.4c Known noise: the Agentation health poll
+
+`DevAgentation.tsx` line 28 polls `localhost:4747/health` and floods the console with
+connection errors whenever the Agentation tool is not running, which is most of the time.
+
+It is the only entry on the smoke check's allowlist, and every console error it emits has
+to be filtered by URL to keep that check honest. Logged as its own task, deliberately not
+fixed here: the fix belongs with that component, not with the notes editor.
+
+### 4.4b Known leak: the card reaches server-only modules
+
+`PipelineCard` transitively imports helpers that read `process.env.API_TARGET`
+(`lib/auth.ts`, `lib/server-api.ts`). They are never called on the client, so nothing
+is broken, but a client component reaching server-only modules is a real leak.
+
+It surfaced because the harness had to shim `process` to load the card at all. **That
+shim, `__harnessProcess` in `scripts/harness/build.mjs`, is the thing to delete when
+this is fixed**, and it is named here so the fix is recognisable as the trigger for
+removing it. Not urgent, not part of this rebuild, and not to be "tidied" by widening
+the shim.
+
+### 4.5 The localStorage notes
+
+Home's weekly-goals task notes are the same v1 `Note` shape, stored per task inside
+the `astir.v1` object. Nothing in the migration script or the cutover touches them,
+because no script can reach a browser's `localStorage`. This is specified here so
+step 6 implements it rather than inventing it.
+
+1. **Version gate on read.** A stored note that is not `v: 2` goes through the same
+   `noteMigration.ts` mapping, then `canonicalDoc`, and is written back as `v: 2` on
+   the next save of that task. One mapping, no second implementation. A `v: 2` note
+   is used as-is.
+2. **The halt rule must not stop the app.** The script halts because a person is
+   watching it. Home is not a script. An unrecognised shape:
+   - leaves the stored value **untouched**, byte for byte;
+   - renders that one note **read-only**, with a quiet line saying it could not be
+     opened;
+   - logs the reason and the task id;
+   - and does not affect any other task, the goals card, or the rest of Home.
+   It never discards the value, and it never throws where a render can see it.
+3. **One task's bad shape is one task's problem.** The gate runs per note, not per
+   week, so a single unreadable note cannot take the card down with it.
+
+Before any of that is written, the same encoding table the Postgres rows got is
+produced against the real `astir.v1` notes, counted rather than assumed. See
+[`scripts/count-astir-notes.mts`](../scripts/count-astir-notes.mts) for how to export
+and count them.
+
+> **The `astir.v1` population was empty at cutover.** Exported and counted on
+> 4 August 2026, immediately before the new editor was mounted: six task notes across
+> three weeks, three of them `null` and three of them `{kind:'blocks', blocks:[]}`.
+> Not one contained a checkbox, bullet, mark, section, or quote.
+>
+> This is written down because the next reader will otherwise assume the mapping was
+> proven against real Home data. **It was not.** Nothing on Home exercised the version
+> gate or the read-only fallback, so their synthetic tests are their only proof and
+> are load-bearing rather than a formality. Treat them that way.
+
+> **`astir.v1` has no snapshot and cannot be given one.** Postgres has a backup table
+> and a dump taken by a script; a browser's `localStorage` can only be exported by
+> the person sitting at the browser. An export of it is therefore Home's **only**
+> recovery artifact, and is kept alongside the Postgres dumps in the gitignored
+> `scripts/.note-migration/`, because it is real note content.
+
+4. **Idempotence, on the same terms as Postgres.** A `v: 2` task note is read and
+   returned unchanged. This is what makes the mixed-version period safe on Home too.
+
+---
+
+## 5. Rendering and layout
+
+One row per visible row node, in document order.
+
+```
+[grip] [marker] [inline content]
+```
+
+That is a schematic, not a layout instruction. The actual layout rule is
+stricter and it is load-bearing:
+
+1. **Inside any one container, a checkbox row and a plain paragraph share a left
+   edge, and the checkbox box defines it.** The grip is absolutely positioned in
+   the gutter to the left of the box, so its width can never shift the row. In
+   flow it pushed every box right by its own width.
+2. **The grip** fades in on row hover over 150ms. Section headers have none.
+3. **The marker** is the checkbox for `check`, the bullet for `bullet`, the
+   disclosure triangle for `section`. One per row, or none. Two is not
+   representable, because a node has one type.
+4. **Markers are real SVG.** No text glyphs. AGENTS.md 4.6 applies with no
+   exception, so the bullet and the disclosure triangle are icon components, not
+   `•` and `⌄` characters. (The `"• "` in v1 data was a text glyph. That is one
+   of the things being migrated away.)
+5. **Section body rows indent one step**, `var(--space-6)`, from the section
+   node. Never from a DOM nesting level, never from a tab character in the text.
+   A row rendering at an unexpected indent means it drifted out of the body in
+   the document, not a CSS bug.
+6. **An empty row is a full-height row.** Selectable, focusable, draggable like
+   any other.
+
+Field recipe, the standard input recipe from AGENTS.md: **`--paper` background**,
+`--line2` border, input radius, gold focus border with no glow.
+`white-space: pre-wrap`.
+
+**The field carries a native resize handle** (`resize: vertical` with `overflow: auto`
+on `.note-editor`), bottom-right. It is intentional and inherited: the shipped
+`.note-field` had it, and the rebuild kept it — a long note is easier to work in when
+the field can be made taller, and the handle sits in the opposite corner from the grip
+gutter, so the two never meet. It is the one field affordance not in the input recipe,
+recorded here so it reads as a decision rather than a stray declaration.
+
+**The placeholder shows on exactly one condition**: the document has one child, it
+is a `paragraph`, and its content is empty. Keyed on that, explicitly, and not on
+Tiptap's `isEmpty`. The two are not the same and the difference is a real note: a
+note of three empty rows is not empty, must keep its rows (invariant 2), and must
+not show `Add a note`. Both cases are asserted in the harness.
+
+The shipped `.note-field` used `--tile`. That was drift, not a decision: every
+other input surface in the app is `--paper` (the base `input, select` rule,
+`textarea`, `.tag-input`, `.select-trigger`, `.date-trigger`), and the single
+`--tile` trigger is the pipeline card's stage select, which is deliberately
+matching its card's hover background rather than following the input recipe. The
+field is paper. A component does not get to disagree with the token table.
+
+The toolbar surface uses the menu recipe: card surface, `--r-md`, menu shadow
+`0 6px 24px rgba(60,50,30,.12)`. The shipped toolbar uses
+`0 6px 20px rgba(0,0,0,.18)`, which is drift; the rebuild uses the token recipe.
+
+### 5.1 Component tokens
+
+Three values are the field's own geometry and nothing else uses them, so they are
+declared on `.note-editor-shell` rather than added to the global table:
+`--note-disclosure-icon`, `--note-quote-rule`, `--note-underline-offset`. Control
+radius is **not** among them: it uses `--r-sm`, because radius is a system scale
+and a one-off 6px beside an existing 8px is exactly the drift AGENTS.md 7.1 exists
+to prevent.
+
+> **The system has no icon size scale.** That is the only reason
+> `--note-disclosure-icon` needs to exist at all: there is no `--icon-md` to reach
+> for. Adding that scale is a foundations task and deliberately not part of this
+> rebuild. Do not fix it here; do not take this token as a licence to keep adding
+> per-component icon sizes either.
+
+Partial opacity comes from `color-mix` on the token, never a hardcoded `rgba` and
+never a new `--something-soft` token: the link underline is
+`color-mix(in srgb, var(--gold-text) 40%, transparent)`. See AGENTS.md.
+
+### 5.3 Recovered visual layer
+
+Commit `a885907` deleted the old editor and its 279 lines of `.note-*` CSS. The spec
+had captured the editor's **rules** and none of its **polish**, so the rebuild was
+made from rules alone and looked worse in ways no test could see. The polish is
+recovered here from `a885907^`, not re-derived, and written down so a future deletion
+cannot repeat the loss.
+
+**The five that were visibly worse, and what each was:**
+
+1. **The grip appeared on empty rows.** In the deleted editor the grip lived *inside*
+   the checkbox span, so `.note-check:hover .note-grip` could only ever mean a check
+   row. The rebuild placed one floating grip on whatever row the pointer was over,
+   keyed to the *field* being hovered, which put a grip beside every blank line the
+   pointer crossed. Recovered rule: **a grip belongs to a check row and to nothing
+   else, empty or not**, fading in over 120ms, `--placeholder` at rest and `--ink2` on
+   hover. "Not on empty rows" was the first reading of the symptom and it was wrong:
+   the rule is the marker, not the text. See section 8 for the consequence.
+2. **Tooltips were the browser's.** The deleted toolbar used the app's own tooltip
+   layer, `data-tooltip` with `data-tooltip-above`, and showed the shortcut beside the
+   name (`Bold  ⌘B`). The rebuild used native `title`, which is unstyled, slow, and
+   placed by the browser. Recovered, with one honesty constraint: **only shortcuts that
+   exist are advertised.** ⌘B, ⌘I and ⇧⌘S come from StarterKit and work. The deleted
+   editor declared ⌘K, ⇧⌘E and ⇧⌘O and they are now bound and working: ⇧⌘E and ⇧⌘O in
+   the keymap, ⌘K in the toolbar, because the field it opens is the toolbar's own state.
+   The checkbox and bullet name their text triggers (`[]` and `- `) instead of a
+   shortcut, as the deleted tooltips did. **Every shortcut named in a tooltip is pressed
+   in the harness**, because a tooltip claiming a shortcut that does nothing is worse
+   than no hint.
+3. **The disclosure arrow was the wrong glyph in the wrong resting state.** Recovered:
+   the old path, a small filled triangle pointing **down** at rest, rotated a quarter
+   turn anticlockwise when the section is closed, and **never rotated while open**. The
+   rebuild used a right-pointing triangle rotated +90° when open, so an open section's
+   arrow was a transform of a different mark. Sizes and states with it:
+   `--note-disclosure-icon`, a `--space-6` box the height of one line box,
+   `margin-left: calc(var(--space-1) * -1)`, `--placeholder` at rest, `--hover-soft`
+   and `--ink2` on hover, transitions on transform, background and colour at 120ms.
+4. **The toolbar jumped when a section collapsed.** The deleted editor set its position
+   when the selection changed and left it there. The rebuild recomputed on every
+   transaction, so anything that moved the rows moved the toolbar with them: its anchor
+   was the current layout rather than the selection that summoned it. Recovered: **the
+   position is recomputed on selection changes only.** Active marks still re-read on
+   every transaction, because reading them does not move anything.
+5. **Spacing and row height.** Recovered: a marker row stands `--watch-title-action-size`
+   tall rather than one line box, which is where the rows' air came from; the marker is
+   centred in that height rather than on the text's cap line; the gutter, marker and
+   text are separated by `--space-1`; the field's left padding carries the extra
+   `--note-grip-gap` so everything in it starts one gap further in and the grip keeps
+   its gutter.
+
+**One recovered detail worth naming on its own:** the field's focus border was
+`var(--st-dot, var(--gold))`, the card's own stage colour with gold as the fallback. An
+expanded stage-2 card got a stage-2 focus ring. That is why the field read as part of
+its card rather than as a generic input, and the rebuild had flattened it to gold.
+
+### 5.4 Visual rules, round 1
+
+From using the rebuilt editor. Each is a stated rule here because the reason these
+were lost is that they lived in CSS and nowhere else.
+
+1. **One shared left edge, and it is the checkbox's.** Every row's content starts at
+   the left edge of the checkbox: a plain paragraph's text, a bullet's glyph, a
+   checkbox's box, and the `Add a note` placeholder. **Nothing sits inboard of it.** A
+   paragraph therefore takes no indent at all.
+
+   This closes an ambiguity that was flagged and left open: rule 1 of section 5 could be
+   read as aligning a paragraph to a checkbox's *text* or to its *box*. It is the box.
+   The same edge applies inside a section body, one edge per body, indented as a whole
+   from the level above.
+
+   Asserted by measuring, at top level and inside a body: the box's left, the bullet's
+   left, the paragraph's **text** left via a Range rather than its element box, and the
+   placeholder's left, all identical.
+
+2. **The grip centres on the box, not on the line box or the row box.** Measured from
+   the row's own top edge, because the box is centred in the row's marker cell and that
+   cell starts at the row's top. Centring on the first text line instead leaves the grip
+   sitting low. Asserted on a single-line row and on a row that wraps to two lines,
+   where the marker and the grip both stay on the first line.
+
+3. **The disclosure arrow points down when open and right when closed.** Down is the
+   glyph's own orientation, `M8 9.5l4 5 4-5z`; closed rotates it a quarter turn
+   anticlockwise. The usual convention, no invention. Asserted in both states, on the
+   settled transform rather than mid-transition.
+
+4. **No chip behind the arrow, in any state including hover.** The arrow alone: only
+   its colour answers the pointer. Asserted open, closed, and hovered.
+
+### 5.5 Tooltip shortcuts
+
+A tooltip that names a shortcut has two parts, not one string. Jammed together the
+shortcut competes with the label instead of supporting it.
+
+- The label is the control's name alone, and it is the same string as the `aria-label`.
+- The shortcut is its own element, `--tooltip-key-gap` (14px) away.
+- The label reads at weight 500 in `--snack-text`; the shortcut is dimmer, from
+  `color-mix(in srgb, var(--snack-text) 58%, var(--snack-bg))`. Partial strength comes
+  from `color-mix` on the token, never a new token and never a hardcoded rgba.
+- Keyboard symbols are allowed here under AGENTS.md 4.6: `⌘`, `⇧` and the rest are the
+  content, not a drawing standing in for an icon.
+
+The shared tooltip layer gained an optional `data-tooltip-key`. Only callers that set it
+get a shortcut, so every other tooltip in the app is untouched.
+
+### 5.6 The link bar
+
+One surface, and **the surface is the field**. No input with its own border or background
+inside a bordered box: that reads as a box inside a box, which is what it replaced.
+
+- `--note-linkbar-height` (46px), radius `--r-lg`, `--space-4` of padding on the text
+  side and `--note-linkbar-pad-right` (6px) on the icon side, outlined in `--line2` with
+  the menu shadow.
+- One `--border-thin` divider between the URL and the icons, in the same tone as the
+  outline.
+- **Three states, one field.** Empty: the placeholder `Paste the link` and a tick on the
+  right. Typing: the URL as editable text, **the same tick in the same position**, so
+  nothing moves when typing starts. Saved: the URL as editable text, then open-in-new-tab
+  and remove, and no tick.
+- **Icons are outline only.** No gold fill, no solid button. Resting is the bare glyph;
+  hover adds the tinted square and the tooltip. The copy is exactly `Save`, `Open`,
+  `Delete`.
+- **A tooltip inside a floating surface measures against the surface, not the control.** A
+  tooltip anchored to a 22px icon inside a 46px bar lands on top of the bar. The bar
+  carries `data-tooltip-clear`, and the tooltip layer then takes its vertical anchor from
+  the bar's box and flips to the other side when there is no room. Asserted by checking
+  that the tooltip's box does not intersect the bar's, for all three icons.
+- **No pencil and no second field.** The URL is edited in place, because it is already a
+  field. There is no separate input for the link's display text: that text lives in the
+  note, where it can be seen in context.
+
+Two values are the bar's own geometry and are component tokens (5.1): 46 is the height
+that fits a control row and its padding without reading as an input, and 6 is the air the
+icons need against 16 on the text side.
+
+### 5.7 Toolbar chrome
+
+The container is the only outlined thing.
+
+- **Container**: card surface, radius `--r-lg`, menu shadow, and **exactly one**
+  `--border-thin` border in `--line2`, the same tone as the internal divider and the link
+  bar's outline.
+- **Buttons**: no border and no outline, in resting, hover or active state. Resting is the
+  bare glyph; hover is a soft tinted square. The one exception is `:focus-visible`, which
+  is not a resting state and is required: a control that cannot be seen when focused is
+  unusable from the keyboard.
+- **Active**: a `--gold-soft` square with a `--gold-text` glyph. That is the only gold in
+  the toolbar.
+- The divider stays between the link button and the checkbox button.
+
+This regressed because deleting the old popover rules by regex decapitated three shared
+rules, not one: the base button rule, its hover, and its focus ring all had
+`.note-popover-action` as a second selector, and removing that left `.note-toolbar button`
+dangling above the focus declarations. Every button then took the browser's default border
+and the gold outline in every state. **The CSS lint caught only the rule that happened to
+contain a px value**, which is worth knowing about the lint: it guards values, not
+structure.
+
+### 5.2 What is deliberately not asserted
+
+A sweep of sections 5, 7, and 10 for rules with no test behind them found fifteen.
+Six belong to the adapters and are covered in step 6. Five are behaviour and are
+asserted directly: the toolbar's flip and clamp, its exact contents and order, where
+the grip sits, that markers are SVG elements rather than text nodes, and that every
+toolbar button is keyboard reachable with an aria label matching its tooltip and focus
+returning to the selection on close. Two of those had shipped unimplemented and were
+caught by a click failing, which is not a test noticing.
+
+The grip rule is **three** assertions, not one. The original "its width never shifts a
+row" passed for the length of the rebuild while the grip sat over the box instead of
+beside it: a width check cannot see horizontal position. The three that replaced it pin
+the position the width check could not — the grip is in the gutter to the left of the
+box, it does not move when the row's marker changes (or has none), and it tracks the
+section indent — and each was written to fail against the shipped grip before the fix
+landed. The bug: the grip was placed from `coordsAtPos(row.pos + 1)`, the content edge
+*after* the marker, rather than `row.pos`, the row's own left edge. See section 8.
+
+**The remaining rules are deliberately not asserted, and this is the list**: the field
+recipe's colours, the toolbar surface recipe, the active-state colours, the
+`--space-6` indent step, `white-space: pre-wrap`, an empty row's full line height, the
+150ms grip fade, the letterforms' rendered format and size, the 5.1 component tokens,
+and the `color-mix` rule.
+
+The reason is that a test asserting a computed style equals its own custom property
+tests that the CSS says what the CSS says. It passes for the wrong reason, fails on
+every legitimate change, and teaches nobody anything.
+
+What those rules were actually protecting against is drift: a raw hex, an `rgba`, or a
+stray pixel value appearing in the notes CSS. That is caught at the moment someone
+writes it by **a lint rule over the notes editor's CSS scope, which fails on any raw
+hex, any `rgba`, and any `px` value that is not one of the named component tokens**.
+One guard instead of twelve cases, on the same principle as the undo loop in the
+harness: cover the class, not the instances.
+
+Anything genuinely visual that survives both mechanisms, meaning it is neither a
+behaviour nor a value, is a screenshot-diff task. **That is out of scope for this
+rebuild and is not covered by anything here.** Saying so is the point: an unasserted
+visual rule should read as a known gap, not as an oversight.
+
+---
+
+## 6. Semantics
+
+Every key below has an explicit handler and produces one undo step. The browser
+is never allowed to modify structure. Where a row says "same type", `check`
+always arrives unchecked.
+
+### 6.1 Enter
+
+| Caret | Result |
+|---|---|
+| Non-empty row, at the end | New row below, same type. Caret in it |
+| Non-empty row, at offset 0 | New **empty** row **above**, same type **and same `checked` state**. Caret stays on the new empty row. The original keeps its text and moves down |
+| Non-empty row, mid-text | Split. The text after the caret moves to a new row below, same type. Marks split with the text. Caret at the start of the new row |
+| Empty `check` or `bullet` | No new row. Convert to `paragraph`. Section membership and position unchanged. Caret stays |
+| Empty `paragraph` inside a `sectionBody` | No new row. Lift it out of the section and place it immediately after the section. Caret stays in it. This is how you leave a section |
+| Empty `paragraph` inside a `quote` | The same: lift it out and place it after the quote. This is how you leave a quote |
+| Empty `paragraph` at top level | New empty `paragraph` below. Caret in it |
+| `sectionTitle`, at offset 0, title non-empty | The whole section moves down and a plain paragraph opens above it. Caret on that paragraph |
+| `sectionTitle`, mid-text | The title keeps the text before the caret. The rest becomes the body's first row |
+| `sectionTitle`, at the end or title empty | If the body's first row is empty, the caret moves into it. Otherwise a fresh empty first row opens at the top of the body |
+
+The offset-0 case was agreed separately and is easy to lose: it produces a new
+empty row *above* with the same marker and the same checked state, so the new
+item can be typed immediately. It is decided from the document, never from a DOM
+probe, because a caret at a row start is an element offset, not a text-node
+offset. See section 15.
+
+The last row exists because Enter at the end of a title used to insert a fresh
+empty row above the body's content on every press, compounding blank lines.
+
+The ladder inside a section is therefore: Enter continues the list, Enter again
+drops the marker but stays inside, Enter again leaves the section. The empty row
+between the second and third press is a stable state and persists.
+
+**Enter never inserts whitespace, indentation, or a tab.**
+
+### 6.2 Shift+Enter
+
+Always a plain soft break, a `hardBreak` in the current row. It never continues a
+list, never converts a marker, never enters or leaves a section.
+
+### 6.3 Backspace at offset 0
+
+| Row | Result |
+|---|---|
+| Has a marker (`check` or `bullet`) | Convert to `paragraph`. Text and section membership kept. **Nothing is deleted, including on a non-empty row** |
+| `paragraph`, a previous row exists in the same container | Append this row's content to the previous row. Delete this row. Caret at the join point |
+| `paragraph`, first row of a `sectionBody` | Lift it out and place it immediately before the section. No merge |
+| `paragraph`, first row of a `quote` | The same: lift it out and place it before the quote |
+| `sectionTitle` | Dissolve the section: its body rows are lifted to where the section was, in order, and the title becomes a `paragraph` keeping its text. Content is never destroyed |
+| First row of the note | No-op |
+
+### 6.4 Delete at the end of a row
+
+**Delete is not the mirror of Backspace, and the asymmetry is deliberate. Do not
+"fix" it.** Backspace at the start of a section's first row ejects that row from
+the section (6.3). Delete at the end of a section's last row does nothing.
+Leaving a section is meant to be easy; being absorbed into one is not something a
+keystroke should do by accident.
+
+| Row | Result |
+|---|---|
+| A following row exists in the same container | Append that row's content to this one, delete it, caret stays |
+| Last row of a `sectionBody` | No-op. It never pulls the block after the section into the section |
+| A `sectionTitle` | No-op. It never merges a title with its body |
+| Last row of the note | No-op |
+
+### 6.4a Crossing a container boundary
+
+One principle governs both keys, and it is what the tables above are applying:
+
+> **Content never crosses a container boundary by keystroke. The caret always may.**
+
+Merging a row that holds text into a section or a quote would absorb that text into
+the container, which is what 6.4's asymmetry exists to prevent. An empty row holds
+nothing to absorb, so it is deleted and the caret travels. Without that second
+half, an empty row sitting next to a section is undeletable: there is no
+row-delete affordance to fall back on.
+
+| Situation | Result |
+|---|---|
+| Backspace at offset 0, row has text, previous sibling is a `section` or `quote` | No-op |
+| Backspace at offset 0, row is empty, previous sibling is a `section` or `quote` | Delete the row. Caret to the end of the last row inside that container |
+| Delete at the end, row has text, next sibling is a `section` or `quote` | No-op |
+| Delete at the end, row is empty, next sibling is a `section` or `quote` | Delete the row. Caret to the start of the first row inside that container |
+
+**Against a collapsed section the caret goes to its title instead.** It is never
+placed inside a hidden body, in either direction.
+
+### 6.5 Tab
+
+Tab and Shift+Tab move focus out of the field, forward and backward. They never
+insert whitespace and never change indent. Indent is section membership and
+nothing else sets it.
+
+**The field does not trap focus.** Tab must be able to leave the editor, in both
+directions, from any row, including from inside a section body and while the
+toolbar is showing. AGENTS.md requires full keyboard operation, and an editor you
+cannot Tab out of fails that on its own.
+
+### 6.6 Text triggers
+
+At the start of a row, and only there:
+
+- `[]` then space converts the row to `check`.
+- `- ` converts the row to `bullet`.
+
+These two are the only text triggers. **They overwrite each other**, because a
+row carries at most one marker: typing `- ` on a check row makes it a bullet,
+typing `[]` on a bullet row makes it a check. The toolbar's two buttons follow
+the same rule. This was agreed explicitly and it used to fail silently.
+
+### 6.7 Type conversion
+
+Conversion is a `replaceWith`, never an insertion. That distinction is the whole of
+the original bug: converting a checkbox used to *insert* a section, leaving the
+checkbox behind as a second, empty one.
+
+Conversion always changes the current row. It never inserts a new one.
+
+1. **To check**: type `check`, `checked: false`. Text kept.
+2. **To bullet**: type `bullet`. Text kept.
+3. **To paragraph**: type `paragraph`. Text kept.
+4. **To section**: the row becomes a `section` whose `sectionTitle` holds its
+   text, with `collapsed: false`. **It adopts the rows that follow it, up to the
+   next section or the end of the note, into its body.** That is what makes
+   converting a checkbox into a heading immediately useful. As a transaction this
+   is a wrap, so the adopted nodes are moved, never rebuilt.
+5. **Section to paragraph**: dissolves, as in 6.3.
+
+**The toolbar's type buttons change a row's type and never its `checked` state.** They
+toggle the type they name: pressing the checkbox button on a row that is already a
+checkbox **removes the marker**, it does not untick the box, and on a ticked row the
+`checked` value is discarded with the type. The full set:
+
+| Row | Button | Result |
+|---|---|---|
+| `check`, ticked | checkbox | `paragraph`, text kept, `checked` discarded |
+| `check`, unticked | checkbox | `paragraph`, text kept |
+| `paragraph` | checkbox | `check`, unticked, text kept |
+| `bullet` | bullet | `paragraph`, text kept |
+| `paragraph` | bullet | `bullet`, text kept |
+| section | section | dissolves, as in 6.3 |
+
+**The only thing that changes `checked` is the box in the row.** Nothing in the toolbar
+does. The dissolve is one implementation shared by Backspace at the start of a title and
+by the section button, so the two cannot drift apart.
+
+A conversion from a selection collapses the selection to its start first: the
+toolbar acts on a range, the row operations need a single position. Forgetting
+this used to make the toolbar buttons silent no-ops.
+
+### 6.8 Links
+
+1. A link is a mark on inline content within one row.
+2. Applying it stores `href` in the mark. It is not a style and not an
+   `execCommand` call.
+3. Styled per 3.2: `--gold-text`, solid 1px underline at 40% opacity.
+4. **Clicking a link in an editable field places the caret. That is correct
+   browser behaviour, not a bug.** To open it: cmd or ctrl click, or the popover.
+5. Popover: appears when the caret enters a link, anchored under it, card
+   surface, the URL truncated, two quiet actions, `Open` and `Remove`. Dismisses
+   when the caret leaves the link or on Escape.
+6. Deleting the marked text deletes the mark. In ProseMirror a mark cannot
+   outlive its text.
+7. **A link never spans a space.** Typing a space ends the link at the caret: the space
+   and everything after it inside the link come out plain. At the end of a link that
+   means typing leaves link mode; in the middle it truncates the link at the caret
+   rather than splitting it in two. A two-word link is therefore not possible, and
+   remove-then-reapply is the path to one.
+
+   The reason is not taste. **It makes a class of bug impossible: a link that can grow
+   across a space can swallow the rest of the line**, and then the whole row is one
+   anchor and nobody can see where the link ends. Editing the linked text itself is
+   unaffected, before, after, or in the middle, as long as no space is involved.
+
+### 6.9 Collapse
+
+1. `collapsed` is an attribute on the section node. Toggling it is a transaction
+   and is undoable.
+2. Toggling never touches the body's rows, their order, text, marks, or checked
+   state. Nothing is serialised, parsed, or regenerated.
+3. A section whose body holds one empty paragraph is valid and stays on screen.
+
+### 6.10 Checkbox toggle
+
+`checked` is an attribute, changed by a transaction, undoable. Clicking the box
+does not move the caret and does not toggle the card (section 10).
+
+### 6.11 Paste
+
+1. Plain text splits on newlines. Each line becomes one row, inserted after the
+   current row, in the same container.
+2. `- ` opens a `bullet`. `[] ` or `[ ] ` opens an unchecked `check`. `[x] `
+   opens a checked `check`. The marker text is stripped.
+3. Blank lines become empty paragraphs and are preserved.
+4. Pasted HTML is reduced to text plus the five marks in 3.2. Everything else is
+   discarded. No pasted node type can create a section or a quote.
+
+---
+
+## 7. Toolbar
+
+- **Visibility derives from a non-empty selection inside the editor, and persists
+  while focus is inside toolbar-owned UI**, including the URL field. **Never keyed on
+  editor focus alone.** Opening the URL field moves focus out of the editor by
+  definition, so a focus-only rule unmounts the field the moment it is clicked into,
+  and the Link button reads as a button that does nothing. It hides when the
+  selection collapses, on Escape, and when focus leaves both the editor and the
+  toolbar.
+- **Placement**: fixed, centred over the selection, offset above it, flipping below
+  when there is no room above. It never covers the row being edited. **The horizontal
+  position is measured and clamped to the screen**, not centred with a CSS
+  `translate(-50%)`: the toolbar is wider than a short selection, so centring alone
+  puts it past the left edge where it cannot be clicked. AGENTS.md 4 already says no
+  surface extends past a screen edge.
+- **Contents** are a prop, not a second component, with two sets:
+  - **full** (Pipeline), in order with a separator: bold, italic, strike, link,
+    separator, check, bullet, quote, section. Exactly those eight.
+  - **compact** (Home task notes): bold, italic, strike, link, check, bullet. No quote
+    and no section: a weekly-goal task note is a short scratchpad and the goals card
+    has no room to render a section's structure.
+
+  No underline (3.2), and nothing that is not in the schema, in either set.
+
+  **The schema is identical for both**, which is the point: a note stays portable
+  between the two surfaces and there is exactly one canonical form. The `[]` and `- `
+  triggers work in both, so the row types are reachable without the buttons, and paste
+  flattening (6.11) already means a section cannot arrive that way either.
+- **The three mark buttons are letterforms**, B, I, and S, not drawings of them.
+  AGENTS.md 4.6 bans punctuation standing in for icons; a letter naming its own
+  format is a label, and every editor uses these three. The five structural buttons
+  are real SVG.
+- **The section button is disabled inside a quote or a section body**, because a
+  section cannot exist there (3.1). The alternative would be to move the row out of
+  its container to make room, which is content moving on its own. Disabled and
+  visible beats silent and clever.
+- **Applying a link opens a URL field in the toolbar itself**, not a browser prompt.
+  While it is open the editor is deliberately not focused, so toolbar visibility
+  cannot be keyed on editor focus alone: doing that unmounts the field the moment it
+  is clicked into.
+- **Surface**: the menu recipe from section 5.
+- Buttons show active state for the marks under the caret using `--gold-soft`
+  background and `--gold-deep` text.
+- Every button is keyboard reachable, has an aria label matching its tooltip,
+  and returns focus to the selection on close.
+
+---
+
+## 8. Drag
+
+The drag is our own code, in
+[`noteDrag.ts`](../frontend/src/components/applications/noteDrag.ts).
+
+> **`sortable.ts` is not part of this.** It is a generic vertical-list reorder hook,
+> used by `ApplicationsView.tsx` and `StagesPreferences.tsx`. Nothing in this section
+> is licence to touch it: changing it changes two screens that have nothing to do
+> with notes. The note drag was written as its own file for exactly that reason.
+The Tiptap drag handle extension was rejected for its peer graph (section 2). A
+drop is one transaction, so it is one undo step. **It never moves DOM nodes and it
+never rebuilds the document from the DOM.**
+
+### 8.0 The lifted card carries its styling context
+
+**The rule: any element rendered outside `.note-editor` that reuses row markup must
+carry the row styling context with it.** In practice: it carries the `.note-surface`
+class, and every row rule and every `--note-*` component token is scoped to that class
+rather than to `.note-editor`.
+
+The card is `position: fixed` on the document body, so it has no editor ancestor. When
+the row rules were written as `.note-editor .note-row`, `.note-editor .note-box` and so
+on, the card matched **none** of them, and neither did the `--note-*` tokens, which were
+declared on `.note-editor-shell` and so did not inherit across the body either. The
+result was a card whose DOM was correct in every respect and which was unreadable on
+screen: the box collapsed to a 4px sliver against the row's 16px, the line wrapped onto
+its own row below it, and the grip clone lost its width and its glyph and rendered as a
+bare vertical mark. The stray marks reported at the card's left edge were that.
+
+**Why the class, and not rendering the card inside the editor.** Rendering it inside the
+editor would have inherited everything for free, and it was rejected for three reasons,
+the first decisive:
+
+1. `.note-editor` is `overflow: auto`. A card inside it is clipped at the editor's
+   bounds, exactly where a drag is heading when the edge auto-scroll matters most.
+2. The editor root is the `contenteditable`. Injecting a foreign child into ProseMirror's
+   own DOM invites it to be treated as content, and section 8's first condition is that
+   the drag never touches the document's DOM.
+3. `position: fixed` resolves against the nearest ancestor with a transform, and the
+   pipeline card that contains the editor has one. The card's coordinates would break
+   inside a `.pipeline-card` and work in the harness.
+
+**Enforced, not documented.** `note-css-lint.test.mts` fails on any rule scoped to
+`.note-editor` or `.note-editor-shell` whose selector names a row-internal class
+(`.note-row`, `.note-check-row`, `.note-bullet-row`, `.note-line`, `.note-box`,
+`.note-bullet`, `.note-para`, `.note-link`, `.note-grip`). One exception, stated at its
+own rule: `.note-editor .note-dragging`, which hides a row that is in the air. The card
+carries `.note-surface`, so scoping that one to the surface would hide the card itself.
+
+**Assert geometry, not containment.** A DOM-containment assertion cannot see a styling
+failure. `cardHasBox` and `cardText` both passed on the unreadable card, because they ask
+whether a node is present and never whether it renders. Section 13 step f11 therefore
+measures: the card's checkbox has a non-zero width equal to the source row's, the card's
+text shares a line with its checkbox rather than wrapping below it, and the row inside the
+card renders at the source row's height. The source row is measured **before** the press,
+because during the drag it is `display: none` and measures zero.
+
+Two conditions on keeping our own drag, both structural rather than cosmetic:
+
+1. **The drag code no longer mutates the DOM.** It resolves a target document
+   position and dispatches a transaction. ProseMirror re-renders. The old version
+   re-rendered the field into `div.note-drag-line` rows, set
+   `contenteditable=false` for the length of the drag, and ran on that rendering.
+   All of that goes.
+2. **The grip is positioned from ProseMirror coordinates**, via `coordsAtPos` and
+   the node's own position, never by DOM traversal. Likewise the slot thresholds
+   resolve to document positions, via `posAtCoords`, rather than to elements.
+
+The behaviour, carried forward in full:
+
+- **The unit is exactly one check row.** Never a group, never a section with its body.
+  A grip belongs to a `check` row and to nothing else: not a paragraph, not a bullet,
+  not a section header. An **empty** check row still has one, because the rule is the
+  marker and not the text.
+
+  This is recovered, not designed. In the editor this replaced, the grip lived inside
+  the checkbox's own span, so `.note-check:hover .note-grip` could only ever mean a
+  check row. An earlier draft of this section said "exactly one row" and every row was
+  given a grip, which put one beside every blank line the pointer crossed. The unit was
+  always the checkbox.
+
+  > **Consequence, and it is a real one: a paragraph or a bullet cannot be reordered by
+  > any means.** There is no keyboard alternative. Alt+Up and Alt+Down are **not**
+  > bound: nothing in the editor moves a row by keyboard, and nothing ever did. Making
+  > non-check rows movable again means either giving them a grip (which reintroduces the
+  > blank-line grip) or binding a keyboard move, which is behaviour and has not been
+  > decided. Recorded here so it reads as a known gap rather than an oversight.
+- **Vertical only.** Indent is never set by dragging sideways. A row inherits the
+  indent of the slot it lands in. The lifted card easing across to that indent
+  (`translate`, 150ms) is the only horizontal movement in the drag.
+- **A row's section is where it sits**, so the slot decides membership. Quote
+  bodies and section bodies are both containers with slots of their own.
+- Slots carry the pointer height that selects them, and those thresholds run down
+  the page in order: the last one the lifted row's centre has passed wins. A
+  section contributes three kinds of slot. Its header's midpoint puts the row
+  *inside*, each body row's midpoint moves it down *within*, and the section's
+  own bottom edge puts it *after*. That last pair is why an expanded section's
+  end and the position after the section are two slots at one gap, with two
+  indents.
+- **A collapsed section is one row with one midpoint.** No interior slots, no
+  auto-expand on hover. A row crossing it lands entirely above or below.
+- Thresholds are measured once, at lift, and never recomputed. The gap moving
+  around must not move the thing that decides where the gap goes.
+- Rows are played from their old positions to their new ones (FLIP, 180ms) rather
+  than being pushed by a hardcoded offset.
+- **A section that loses its last body row stays**, as a header with one empty
+  paragraph (3.3). Dragging the first or last row out of a section is the normal
+  way to change membership.
+- A cancelled drag dispatches nothing and records no history entry.
+- **The drop leaves the caret in the row that moved.** Invariant 7 applies to a drag
+  like anything else, and it is also what keeps undo reachable: undo is a keymap on
+  the editable, so a drag that never focused it would leave cmd Z doing nothing.
+- Lift state is plugin state with `addToHistory: false`, and the drop is one
+  transaction. Nothing about the appearance of a drag is in the document.
+
+**The lifted element is the whole row.** Grip, marker and text, as one card at the row's
+own width, cloned from the row's DOM before the lift is dispatched (after it, the row is
+out of flow and measures zero). Not a pill fitted to the text: a pill leaves the marker
+behind and reads as dragging a word rather than a line.
+
+**Nothing renders at the origin.** The row stays in the document and leaves the flow while
+it is in the air, and the gap holds the space at the target. A ghosted copy at the origin
+plus a gap at the target is two holes for one row. The row in the air also contributes no
+slot and is not measured for one.
+
+**The gap is empty space.** No fill, no grey bar, no dashed outline: the shape of the row
+that will land there and nothing else.
+
+All four of those were already stated here and none was asserted, which is why all four
+shipped wrong. They are asserted now: the card's own width equals the row's, the card
+contains the checkbox element, no element carrying the row's text renders at the origin
+during the drag, and the gap has no background and no border.
+
+Visual treatment: the lifted row is a card surface at `--r-md` with menu shadow
+`0 6px 24px rgba(60,50,30,.12)`. The gap is a plain space with no dashed outline, and
+it takes the indent of the target slot. Under `prefers-reduced-motion` the lift and
+the reorder still happen; only the durations go to zero.
+
+**Edge auto-scroll**, restored: while the pointer is within `EDGE_ZONE` (60px) of the
+viewport's top or bottom, the page scrolls at `EDGE_SPEED` (16) per tick. Both values are
+the deleted editor's; the port dropped them. Without a scroll, a target below the fold
+cannot be reached and the drag reads as doing nothing, because the place you are aiming
+at never arrives. The slot thresholds are re-measured as the page moves: "measured once
+at lift" is about the gap not moving what decides where the gap goes, and a scroll moves
+the rows themselves.
+
+**The grip's hit target is the whole gutter.** The dots are `--space-2` wide and stay
+where they are; the element that catches the press fills the field's left padding,
+`calc(var(--space-3) + var(--note-grip-gap))`, with the glyph pinned to its right-hand
+end and a `--note-grip-gap` of clearance. Its right edge stops at the row's own left
+edge, so it can never overlap the checkbox or shift the row (section 5, rule 1), and its
+height is the row's marker cell. An 8px-wide element is one column of pixels for a hand
+aiming at a 14px gutter, and every press that missed landed on the row behind it.
+
+**A painted grip is a pressable grip, and it lingers.** Two rules, and between them they
+are the fix for "the grip appears and dragging does nothing":
+
+1. **Visibility, never `pointer-events`, is what takes the grip out of the way.** A grip
+   fading out is still under the cursor. Switching `pointer-events` off mid-fade sends
+   the press to the row behind it, and the observed symptom is exactly that: the
+   pointerdown target was a paragraph, `mousedown` fired (proving the grip's handler never
+   ran), and no lift followed.
+2. **The grip lingers `GRIP_LINGER_MS` (260ms) after the pointer leaves its row**, and
+   keeps belonging to that row while it does. Reaching for an 8px target in the gutter
+   means crossing other rows on the way, and without the linger each of those took the
+   grip away between the eye seeing it and the finger pressing it. Pressing during the
+   linger drags the row the grip was offered for, never the row the pointer drifted onto.
+
+**The row is resolved at the moment of the press, never from a cached position.** A
+document position is valid for exactly one version of the document. The grip records one
+when it is placed and it lingers for 260ms, so any change in between (a keystroke, a
+checkbox toggle, an earlier drop) leaves that number pointing at a different row, or at an
+empty paragraph. Pressing it then drags **that**: a card cloned from an empty paragraph is
+a caret and nothing else, the decoration hides the wrong row so the real one stays behind
+at the origin, and the slots exclude a range nobody is dragging so no gap opens. One stale
+number produces every one of those symptoms at once, which is why they arrive together.
+
+The grip's `data-rowPos` is therefore a diagnostic, not a source of truth: pointerdown asks
+`posAtCoords` where the grip is, against the document as it is now. Two rules, both needed:
+
+1. **The row is resolved at the press**, from the grip's own geometry.
+2. **The grip is re-aimed whenever the document changes**, in the plugin's `update` hook,
+   from the last known pointer position.
+
+**Why a hand can only reach this through the keyboard.** Pressing the grip requires moving
+the pointer onto it, and every move re-resolves the row from the layout, so a cached
+position cannot go stale across a normal reach. The one gesture with no move in it is
+typing: the pointer stays wherever it was left. Rest it on a grip, add or remove a row by
+keyboard, and press without moving, and the cached number is a row behind. That is the
+gesture `f11c` performs, and the reason `f11b` — press again after a drop — proves nothing:
+it has to move onto the grip first, which refreshes the number it was meant to catch stale.
+
+**The press does not depend on hover bookkeeping.** The row being dragged is recorded on
+the grip element when it is placed, and read back at pointerdown, so an intervening
+mousemove cannot leave a visible grip that presses nothing. A visible grip is always
+pressable, the grip takes pointer capture for the gesture, and it carries
+`draggable="false"` so no native drag can start from it. A failure in the lift or the
+drop logs to the console instead of dying silently, because a drag that does nothing and
+says nothing cannot be reported.
+
+Two mistakes this cost, both worth keeping:
+
+1. **The host element is resolved on use, never captured.** React mounts the editor's
+   DOM into its final wrapper after the plugin's view is created, so a parent
+   captured at init is a detached node: listeners on it never fire and the grip never
+   appears.
+2. **Having passed threshold `i` selects slot `i`, not `i + 1`.** The off-by-one
+   lands the row one position below the gap that was shown, which nobody can see
+   until they read the document. There is also an explicit "above everything" slot,
+   because no row's midpoint can express it.
+
+---
+
+## 9. Undo and redo
+
+Tiptap history replaces the hand-rolled `{ html, caret }` stack outright. The old
+stack existed because structural edits rebuilt `innerHTML`, which the native
+stack does not record. Nothing rebuilds `innerHTML` now.
+
+Behaviour to configure and to test, carried forward:
+
+- ⌘Z, ⇧⌘Z, and ⌘Y are handled by the field.
+- Typing coalesces at roughly 700ms, breaking at spaces, so ⌘Z walks back by word
+  and not by character.
+- Every programmatic edit is one transaction and therefore one step. Invariant
+  11.
+- The seeded document is the first entry, so ⌘Z reaches how the note was opened
+  and no further.
+- Undo covers everything: typing, structural edits, checkbox toggles, collapse
+  toggles, drag reorders, formatting, paste.
+
+Testing rule, because this is where the old editor looked correct and was not:
+**press ⌘Z until the state stops changing** and assert it lands exactly on the
+pre-edit state, then redo the same number of steps. Asserting on a single ⌘Z is
+wrong; one user action was often several steps.
+
+---
+
+## 10. The container, the card, and saving
+
+1. **The expanded state of a notes area is toggled only by its disclosure
+   control.** Never on focus, blur, pointerleave, outside click, selection
+   change, or drag. This is what caused the intermittent closing. The rule
+   applies to any future disclosure component.
+2. **Clicking the note field never toggles the pipeline card.** The card toggles on
+   clicks outside the open-posting icon, the stage dropdown, and the note field.
+   **A gesture that begins in the note field never toggles it either**, which is a
+   separate rule and the one that matters: a text selection started in the note and
+   released outside it makes the browser report a click on the card. Toggling on that
+   is what closed the note "intermittently". It was not intermittent, it was every
+   selection drag that left the field. The card records, on pointerdown, whether the
+   gesture began inside the field, and ignores the click if it did.
+
+### 10.2 Gestures that begin in a nested region
+
+Generalised, because the note field is not the only case:
+
+> **A drag-capable region nested inside a clickable surface records, on pointerdown,
+> whether a gesture began inside it. The outer surface ignores the resulting click.**
+
+A click is the end of a gesture, not an event at a point. Any region where a drag is
+meaningful (a text selection, a slider, a reorder handle, a canvas) can have its
+pointerup land anywhere, and testing only the click's target attributes the gesture to
+wherever it happened to finish. Checking the target with `closest()` is not enough on
+its own: it is correct for a click that starts and ends inside the region, and wrong
+for every gesture that leaves it.
+
+This applies to any future card, row, or panel that both handles clicks and contains
+something draggable.
+3. **Notes autosave. There is no save button.** `onChange` fires with the v2
+   envelope; the adapter debounces and persists. The pipeline adapter updates
+   local state optimistically so re-opening a card shows the edit immediately.
+   Autosave fires on user edits only: invariant 17.
+
+### 10.1 Flushing a pending save
+
+The debounce is what makes a save cheap, and it is also what can lose the last
+thing typed. When a save is pending, it flushes on:
+
+- the notes container collapsing,
+- the card closing,
+- a route change,
+- the component unmounting,
+- and the tab closing or reloading.
+
+For the last one, `visibilitychange` to `hidden` is the reliable signal and
+`beforeunload` is the backstop; `beforeunload` alone is not dependable on mobile
+Safari, and neither fires reliably after a crash, which is why the flush is not the
+only protection.
+
+**The autosave lives with the field, not with the card.** On Pipeline it sits in a
+small `CardNote` component that mounts only while the card is expanded, so one
+mechanism covers all three of the container collapsing, the card closing, and a route
+change: each of them unmounts it. A hook placed on the card instead never sees the
+collapse, because collapsing removes the field and leaves the card mounted, and the
+pending edit then waits in memory for something else to flush it. That was written
+the wrong way round first and the harness caught it.
+
+Two rules about the flush itself:
+
+1. **It is synchronous where the platform allows it.** For `localStorage` it always
+   is. For the API it cannot be, so the pipeline adapter also writes through to its
+   optimistic local state before the request goes out.
+2. **A failed flush never discards the edit.** For Home the value stays in
+   `astir.v1`. For pipeline the pending document is kept in memory and retried, and
+   the editor is not reseeded from the server while a write is outstanding: doing so
+   is how a save failure becomes a visible data loss.
+
+Harness step: type into a note, immediately collapse the container, hard reload, the
+text is there.
+4. Neither adapter ever writes HTML, and neither reads structure back out of the
+   DOM to build what it saves.
+
+---
+
+## 11. Invariants
+
+These must hold after every operation. Re-check this whole list after any change
+to the notes editor, not just the one you were asked to make.
+
+1. Every row node keeps its identity from creation to deletion, and identity is
+   never regenerated during render. In ProseMirror that identity is structural:
+   documents are immutable values, an empty paragraph is a real node, and nothing
+   is normalised away. See section 12, decision 2.
+2. An empty row is a row. It survives collapse, reopen, reorder, drag, save, and
+   page reload.
+3. A row has at most one marker. Two checkboxes in one row is not representable.
+4. Collapsing and reopening a section yields the identical body rows, in the same
+   order, with the same text, marks, and checked state.
+5. No operation reads order, type, nesting, checked, or collapsed state out of
+   the DOM. **The document is the only source of truth**, for those five and for
+   inline content too.
+6. Reordering never changes any row's text, marks, type, or checked state.
+7. Every operation states where the caret goes, and the caret goes there. No
+   operation silently moves focus to another row.
+8. Enter, Shift+Enter, Backspace, Delete, Tab, and paste all have explicit
+   handlers. The browser is never allowed to modify structure.
+9. No `execCommand` call exists anywhere in the notes code.
+10. Sections never nest, and this is enforced by the schema rather than by a
+    guard clause.
+11. Every operation is a single undo step.
+12. Save and reload produce an identical document. **There is no HTML round trip
+    anywhere in the persistence path.**
+13. No operation destroys content silently. Dissolving a section lifts its body
+    rows; it never deletes them.
+14. A mark never outlives the text it was attached to.
+15. A notes container's expanded state changes only via its disclosure control.
+17. **Opening a note and not editing it writes nothing.** Autosave fires on user
+    edits only: never on load, never on focus or blur, and never because a
+    document was canonicalised on the way in. "My notes keep showing as edited"
+    has more than one possible cause, and this closes the ones that are not the
+    canonical-form gate in 4.1.
+18. **No keystroke puts the caret or new content inside a collapsed body without
+    expanding the section first**, in the same transaction. Enter at the end of a
+    collapsed section's title opens the section and adds one visible empty row as the
+    body's first row, with the caret on it. Two presses used to disappear into the hidden
+    body and the third to appear below the section.
+
+    This extends what was already true of Backspace and Delete, which place the caret on
+    a collapsed section's title and never inside it (6.4a).
+
+    **It does not contradict "a collapsed section is one opaque row" in section 8.** That
+    rule is about drag targets, where auto-expanding would reflow the list under a moving
+    pointer mid-gesture. A keystroke is an explicit act on a section the caret is already
+    in, and there is no gesture to disturb. Drag never opens a section; a keystroke that
+    would otherwise write somewhere invisible always does.
+16. **A NodeView holds no state.** It renders from the node's attributes and
+    dispatches transactions. No React state mirroring a checkbox, no collapsed
+    flag held beside the node, no DOM read to decide what to render. A NodeView
+    keeping its own copy of the document's state is the same failure this rewrite
+    exists to delete, wearing a React costume: two places to disagree, and the
+    view winning. Both the checkbox toggle and the collapse toggle are
+    transactions, which is also what makes them undoable (section 9).
+
+Only three of these were reworded from the block model brief, and only where they
+named the superseded implementation: 1 (ids to structural identity), 5 and 12
+(the array to the document). The obligations are unchanged. Invariants 16, 17 and 18
+were added during the rebuild.
+
+---
+
+## 12. Decisions on the record
+
+All settled. Kept here with the reasoning, because the reasoning is what tells a
+later reader whether a decision still applies.
+
+1. **The drag stays ours.** `@tiptap/extension-drag-handle` was rejected for its
+   peer graph: hard peers on `@tiptap/extension-collaboration` and
+   `@tiptap/y-tiptap`, no `peerDependenciesMeta`, so yjs enters the tree for a
+   single-user field. `noteLineDrag.ts` and `sortable.ts` are kept and rewired to
+   dispatch transactions, under the two conditions in section 8.
+2. **No row ids.** Structural identity satisfies what invariant 1 protects
+   against. No unique-id extension, no ids in stored JSON, nothing extra in
+   history entries.
+   **This decision is reversible, and it reverses the day we want per-block
+   anchors, comments, or block-level permalinks.** Any of those needs a name for
+   a block that survives an edit above it, and a document position is not one.
+   Reopening it means adding a unique-id extension and a `v: 3` envelope, not
+   redesigning the schema.
+3. **`sectionBody` is `block+`.** A caret target beats literal compliance with
+   the wording of the original brief. Consistent with an empty section header
+   surviving the loss of its last child: the header stays, and the body holds one
+   empty paragraph.
+4. **The field background is `--paper`**, per the input recipe. The shipped
+   `--tile` was drift, evidence in section 5. A component may not disagree with
+   the token table.
+5. **`underline` is cut** (3.2), and the one row using it migrates to no mark
+   (4.3). Links take the solid underline.
+6. **Converting a row to a section adopts the rows that follow it**, up to the
+   next section or the end of the note (6.7).
+7. **Delete is deliberately not the mirror of Backspace** (6.4). The asymmetry is
+   the point, not an oversight.
+
+---
+
+## 13. Regression script
+
+Twelve steps. They cover every bug reported so far. **They are automated against
+the harness in section 14 and run on every change to the notes editor.** A script
+someone has to remember to run by hand is how this list got long.
+
+1. Type three lines of text. Press Enter twice to leave two blank lines. Type a
+   fourth line. Reload. All four lines and both blanks are there.
+2. Create a section with three checkboxes inside. Collapse it. Reopen it. All
+   three are there, in order, with their checked states.
+3. Put a blank line above a collapsed section. Drag a checkbox out of another
+   section to a position above it. The blank line is still there.
+4. Inside a section, on a checkbox with text, press Enter. New checkbox, still
+   inside. Press Enter on the empty checkbox. The marker goes, still inside.
+   Press Enter again. You are out of the section.
+5. Try to put two checkboxes on one line by any means, including drag. You
+   cannot.
+6. Select text in a checkbox and apply a link. Cmd click it. It opens. Caret into
+   it. The popover shows the URL.
+7. Select text in a checkbox and convert it to a section. That checkbox becomes
+   the section header with its text as the title. No second section appears.
+8. Inside a freshly converted section, press Enter. A new line appears. No tab,
+   no indentation jump.
+9. Select text in the notes field and drag the pointer outside the field. The
+   note stays open.
+10. Backspace at the start of a section's first child. On a marker row the first
+    press drops the marker and the second leaves the section; on a plain row it
+    leaves in one press. Nothing is deleted in any case.
+11. Backspace on a section header. The section dissolves. All children are still
+    on screen.
+12. Do any of the above, then press cmd Z once. One step is undone, not seven.
+
+Four additions, because the twelve do not cover them and each one is a rule the
+rebuild introduced:
+
+- **a. The placeholder, both directions.** One empty paragraph shows `Add a note`.
+  Three empty paragraphs do not, and keep all three rows.
+- **b. Round trip.** Every migrated document from the snapshot loads into the editor
+  and reads back identical. This is invariant 12, and it catches any asymmetry
+  between the NodeViews and the parser.
+- **c. Each toggle is one undo step.** Check a checkbox, cmd Z, unchecked. Collapse
+  a section, cmd Z, open. One step, not zero and not two.
+- **d. A collapsed body survives.** Collapse, reload, reopen: the same rows in the
+  same order with the same checked states.
+
+### 13.1 Why step 10 has two presses
+
+6.3 orders its cases with "has a marker" above "first row of a section body", so a
+marker row drops its marker before it can leave. Step 10 is worded to match that
+order rather than against it, and the automated step checks all three outcomes.
+Both readings look reasonable from the wording alone, which is why this is written
+down: do not "fix" 6.3's order to make step 10 shorter.
+
+---
+
+## 14. Verification harness
+
+**jsdom is not enough.** It has no `execCommand` and no `Selection.modify`, and it
+diverges on caret behaviour. Notes changes are verified in **real Chrome via
+playwright-core** (`channel: 'chrome'`).
+
+```
+node scripts/harness/build.mjs && node scripts/note-regression.test.mts
+HEADED=1 node scripts/note-regression.test.mts     # watch it run
+```
+
+| File | What it is |
+|---|---|
+| [`scripts/harness/build.mjs`](../scripts/harness/build.mjs) | esbuild bundle, `@` aliased to `frontend/src`, one React copy |
+| [`scripts/harness/mount.tsx`](../scripts/harness/mount.tsx) | mounts the real component, exposes `ROWS()`, `PLACEHOLDER()`, `REMOUNT()`, `EDITOR` |
+| [`scripts/harness/harness.html`](../scripts/harness/harness.html) | the page, linking the real `tokens.css` and `app.css` |
+| [`scripts/note-regression.test.mts`](../scripts/note-regression.test.mts) | section 13, automated, one reported line per step |
+
+**Headless is the default now, and headed agrees with it.** The old preference for
+headed existed because `execCommand('insertHTML')` placed the caret differently
+without a window. `execCommand` is gone, so that divergence is gone with it. Both
+modes are run before a change lands; if they ever disagree again, that is a finding
+and not a reason to pick one.
+
+Three rules for the harness, each learned the hard way:
+
+- **It bundles the real component.** A workaround inside the harness is a lie about
+  the app.
+- **Caret placement waits for focus.** `chain().focus()` does not land
+  synchronously, so a keystroke sent immediately after it goes nowhere and the
+  failure reads as "the command did nothing".
+- **A step asserts the document state it is about, never a keystroke count.** Step 1
+  is the example: "press Enter twice to leave two blank lines" actually needs three
+  presses, because the second leaves the caret on the second new row and typing
+  there consumes it. The step asserts six rows with both blanks surviving a reload,
+  which is what it is about. A test that counts keystrokes passes when the editor is
+  wrong in the same way the test is.
+- **The browser cache is a verification surface, and it is not one of ours.** A tab
+  that has been open across a change can serve a page, a module, or an already-mounted
+  NodeView's DOM from before it. Every check can be correct and the person looking at
+  the app can be looking at older code. When a fix "did not land", the first question is
+  which artifact the browser fetched, and the check that answers it is reading the
+  served chunk and grepping it for the change: that is evidence, where a reload is a
+  hope. Incognito, or a hard reload, is the confirmation step before any code is
+  suspected.
+- **A hit target is asserted at its edges, never only at its centre.** A centre-only
+  assertion cannot see an undersized target: it presses the one path that works. The
+  grip's dots are 8px and its intended target is the whole 14px gutter by the height of
+  the row, and for a long time the element was 8px wide, so a hand aiming at the gutter
+  missed it and the press landed on the row behind. The assertion presses left edge + 2,
+  right edge - 2, top + 2 and bottom - 2, and all four must work. The intended target is
+  computed from the layout, never from the control's own box, because measuring the
+  element only confirms whatever size it happens to be.
+
+  The drag helper presses near a corner rather than the middle for the same reason, so
+  every drag assertion inherits the check.
+
+- **A synthetic pointer is not a pointer.** Playwright never starts a native HTML5 drag,
+  and it can teleport onto a control without crossing the boundary that decides whether
+  the control is still live. A drag helper therefore approaches a control the way a
+  pointer does, and asserts that the element under the pointer IS the control before
+  pressing, and that the lift happened before travelling.
+
+  **That was not enough, and the way it was not enough is the lesson.** Those assertions
+  passed while a real press failed, because they moved along one row and pressed while
+  the grip was settled. A real hand reaching for an 8px target drifts across other rows,
+  and the failure lived in that drift. An assertion about a control must therefore
+  reproduce the **approach**, not just the destination: hover the row, drift onto a
+  different one, and press at the grip's painted centre. Measuring coalescing was a red
+  herring: the real trace had 236 pointermoves.
+- **A step that cannot be reached yet is reported as DEFERRED with its reason**, and
+  the list is carried forward. It is never skipped quietly, because a silent skip
+  reads as a pass.
+
+The harness:
+
+- Bundles the real component with esbuild. The build aliases `@/` to
+  `frontend/src` and forces a single React copy, and the harness page links the
+  real `app.css` so layout assertions mean something.
+- Seeds through `window.SEED_NOTE`.
+- Places the caret by document position, not by clicking coordinates.
+- Reads back three things, because bugs hid in the gaps between them:
+  1. **visual rows**, by grouping row rects on their `top` offset, which is how
+     phantom blank lines and misalignment show up;
+  2. **the saved envelope**, which is what actually persists;
+  3. **a reload**, re-mounting from the saved envelope, because plenty of bugs
+     appeared only after a round trip.
+
+Habits that repeatedly paid off:
+
+- **Read the real note out of the database** instead of guessing from a
+  screenshot:
+  `docker exec careerapp_july-db-1 psql -U astir -d astir -A -t -c "select jsonb_pretty(note::jsonb) from applications where company='…'"`.
+- **For undo, press ⌘Z until the state stops changing**, per section 9.
+- **Hard-reload before testing editor changes.** React Fast Refresh preserves
+  `useRef`, so a seed guard keeps the old DOM after a hot reload.
+
+---
+
+## 15. Failure log
+
+Every entry below is a bug that shipped and damaged stored notes, or a trap that
+cost real time. Nothing is deleted from this log. Entries move from active to
+resolved when the mechanism that allowed them is gone.
+
+While the rewrite is in progress the superseded editor is still what runs, so the
+resolved entries describe the code being deleted, not code that is already gone.
+
+### 15.1 Active: still true of the current design
+
+- **A DOM-containment assertion cannot see a styling failure.** The lifted drag card
+  rendered as a near-invisible sliver, a wrapped line and two stray vertical marks, while
+  the card's DOM was byte-for-byte correct and six assertions on it passed. The cause was
+  scope: row rules written as `.note-editor` descendants, and a card that is
+  `position: fixed` on the body with no editor ancestor. Section 8.0 has the fix and the
+  rule.
+
+  The assertions are the entry. `cardHasBox` and `cardText` ask whether nodes are
+  **present**. Nothing above them asked whether anything **renders**, so the suite was
+  testing the DOM adjacent to the bug while a person looked straight at it.
+
+  Ninth instance, and the shape is the same every time: **the check tested something
+  adjacent to what a person sees.** Containment instead of geometry, here. The host
+  instead of the container. A faked save instead of the API. A stale bundle instead of the
+  served one. The centre of a hit target instead of its edges. The remedy is the same in
+  each: assert the thing itself, in the place it runs, and bisect it against the unfixed
+  code so the failure has been seen.
+
+  A related weakness fixed at the same time: `check` throws, so a step reported only its
+  first failure and each fix looked complete until the next run. Independent measurements
+  of one captured state now use `checkSoft`, which records all of them and fails the step
+  at the end.
+
+- **A regression step that cannot fail is worse than no step.** `f11b` was written to catch
+  a stale document position on the grip: drag a row, then press the grip again. It passed.
+  It also passed with the fix reverted, and with **both** halves of the fix reverted —
+  because pressing a grip requires moving the pointer onto it, and that move re-resolves
+  the row, refreshing exactly the value the step existed to catch stale. The step was
+  green, plausible, and inert.
+
+  It was found by bisecting: revert the fix, run the step, and require it to fail. That is
+  the only thing that distinguishes an assertion from a wish, and it is cheap — one run.
+  `f11c` came out of asking what gesture the code path actually needs (a document change
+  with no pointer movement, i.e. the keyboard) rather than what gesture sounded like the
+  report. It fails without the fix, with `NO CARD`.
+
+  The general rule, and the eighth instance of a green check covering something broken:
+  **a new assertion is not finished when it passes. It is finished when it has been seen to
+  fail for the stated reason.**
+
+- **A v2 note was silently saved as `{ kind: 'blocks' }`, losing every edit on
+  reload.** The rebuilt editor emits a v2 envelope `{ v, kind, doc }`, but the
+  application update DTO still modelled only the v1 note (`kind`, `text`, `blocks`).
+  `ValidationPipe({ whitelist: true })` strips any property not on the DTO, so `v` and
+  `doc` were dropped before Prisma ever saw them: the write returned 200, the column
+  held `{ kind: 'blocks' }`, and the load path migrated that to one empty paragraph.
+  Type a word, reload, gone — deterministically, on every save.
+
+  It survived the whole rebuild because **every editor suite fakes the save** (2.2). The
+  harness hands the component an `onChange` that writes to a variable, so the
+  adapter → API → Prisma → column → read path had never run once, on either store. A
+  green editor suite is evidence about the editor, not about persistence — the same
+  shape of mistake as the stale-volume entry below: everything verified somewhere other
+  than where it runs.
+
+  Resolved by storing the note **opaquely** (the DTO takes the JSON verbatim; the
+  document is the source of truth and `readNote` validates and migrates on the way in),
+  and by `note-persistence.test.mts`, which round-trips a real v2 note through the real
+  API to Postgres and through real `localStorage`. The active lesson that stays: the
+  four editor suites still fake the save, by design, so persistence is only ever proven
+  by the one suite that does not.
+
+- **Every suite passed, `next build` passed, and the app did not start.** Tiptap was
+  installed on the host, four suites and a production build were green, and the
+  container threw `Module not found: Can't resolve '@tiptap/core'` on every route. The
+  package was in the image. It was not in the running container, because a named volume
+  over `/app/node_modules`, created weeks earlier, is populated from the image only
+  once and never refreshed by a rebuild.
+
+  The bug was one stale volume. **The failure was verifying everything in a different
+  environment from the one that runs the app**, for the length of an entire rebuild,
+  while reporting each step as working. Every claim was true of the host and none of
+  them was a claim about the app.
+
+  Two things prevent the repeat, and neither is "remember to rebuild": the smoke check
+  runs in the container and runs first (2.2), and it asserts `@tiptap` resolves
+  *inside* the container specifically, which is the exact shape of this failure rather
+  than a general health check. What it cannot cover is the four editor suites, which
+  are host-only by nature: 2.2 says so in the doc rather than leaving a green suite to
+  be misread.
+
+- **The check ran against something other than what shipped.** Six times, in one
+  rebuild, and the last three were caught by the person using the app rather than by any
+  test. The pattern does not vary: **the check exercises the one path that works.**
+
+  1. **The host is not the container.** Tiptap was installed on the host; four suites
+     and a production build were green; the container could not resolve `@tiptap/core`
+     on any route. A named volume over `/app/node_modules` is populated from the image
+     once and never again. Fixed by the smoke check, which runs in the container, runs
+     first, and asserts that package resolves *there* (2.1, 2.2).
+  2. **The bundle is not the source.** The recovered visual layer passed the regression
+     suite twice against an esbuild bundle built before the port existed. Fixed by the
+     suite runner building the bundles before it runs anything.
+  3. **An assertion outlived what it asserted.** Two instances. The toolbar
+     button-label check read the `title` attribute after the recovered treatment
+     replaced it with `data-tooltip`: it went from comparing two real values to
+     comparing a value against `null`, and a lenient `startsWith` then let an
+     `aria-label` of "Strike" pass against a tooltip of "Strikethrough". Separately,
+     "the grip's width never shifts a row" passed for the length of the rebuild while
+     the grip sat *over* the box, because a width check is blind to position.
+
+  4. **The browser cache.** The arrow direction and the drag "did not land" after a
+     clean restart. Every link in the chain was correct: the commit was on the checked
+     out branch, the bind mount was the edited directory, the container read the new
+     source, and the served chunk contained the new glyph path and not the old one. The
+     tab was serving a page from before the change. Confirmed only when the same test
+     was run in incognito.
+  5. **A synthetic pointer.** The drag suite passed while a real press on a real grip
+     did nothing. Playwright never starts a native drag and teleported onto the grip
+     without crossing the hover handoff, so the suite could not see the class at all.
+  7. **A spec rule with nothing behind it, twice.** The toolbar's flip and clamp were
+     specified in section 7 and never implemented, caught by a click failing. The drag's
+     four lift rules were specified in section 8 and never implemented: the card was a
+     pill of text, the origin kept a ghost, and the gap was a grey bar. Both had been in
+     the spec for as long as the code existed. **Writing a rule down does not make it
+     true, and a rule with no assertion behind it is a wish.** Sections 5, 7 and 10 were
+     swept for that once (5.2); section 8 was not.
+  6. **A centre-only hit test.** The grip's element was 8px wide while its intended
+     target was the 14px gutter. Every drag assertion pressed the computed centre, which
+     was the only column that worked, and an `elementFromPoint` check at that same centre
+     confirmed it. Two rounds of instrumentation went into hypotheses about native drags,
+     event coalescing and hover handoffs before the answer turned out to be the size of
+     the box. The person using the app measured it.
+
+  The shared shape: **a green check is a claim about whatever it actually ran against.**
+  All three passed honestly and none of them was a claim about the app. The mitigations
+  are structural rather than diligence, because diligence had already been tried: run
+  the check where the thing runs, build before you test, and when a rule changes,
+  change the assertion with it rather than letting it drift into vacuity.
+
+- **A caret at a row start is an element offset, not a text-node offset.**
+  Probing `nodeType === TEXT_NODE` to ask "is there text after the caret"
+  concluded there was none, pushed the row's text onto its own line, and
+  stripped its marker. The rule survives the rewrite as a prohibition: ask the
+  document, never the DOM, and never `Selection.modify`. Invariant 5.
+- **A collapsed section's body is hidden, not absent** (3.3). Find-in-page can
+  reach it. Any feature that walks visible text must filter on `collapsed`.
+- **The toolbar acts on a range, row operations need a position.** Collapse the
+  selection to its start first or the button is a silent no-op (6.7).
+
+### 15.2 Resolved by the rewrite
+
+Each of these was a consequence of the DOM being the model.
+
+- **Empty lines vanished on collapse and reopen.** An empty node had no identity
+  and was normalised away on the HTML round trip. Now invariants 2 and 4, and an
+  empty paragraph is a real node.
+- **Two checkboxes ended up in one line.** "Line" did not exist in the data. Now
+  invariant 3, enforced by node type.
+- **Enter inside a section inserted indentation.** The browser's default
+  contenteditable behaviour was running. Now invariant 8.
+- **Applying a link only recolored the text.** No `href` was stored. Now a
+  `link` mark with an `href` (6.8).
+- **Converting a checkbox to a section created a second, empty section.**
+  Conversion was implemented as insertion because there was no block to convert.
+  Now a wrap transaction (6.7).
+- **"The note closes intermittently."** It never did. It closed on **every** selection
+  drag that ended outside the field, deterministically. A text selection started in
+  the note and released outside it makes the browser report the pointerup as a click
+  on the card, and the card toggled on it. The "sometimes" in the original report was
+  the drag sometimes ending inside the field, not the bug being flaky.
+  **This entry is kept for the word, not the fix.** "Intermittent" is why the person
+  reporting it distrusted their own observations for weeks, and a bug called
+  intermittent is a bug nobody looks for a mechanism behind. The next ambiguous report
+  deserves the opposite assumption: that it is deterministic and the trigger has not
+  been identified yet. Now invariant 15, and the generalised rule in 10.2.
+- **A block-level line was read as the caret line's suffix.** `splitCaretLines`
+  serialized the range after the caret and took `afterLines[0]` as the rest of
+  the caret's line, but when a quote or collapse sat immediately after the caret,
+  `blocksToLines` opened its list with that block instead of an empty line, so a
+  whole section was read as this line's suffix. Any edit that rewrote the caret's
+  line without re-emitting the suffix then deleted it: Enter or Backspace on an
+  empty checkbox row above a section silently took the entire section with it.
+  Note the asymmetry that hid it: on the `before` side `blocksToLines` always
+  pushed its trailing accumulator, so `prefix` came out empty in the mirror case.
+  Resolved because nothing serializes a range to find out what a line contains.
+- **`execCommand('insertHTML')` escaped a collapse body.** With the caret at the
+  end of `.note-collapse-body`, inserted markup landed outside it as a sibling
+  inside `.note-collapse`, giving a phantom blank line, an orphaned caret
+  sentinel, and native Enter afterwards cloning empty `.note-collapse` divs.
+  Resolved by invariant 9.
+- **`execCommand('insertHTML')` with the real checkbox markup dropped the caret
+  to offset 0.** With the nested `draggable`/`tabindex` markup, inserting
+  checkbox plus space put the caret at the container start, not after the space,
+  which a bare `<span contenteditable=false>` did not do. Marker conversion had
+  to place the caret explicitly. Resolved by invariant 9 and by 6.7 stating the
+  caret.
+- **`Selection.modify` could not find a leading marker.** The checkbox's own
+  `contenteditable="false"` span defeated the probe, so "drop the marker" and
+  "replace the other marker" silently did nothing, and inside a collapse could
+  leave *both* markers on one line. Resolved by invariants 3 and 5.
+- **Wrapping a collapse line in a `<div>` grew blank lines.** It hid the collapse
+  from the serializer's `afterBlock` guard, which then emitted a phantom `"\n"`
+  before the next line: one extra blank line above the block on every reseed,
+  compounding into the saved note. Resolved because there is no reseed and no
+  serializer.
+- **"Have we emitted anything yet" merged blank lines away.** Range clones
+  routinely start with empty `<div>`s, so the weaker test deleted a note's blank
+  lines during a split; the correct test was "has a previous sibling". Also:
+  Enter in a collapse title reseeded a new first line above the body's content on
+  every press. Resolved by invariant 2 and by the last row of 6.1.
+- **A blank line next to a collapse was not representable.** The old separator
+  rule inserted `"\n"` between two lines only when neither side was block-level,
+  so a blank line above or below a collapse worked while you typed in it and was
+  dropped on reload. Resolved: invariant 2 and regression step 3 now require it
+  to survive, and the separator rule is gone with the line model.
+- **"Empty notes appear on their own."** Three of the six Home task notes were
+  `{kind:'blocks', blocks:[]}` rather than `null`, which looks like an editor saving
+  on load. It is not: the editor being replaced calls `onChange` from exactly three
+  places, `commitAndSave`, `travelHistory`, and its input handler, and none of them
+  runs at mount. Those notes are the residue of typing and deleting. Checked on
+  4 August 2026, which means invariant 17 was not being violated before it was
+  written, something nobody actually knew until it was looked at. Recorded so the
+  question is answered rather than repeated as folklore.
+
+- **`pruneBlankCheckLines` deliberately dropped content.** A blank unchecked
+  checkbox row stayed in the DOM while you were on it and was never saved.
+  Deleted: invariant 2 wins, and the Enter ladder (6.1) makes stray blank
+  checkbox rows rare anyway, because Enter on an empty checkbox strips the marker
+  instead of adding another row.
+
+---
+
+## 16. Accepted losses
+
+- **Cross-block selection with one drag still works**, because the field is one
+  editable. The per-line design would have cost this; the schema design does not.
+- **Notes have one level of nesting.** No sub-sections, no nested quotes, no
+  nested lists. This is a product decision, not a limitation to route around.
+- **A collapsed section's hidden body is in the DOM.** See 15.1.
+
+---
+
+## 17. AGENTS.md amendments applied with this document
+
+1. **Notes editor architecture.** Notes use one component on a Tiptap
+   (ProseMirror) schema, which is the single source of truth. Document structure
+   is never stored in or read from the DOM. `execCommand` is banned in notes
+   code.
+2. **Sections do not nest.** One level of nesting exists in notes, no more, and
+   the schema enforces it.
+3. **Link styling exception.** Inline links in notes render `--gold-text` with a
+   solid 1px underline at 40% opacity. There is no underline mark to collide with
+   it, because notes do not have one. No new token. Blue is not in the palette and
+   must not be introduced for links.
+4. **Notes container state.** The expanded state of a notes area is toggled only
+   by its disclosure control, never by focus, blur, pointer, or selection events.
+   This applies to any future disclosure component.
+5. **Invariants discipline.** Any component with its own document model carries
+   an invariants list, a regression script, and a failure log in this repo. All
+   three are re-checked after every change to that component, and the regression
+   script is automated.
+
+The July 2026 stack amendment in AGENTS.md was corrected at the same time: the
+app is Next.js, React, and TypeScript with a NestJS and Postgres backend, and
+`prototype/` is frozen reference only.

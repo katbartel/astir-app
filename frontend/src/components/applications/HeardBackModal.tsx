@@ -62,7 +62,7 @@ export function HeardBackModal({
                   {option.bucket === 'progress' && option.id === allStages.find((stage) => stage.bucket === 'progress')?.id ? (
                     <div className="stage-separator" aria-hidden="true" />
                   ) : null}
-                  {option.id === STAGE_IDS.closed ? (
+                  {option.bucket === 'closed' && option.id === allStages.find((stage) => stage.bucket === 'closed')?.id ? (
                     <div className="stage-separator" aria-hidden="true" />
                   ) : null}
                   <button

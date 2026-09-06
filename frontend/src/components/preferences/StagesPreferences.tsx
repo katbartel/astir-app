@@ -54,19 +54,31 @@ export function StagesPreferences() {
     addProgressStage,
     removeProgressStage,
     reorderProgressStage,
+    addClosedStage,
+    removeClosedStage,
+    reorderClosedStage,
   } = useStageConfig()
   const [editing, setEditing] = useState<Editing>({})
   const [applications, setApplications] = useState<Application[]>([])
   const [pendingRemove, setPendingRemove] = useState<StageRecord | null>(null)
   const focusId = useRef<StageId | null>(null)
 
-  const sortable = useSortableList({
+  const progressSortable = useSortableList({
     ids: catalog.progress.map((stage) => stage.id),
     labelOf: (id) => catalog.progress.find((stage) => stage.id === id)?.name || 'Stage',
     onReorder: (from, to) => {
       const moved = catalog.progress[from]
       const target = catalog.progress[to]
       if (moved && target) reorderProgressStage(moved.id, target.id)
+    },
+  })
+  const closedSortable = useSortableList({
+    ids: catalog.closed.map((stage) => stage.id),
+    labelOf: (id) => catalog.closed.find((stage) => stage.id === id)?.name || 'Stage',
+    onReorder: (from, to) => {
+      const moved = catalog.closed[from]
+      const target = catalog.closed[to]
+      if (moved && target) reorderClosedStage(moved.id, target.id)
     },
   })
 
@@ -105,6 +117,7 @@ export function StagesPreferences() {
     })
     if (!name) {
       if (stage.bucket === 'progress' && !stage.name.trim()) removeProgressStage(stage.id)
+      if (stage.bucket === 'closed' && !stage.name.trim()) removeClosedStage(stage.id)
       return
     }
     if (name !== stage.name) renameStage(stage.id, name)
@@ -115,12 +128,17 @@ export function StagesPreferences() {
   }
 
   function earliestAfterRemoval(stageId: StageId) {
+    const stage = [...catalog.progress, ...catalog.closed].find((item) => item.id === stageId)
+    if (stage?.bucket === 'closed') {
+      return catalog.closed.find((item) => item.id !== stageId) ?? catalog.closed[0]
+    }
     return catalog.progress.find((stage) => stage.id !== stageId) ?? catalog.progress[0]
   }
 
   function requestRemove(stage: StageRecord) {
     if (applicationCount(stage.id) === 0) {
-      removeProgressStage(stage.id)
+      if (stage.bucket === 'closed') removeClosedStage(stage.id)
+      else removeProgressStage(stage.id)
       return
     }
     setPendingRemove(stage)
@@ -142,12 +160,13 @@ export function StagesPreferences() {
           : application,
       ),
     )
-    removeProgressStage(pendingRemove.id)
+    if (pendingRemove.bucket === 'closed') removeClosedStage(pendingRemove.id)
+    else removeProgressStage(pendingRemove.id)
     setPendingRemove(null)
   }
 
-  function addStage() {
-    const stage = addProgressStage()
+  function addStage(stageBucket: 'progress' | 'closed') {
+    const stage = stageBucket === 'closed' ? addClosedStage() : addProgressStage()
     if (stage) {
       focusId.current = stage.id
       setEditing((current) => ({ ...current, [stage.id]: '' }))
@@ -155,12 +174,13 @@ export function StagesPreferences() {
   }
 
   function bucket(stageBucket: StageBucket, stages: StageRecord[]) {
-    const sortableBucket = stageBucket === 'progress'
+    const editableBucket = stageBucket === 'progress' || stageBucket === 'closed'
+    const sortable = stageBucket === 'closed' ? closedSortable : progressSortable
     return (
       <section className="stage-bucket" aria-labelledby={`stageBucket-${stageBucket}`}>
         <div className="stage-bucket-head">
           <h2 id={`stageBucket-${stageBucket}`}>{bucketTitle(stageBucket)}</h2>
-          {stageBucket === 'progress' ? (
+          {editableBucket ? (
             <button
               className="round-icon small stage-action"
               type="button"
@@ -168,19 +188,21 @@ export function StagesPreferences() {
               data-tooltip={stages.length >= STAGE_LIMIT ? 'Ten stages is the maximum.' : 'Add'}
               aria-disabled={stages.length >= STAGE_LIMIT}
               onClick={() => {
-                if (stages.length < STAGE_LIMIT) addStage()
+                if (stages.length < STAGE_LIMIT) {
+                  addStage(stageBucket === 'closed' ? 'closed' : 'progress')
+                }
               }}
             >
               <PlusIcon />
             </button>
           ) : null}
         </div>
-        <div className="stage-bucket-list" ref={sortableBucket ? sortable.listRef : undefined}>
+        <div className="stage-bucket-list" ref={editableBucket ? sortable.listRef : undefined}>
           {stages.map((stage, index) => {
-            const removable = stageBucket === 'progress'
+            const removable = editableBucket
             const removeDisabled = removable && stages.length <= 1
             const visual = visualFor(stage.id)
-            const lifted = sortableBucket && sortable.liftedId === stage.id
+            const lifted = editableBucket && sortable.liftedId === stage.id
             return (
               <Fragment key={stage.id}>
                 {lifted && sortable.placeholder ? (
@@ -196,13 +218,13 @@ export function StagesPreferences() {
                     'stage-settings-row',
                     removable ? '' : 'no-actions',
                     lifted ? 'lifted' : '',
-                    sortableBucket && sortable.pickedId === stage.id ? 'picked' : '',
+                    editableBucket && sortable.pickedId === stage.id ? 'picked' : '',
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  ref={sortableBucket ? sortable.rowRef(stage.id) : undefined}
+                  ref={editableBucket ? sortable.rowRef(stage.id) : undefined}
                 >
-                  {sortableBucket ? (
+                  {editableBucket ? (
                     <button
                       className="stage-drag-handle"
                       type="button"
@@ -219,7 +241,7 @@ export function StagesPreferences() {
                     data-stage-name={stage.id}
                     value={valueFor(stage)}
                     aria-label={`${stage.name || 'Stage'} name`}
-                    placeholder={stageBucket === 'progress' ? 'Stage name' : undefined}
+                    placeholder={editableBucket ? 'Stage name' : undefined}
                     onChange={(event) => updateDraft(stage, event.target.value)}
                     onBlur={() => commit(stage)}
                     onKeyDown={(event) => {
@@ -241,7 +263,9 @@ export function StagesPreferences() {
                         type="button"
                         aria-label="Delete"
                         data-tooltip={
-                          removeDisabled ? 'In progress needs at least one stage.' : 'Delete'
+                          removeDisabled
+                            ? `${bucketTitle(stageBucket)} needs at least one stage.`
+                            : 'Delete'
                         }
                         aria-disabled={removeDisabled}
                         onClick={() => {
@@ -276,10 +300,10 @@ export function StagesPreferences() {
         {bucket('applying', [catalog.applying])}
         {bucket('progress', catalog.progress)}
         {bucket('offer', catalog.offer)}
-        {bucket('closed', [catalog.closed])}
+        {bucket('closed', catalog.closed)}
       </div>
       <p className="sr-only" role="status" aria-live="polite">
-        {sortable.announcement}
+        {progressSortable.announcement || closedSortable.announcement}
       </p>
 
       {pendingRemove && pendingTarget ? (

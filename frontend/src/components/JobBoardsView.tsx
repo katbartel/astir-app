@@ -8,7 +8,7 @@ import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { OpenIcon, PlusIcon } from './icons'
+import { OpenIcon, PlusIcon, SkipIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -129,17 +129,23 @@ function ListingRow({
       >
         <PlusIcon />
       </button>
-      <KebabMenu menuClassName="board-menu">
-        {isIrrelevant ? (
+      {!isIrrelevant ? (
+        <button
+          className="round-icon hide-role"
+          type="button"
+          aria-label="Skip"
+          data-tooltip="Skip"
+          onClick={() => onSetStatus(listing, 'irrelevant')}
+        >
+          <SkipIcon />
+        </button>
+      ) : (
+        <KebabMenu menuClassName="board-menu">
           <button type="button" onClick={() => onSetStatus(listing, 'new')}>
             Back to relevant
           </button>
-        ) : (
-          <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
-            Mark as irrelevant
-          </button>
-        )}
-      </KebabMenu>
+        </KebabMenu>
+      )}
     </div>
   )
 }
@@ -208,7 +214,7 @@ export function JobBoardsView({
       }
       showSnack(
         status === 'irrelevant'
-          ? { text: 'Marked irrelevant. Find it below your main list.' }
+          ? { text: 'Role skipped. Find it in skipped roles.' }
           : { text: 'Back in your main list.' },
         4000,
       )
@@ -276,9 +282,7 @@ export function JobBoardsView({
                 ))}
               </article>
             ) : (
-              <p className="watch-invite">
-                Nothing in your main list right now — everything below is marked irrelevant.
-              </p>
+              <p className="watch-invite">Nothing in your main list right now.</p>
             )}
             {irrelevant.length > 0 ? (
               <div className="quiet-section">
@@ -288,9 +292,7 @@ export function JobBoardsView({
                   aria-expanded={quietOpen}
                   onClick={() => setQuietOpen((open) => !open)}
                 >
-                  {irrelevant.length === 1
-                    ? '1 marked irrelevant'
-                    : `${irrelevant.length} marked irrelevant`}
+                  Skipped roles
                 </button>
                 {quietOpen ? (
                   <article className="watch-group board-feed">

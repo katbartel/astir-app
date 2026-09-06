@@ -119,10 +119,11 @@ model WatchlistCompany {
   // Where the user is in building referral contacts at this company, so a
   // posting can land on someone they already know. none: no outreach yet;
   // active: reaching out / conversations underway; warm: has a solid contact.
-  networkingStage  String   @default("none") @map("networking_stage")
-  networkingNotes  String?  @map("networking_notes")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
+  networkingStage       String   @default("none") @map("networking_stage")
+  networkingNotes       String?  @map("networking_notes")
+  networkingConnections Json     @default("[]") @map("networking_connections")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   jobSource JobSource? @relation(fields: [jobSourceId], references: [id], onDelete: SetNull)

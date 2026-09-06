@@ -47,6 +47,7 @@ Everything below lives in one tokens file (tokens.css or the Tailwind theme). Co
 | --gold-soft | rgba(223,168,63,.16) | applied tints, pills |
 | --gold-text | #8A6416 | text on gold-soft |
 | --on-gold | #3A2E10 | text on solid gold |
+| --warning | #B85C4A | warning icons and source health attention |
 | --rest | #8CA48A | rest state |
 | --rest-soft | rgba(140,164,138,.18) | rest tints |
 | --rest-text | #586E56 | text on rest-soft |

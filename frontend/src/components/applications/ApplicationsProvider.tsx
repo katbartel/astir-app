@@ -9,7 +9,7 @@ import {
   normalizeApplications,
   updateApplication,
 } from '@/lib/applications'
-import { STAGE_IDS, isPipelineStage, useStageConfig } from '@/lib/stages'
+import { STAGE_IDS, isClosedStage, isPipelineStage, useStageConfig } from '@/lib/stages'
 import { HiredModal } from './HiredModal'
 import { Snackbar, type SnackMessage, useSnackbar } from './useSnackbar'
 
@@ -104,7 +104,7 @@ export function ApplicationsProvider({
           },
           5000,
         )
-      } else if (context === 'pipeline' && wasPipeline && status === STAGE_IDS.closed) {
+      } else if (context === 'pipeline' && wasPipeline && isClosedStage(status)) {
         showSnack(
           {
             text: 'Closed. Kept in all applications.',

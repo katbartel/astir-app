@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { type Status, normalizeStatus } from '@/lib/applications'
-import { STAGE_IDS, type StageRecord, useStageConfig } from '@/lib/stages'
+import { type StageRecord, useStageConfig } from '@/lib/stages'
 import { CheckIcon, ChevronDownIcon } from '../icons'
 import { StageRing } from './StageRing'
 
@@ -138,7 +138,7 @@ export function StageSelect({
             {option.bucket === 'progress' && option.id === allStages.find((stage) => stage.bucket === 'progress')?.id ? (
               <div className="select-separator" aria-hidden="true" />
             ) : null}
-            {option.id === STAGE_IDS.closed ? (
+            {option.bucket === 'closed' && option.id === allStages.find((stage) => stage.bucket === 'closed')?.id ? (
               <div className="select-separator" aria-hidden="true" />
             ) : null}
             <button

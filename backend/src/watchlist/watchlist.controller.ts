@@ -3,6 +3,7 @@ import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import {
   CreateWatchlistCompanyDto,
+  UpdateWatchlistListingStatusDto,
   UpdateWatchlistCompanyDto,
 } from './dto/watchlist-company.dto'
 import { WatchlistCompanyView, WatchlistService } from './watchlist.service'
@@ -40,6 +41,16 @@ export class WatchlistController {
     @Param('id') id: string,
   ): Promise<WatchlistCompanyView> {
     return this.watchlistService.resolve(authUser.userId, id)
+  }
+
+  @Patch('listings/:id')
+  @HttpCode(204)
+  async updateListing(
+    @CurrentUser() authUser: AuthenticatedUser,
+    @Param('id') id: string,
+    @Body() body: UpdateWatchlistListingStatusDto,
+  ): Promise<void> {
+    await this.watchlistService.setListingStatus(authUser.userId, id, body.status)
   }
 
   @Delete(':id')

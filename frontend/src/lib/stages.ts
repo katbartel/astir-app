@@ -24,7 +24,7 @@ export type StageCatalog = {
   applying: StageRecord
   progress: StageRecord[]
   offer: [StageRecord, StageRecord]
-  closed: StageRecord
+  closed: StageRecord[]
 }
 
 export type StageVisual = {
@@ -45,7 +45,7 @@ export const DEFAULT_STAGE_CATALOG: StageCatalog = {
     { id: STAGE_IDS.offer, name: 'Offer', bucket: 'offer' },
     { id: STAGE_IDS.hired, name: 'Hired', bucket: 'offer' },
   ],
-  closed: { id: STAGE_IDS.closed, name: 'Closed', bucket: 'closed' },
+  closed: [{ id: STAGE_IDS.closed, name: 'Closed', bucket: 'closed' }],
 }
 
 export const DEFAULT_STAGE_IDS = flattenStages(DEFAULT_STAGE_CATALOG).map((stage) => stage.id)
@@ -71,7 +71,7 @@ function stage(id: StageId, name: string, bucket: StageBucket): StageRecord {
 }
 
 export function flattenStages(catalog: StageCatalog): StageRecord[] {
-  return [catalog.applying, ...catalog.progress, ...catalog.offer, catalog.closed]
+  return [catalog.applying, ...catalog.progress, ...catalog.offer, ...catalog.closed]
 }
 
 export function pipelineStageIds(catalog: StageCatalog): StageId[] {
@@ -79,7 +79,11 @@ export function pipelineStageIds(catalog: StageCatalog): StageId[] {
 }
 
 export function stageById(catalog: StageCatalog, id: StageId): StageRecord {
-  return flattenStages(catalog).find((item) => item.id === id) ?? catalog.applying
+  const normalized = normalizeStageId(id)
+  const found = flattenStages(catalog).find((item) => item.id === normalized)
+  if (found) return found
+  if (isClosedStage(normalized)) return catalog.closed[0]
+  return catalog.applying
 }
 
 export function stageLabel(catalog: StageCatalog, id: StageId): string {
@@ -96,7 +100,8 @@ export function normalizeStageId(stageId?: string | null, legacyStatus?: string 
     raw === STAGE_IDS.offer ||
     raw === STAGE_IDS.hired ||
     raw === STAGE_IDS.closed ||
-    raw.startsWith('progress-')
+    raw.startsWith('progress-') ||
+    raw.startsWith('closed-')
   ) {
     return raw
   }
@@ -104,11 +109,22 @@ export function normalizeStageId(stageId?: string | null, legacyStatus?: string 
 }
 
 export function stageRank(catalog: StageCatalog, id: StageId): number {
-  return flattenStages(catalog).findIndex((stageItem) => stageItem.id === normalizeStageId(id))
+  const normalized = normalizeStageId(id)
+  const rank = flattenStages(catalog).findIndex((stageItem) => stageItem.id === normalized)
+  if (rank >= 0) return rank
+  if (isClosedStage(normalized)) {
+    return flattenStages(catalog).findIndex((stageItem) => stageItem.id === catalog.closed[0].id)
+  }
+  return 0
 }
 
 export function isPipelineStage(catalog: StageCatalog, id: StageId): boolean {
   return pipelineStageIds(catalog).includes(normalizeStageId(id))
+}
+
+export function isClosedStage(id: StageId): boolean {
+  const normalized = normalizeStageId(id)
+  return normalized === STAGE_IDS.closed || normalized.startsWith('closed-')
 }
 
 export function stageColorKey(id: StageId): string {
@@ -116,7 +132,7 @@ export function stageColorKey(id: StageId): string {
   if (normalized === STAGE_IDS.applied) return 'applied'
   if (normalized === STAGE_IDS.offer) return 'offer'
   if (normalized === STAGE_IDS.hired) return 'hired'
-  if (normalized === STAGE_IDS.closed) return 'closed'
+  if (isClosedStage(normalized)) return 'closed'
   return 'progress'
 }
 
@@ -125,7 +141,7 @@ export function stageVisual(catalog: StageCatalog, id: StageId): StageVisual {
   if (normalized === STAGE_IDS.applied) return { fraction: 0, state: 'start' }
   if (normalized === STAGE_IDS.offer) return { fraction: 1, state: 'offer' }
   if (normalized === STAGE_IDS.hired) return { fraction: 1, state: 'done' }
-  if (normalized === STAGE_IDS.closed) return { fraction: 0, state: 'closed' }
+  if (isClosedStage(normalized)) return { fraction: 0, state: 'closed' }
 
   const index = catalog.progress.findIndex((stageItem) => stageItem.id === normalized)
   const count = catalog.progress.length
@@ -149,6 +165,20 @@ function sanitizeCatalog(input: unknown): StageCatalog {
           : `progress-${Date.now()}-${index}`
       return stage(id, cleanName(item?.name, fallback), 'progress')
     })
+  const legacyClosed = parsed?.closed as StageRecord | StageRecord[] | undefined
+  const closedInput = Array.isArray(legacyClosed)
+    ? legacyClosed
+    : legacyClosed
+      ? [legacyClosed]
+      : defaults.closed
+  const closed = closedInput
+    .slice(0, STAGE_LIMIT)
+    .map((item, index) => {
+      const fallback = defaults.closed[index]?.name ?? 'Closed'
+      const storedId = typeof item?.id === 'string' ? item.id.trim() : ''
+      const id = storedId || (index === 0 ? STAGE_IDS.closed : `closed-${Date.now()}-${index}`)
+      return stage(id, cleanName(item?.name, fallback), 'closed')
+    })
 
   return {
     applying: stage(
@@ -169,11 +199,7 @@ function sanitizeCatalog(input: unknown): StageCatalog {
         'offer',
       ),
     ],
-    closed: stage(
-      STAGE_IDS.closed,
-      cleanName(parsed?.closed?.name, defaults.closed.name),
-      'closed',
-    ),
+    closed: closed.length > 0 ? closed : [defaults.closed[0]],
   }
 }
 
@@ -243,6 +269,9 @@ export type StageConfig = {
   removeProgressStage: (id: StageId) => void
   moveProgressStage: (id: StageId, direction: -1 | 1) => void
   reorderProgressStage: (id: StageId, targetId: StageId) => void
+  addClosedStage: () => StageRecord | null
+  removeClosedStage: (id: StageId) => void
+  reorderClosedStage: (id: StageId, targetId: StageId) => void
   reset: () => void
 }
 
@@ -269,7 +298,7 @@ export function useStageConfig(): StageConfig {
         StageRecord,
         StageRecord,
       ],
-      closed: id === STAGE_IDS.closed ? { ...snapshot.closed, name } : snapshot.closed,
+      closed: snapshot.closed.map((item) => (item.id === id ? { ...item, name } : item)),
     })
   }, [])
 
@@ -305,6 +334,28 @@ export function useStageConfig(): StageConfig {
     persist({ ...snapshot, progress })
   }, [])
 
+  const addClosedStage = useCallback(() => {
+    if (snapshot.closed.length >= STAGE_LIMIT) return null
+    const next = stage(`closed-${Date.now()}`, '', 'closed')
+    persist({ ...snapshot, closed: [...snapshot.closed, next] })
+    return next
+  }, [])
+
+  const removeClosedStage = useCallback((id: StageId) => {
+    if (snapshot.closed.length <= 1) return
+    persist({ ...snapshot, closed: snapshot.closed.filter((item) => item.id !== id) })
+  }, [])
+
+  const reorderClosedStage = useCallback((id: StageId, targetId: StageId) => {
+    const from = snapshot.closed.findIndex((item) => item.id === id)
+    const to = snapshot.closed.findIndex((item) => item.id === targetId)
+    if (from < 0 || to < 0 || from === to) return
+    const closed = [...snapshot.closed]
+    const [item] = closed.splice(from, 1)
+    closed.splice(to, 0, item)
+    persist({ ...snapshot, closed })
+  }, [])
+
   const reset = useCallback(() => persist(DEFAULT_STAGE_CATALOG), [])
 
   return {
@@ -322,6 +373,9 @@ export function useStageConfig(): StageConfig {
     removeProgressStage,
     moveProgressStage,
     reorderProgressStage,
+    addClosedStage,
+    removeClosedStage,
+    reorderClosedStage,
     reset,
   }
 }

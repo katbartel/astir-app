@@ -1,5 +1,5 @@
 import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common'
-import { WatchlistCompany } from '@prisma/client'
+import { Prisma, WatchlistCompany } from '@prisma/client'
 import { PrismaService } from '../database/prisma.service'
 import { CompanyResolutionService } from '../job-boards/company-resolution.service'
 import { JobIngestionService } from '../job-boards/job-ingestion.service'
@@ -28,6 +28,16 @@ export type WatchlistRole = {
 // One matched posting before same-opening rows are folded together. Matches
 // the shared FoldableOpening shape consumed by foldOpenings.
 type RawRole = WatchlistRole & { companyName: string }
+const CONNECTION_STATUSES = ['found', 'reached_out', 'talking', 'can_refer', 'closed'] as const
+type ConnectionStatus = (typeof CONNECTION_STATUSES)[number]
+
+export type WatchlistConnection = {
+  id: string
+  name: string
+  status: ConnectionStatus
+  details: string
+  notes: string
+}
 
 export type WatchlistCompanyView = {
   id: string
@@ -41,7 +51,9 @@ export type WatchlistCompanyView = {
   // and any freeform notes (names, LinkedIn links, conversation history).
   networkingStage: string
   networkingNotes: string | null
+  networkingConnections: WatchlistConnection[]
   roles: WatchlistRole[]
+  hiddenRoles: WatchlistRole[]
 }
 
 type CreateInput = { name: string; careersUrl?: string; alertsOn?: boolean }
@@ -51,6 +63,71 @@ type UpdateInput = {
   alertsOn?: boolean
   networkingStage?: string
   networkingNotes?: string
+  networkingConnections?: unknown
+}
+
+const MAX_LISTING_AGE_DAYS = 90
+const MAX_CONNECTIONS = 24
+const MAX_CONNECTION_FIELD = 1000
+
+function text(value: unknown, max = MAX_CONNECTION_FIELD): string {
+  return typeof value === 'string' ? value.trim().slice(0, max) : ''
+}
+
+function isConnectionStatus(value: unknown): value is ConnectionStatus {
+  return typeof value === 'string' && CONNECTION_STATUSES.includes(value as ConnectionStatus)
+}
+
+function readConnections(value: Prisma.JsonValue): WatchlistConnection[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+      const row = item as Record<string, unknown>
+      const name = text(row.name, 200)
+      const details = text(row.details, 2000)
+      const notes = text(row.notes, 4000)
+      const status = isConnectionStatus(row.status) ? row.status : 'found'
+      if (!name && !details && !notes) return null
+      return {
+        id: text(row.id, 80) || `connection-${index}`,
+        name,
+        status,
+        details,
+        notes,
+      } satisfies WatchlistConnection
+    })
+    .filter((item): item is WatchlistConnection => item !== null)
+}
+
+function writeConnections(value: unknown): Prisma.InputJsonValue {
+  if (!Array.isArray(value)) return []
+  return value
+    .slice(0, MAX_CONNECTIONS)
+    .map((item, index): Prisma.JsonObject | null => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+      const row = item as Record<string, unknown>
+      const name = text(row.name, 200)
+      const details = text(row.details, 2000)
+      const notes = text(row.notes, 4000)
+      const status = isConnectionStatus(row.status) ? row.status : 'found'
+      if (!name && !details && !notes) return null
+      return {
+        id: text(row.id, 80) || `connection-${Date.now()}-${index}`,
+        name,
+        status,
+        details,
+        notes,
+      }
+    })
+    .filter((item): item is Prisma.JsonObject => item !== null)
+}
+
+function stageFromConnections(connections: WatchlistConnection[]): string {
+  const active = connections.filter((connection) => connection.status !== 'closed')
+  if (active.some((connection) => connection.status === 'can_refer')) return 'warm'
+  if (active.length > 0) return 'active'
+  return 'none'
 }
 
 @Injectable()
@@ -110,6 +187,12 @@ export class WatchlistService {
     const nextName = input.name?.trim()
     const nameChanged = nextName !== undefined && nextName !== company.name
     const urlChanged = input.careersUrl !== undefined && input.careersUrl.trim() !== company.careersUrl
+    const nextConnections =
+      input.networkingConnections !== undefined
+        ? writeConnections(input.networkingConnections)
+        : undefined
+    const nextConnectionViews =
+      nextConnections !== undefined ? readConnections(nextConnections as Prisma.JsonValue) : undefined
 
     if (nameChanged) {
       const nextKey = companyKey(nextName)
@@ -127,10 +210,17 @@ export class WatchlistService {
         ...(nextName !== undefined ? { name: nextName, nameKey: companyKey(nextName) } : {}),
         ...(input.careersUrl !== undefined ? { careersUrl: input.careersUrl.trim() || null } : {}),
         ...(input.alertsOn !== undefined ? { alertsOn: input.alertsOn } : {}),
-        ...(input.networkingStage !== undefined ? { networkingStage: input.networkingStage } : {}),
         ...(input.networkingNotes !== undefined
           ? { networkingNotes: input.networkingNotes.trim() || null }
           : {}),
+        ...(nextConnections !== undefined && nextConnectionViews !== undefined
+          ? {
+              networkingConnections: nextConnections,
+              networkingStage: stageFromConnections(nextConnectionViews),
+            }
+          : input.networkingStage !== undefined
+            ? { networkingStage: input.networkingStage }
+            : {}),
       },
     })
 
@@ -144,13 +234,24 @@ export class WatchlistService {
 
   // Re-attempt resolution on demand (e.g. after a new ATS provider ships, a
   // company that was "unresolved" may now be found). No-op for a company that
-  // already resolved — its jobs are already flowing.
+  // already resolved, its jobs are already flowing.
   async resolve(userId: string, id: string): Promise<WatchlistCompanyView> {
     const company = await this.ownedCompany(userId, id)
     if (company.resolutionStatus !== 'resolved') {
       await this.resolveAndBackfill(userId, company)
     }
     return this.getView(userId, id)
+  }
+
+  async setListingStatus(
+    userId: string,
+    listingId: string,
+    status: 'new' | 'irrelevant',
+  ): Promise<void> {
+    await this.prisma.userJobListing.updateMany({
+      where: { userId, listingId },
+      data: { status },
+    })
   }
 
   async remove(userId: string, id: string): Promise<void> {
@@ -188,7 +289,7 @@ export class WatchlistService {
     })
     // Resolved once the source is linked. A failure pulling jobs or rematching
     // now (rate limit, transient upstream error) must NOT downgrade it back to
-    // "unresolved" — the hourly cron will retry the pull.
+    // "unresolved", the hourly cron will retry the pull.
     try {
       await this.ingestion.syncOneSource(source)
       await this.matching.rematchUser(userId)
@@ -223,18 +324,30 @@ export class WatchlistService {
   // role listed in several countries) are folded into a single row; openings
   // the user has already logged an application for drop off entirely (they
   // live on Pipeline / All applications now).
-  private async rolesByCompanyKey(userId: string): Promise<Map<string, WatchlistRole[]>> {
+  private async rolesByCompanyKey(userId: string): Promise<{
+    visible: Map<string, WatchlistRole[]>
+    hidden: Map<string, WatchlistRole[]>
+  }> {
+    const cutoff = new Date(Date.now() - MAX_LISTING_AGE_DAYS * 24 * 60 * 60 * 1000)
     const [rows, appliedListingIds, hiringRegions] = await Promise.all([
       this.prisma.userJobListing.findMany({
-        where: { userId, status: { not: 'dismissed' } },
+        where: {
+          userId,
+          status: { in: ['new', 'irrelevant'] },
+          OR: [
+            { status: 'irrelevant' },
+            { listing: { OR: [{ postedAt: null }, { postedAt: { gte: cutoff } }] } },
+          ],
+        },
         include: { listing: true },
-        orderBy: { listing: { firstSeenAt: 'desc' } },
+        orderBy: [{ listing: { postedAt: 'desc' } }, { listing: { firstSeenAt: 'desc' } }],
       }),
       this.appliedListingIds(userId),
       this.hiringRegions(userId),
     ])
 
-    const byKey = new Map<string, RawRole[]>()
+    const visibleByKey = new Map<string, RawRole[]>()
+    const hiddenByKey = new Map<string, RawRole[]>()
     for (const row of rows) {
       const key = companyKey(row.listing.companyName)
       const role: RawRole = {
@@ -250,16 +363,21 @@ export class WatchlistService {
         matchedKeywords: row.matchedKeywords,
         companyName: row.listing.companyName,
       }
+      const byKey = row.status === 'irrelevant' ? hiddenByKey : visibleByKey
       const bucket = byKey.get(key)
       if (bucket) bucket.push(role)
       else byKey.set(key, [role])
     }
 
-    const result = new Map<string, WatchlistRole[]>()
-    for (const [key, raws] of byKey) {
-      result.set(key, foldOpenings(raws, hiringRegions, appliedListingIds))
+    const visible = new Map<string, WatchlistRole[]>()
+    for (const [key, raws] of visibleByKey) {
+      visible.set(key, foldOpenings(raws, hiringRegions, appliedListingIds))
     }
-    return result
+    const hidden = new Map<string, WatchlistRole[]>()
+    for (const [key, raws] of hiddenByKey) {
+      hidden.set(key, foldOpenings(raws, hiringRegions, appliedListingIds))
+    }
+    return { visible, hidden }
   }
 
   // Listing ids the user has already logged an application for, so those
@@ -274,7 +392,7 @@ export class WatchlistService {
 
   private toView(
     company: WatchlistCompany,
-    rolesByCompany: Map<string, WatchlistRole[]>,
+    rolesByCompany: { visible: Map<string, WatchlistRole[]>; hidden: Map<string, WatchlistRole[]> },
   ): WatchlistCompanyView {
     return {
       id: company.id,
@@ -282,9 +400,11 @@ export class WatchlistService {
       careersUrl: company.careersUrl,
       alertsOn: company.alertsOn,
       resolutionStatus: company.resolutionStatus,
-      networkingStage: company.networkingStage,
+      networkingStage: stageFromConnections(readConnections(company.networkingConnections)),
       networkingNotes: company.networkingNotes,
-      roles: rolesByCompany.get(company.nameKey) ?? [],
+      networkingConnections: readConnections(company.networkingConnections),
+      roles: rolesByCompany.visible.get(company.nameKey) ?? [],
+      hiddenRoles: rolesByCompany.hidden.get(company.nameKey) ?? [],
     }
   }
 }

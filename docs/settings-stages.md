@@ -9,7 +9,7 @@ Stages are id-backed. Application logic keys off `stageId`, never the display na
 1. Applying: one fixed `applied` stage. Rename only.
 2. In progress: one to ten stages. Add, delete, rename, and reorder.
 3. Offer and hired: fixed `offer`, then `hired`. Rename only.
-4. Closed: one fixed `closed` stage. Rename only.
+4. Closed: one to ten stages. Add, delete, rename, and reorder.
 
 Bucket headers are fixed copy.
 
@@ -21,7 +21,7 @@ Icons are generated on render.
 2. In progress uses an arc based on row position: `(i + 1) / (k + 1)`.
 3. Offer uses a full gold ring.
 4. Hired uses the warm hired token, with a filled circle and empty check.
-5. Closed uses dispersing dots.
+5. Closed uses dispersing dots for every closed option.
 
 Do not store icon data on stage records.
 
@@ -39,4 +39,4 @@ Backend applications now have `stage_id`. Existing rows migrate from old `status
 6. `Hired` to `hired`
 7. `Closed` or `Rejected` to `closed`
 
-Removing an In progress stage with applications asks for confirmation and moves those applications to the earliest remaining In progress stage.
+Custom Closed stage ids use the `closed-` prefix. Removing an In progress stage with applications asks for confirmation and moves those applications to the earliest remaining In progress stage. Removing a Closed stage with applications asks for confirmation and moves those applications to the earliest remaining Closed stage.

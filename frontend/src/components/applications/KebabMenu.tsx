@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { KebabIcon } from '../icons'
 import { MenuScrim, useMenuModality } from './menuModality'
 
-// Kebab (⋮) button with a popover menu. While open the menu is modal: the
+// Kebab button with a popover menu. While open the menu is modal: the
 // interaction scrim covers the rest of the app so no other element can be
 // hovered or clicked, and tooltips are suppressed. The user exits by clicking
 // away (the scrim) or pressing Escape; only then does the app become live
@@ -39,7 +39,10 @@ export function KebabMenu({
       <span
         className={`watch-menu ${menuClassName}`.trim()}
         role="menu"
-        onClick={() => setOpen(false)}
+        onClick={(event) => {
+          event.stopPropagation()
+          setOpen(false)
+        }}
       >
         {children}
       </span>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useRouter, useSearchParams } from 'next/navigation'
 import type { Application } from '@/lib/applications'
 import { isPipelineStatus } from '@/lib/applications'
 import { STAGE_IDS } from '@/lib/stages'
@@ -17,6 +18,7 @@ import {
   OpenIcon,
   PlusIcon,
   SearchIcon,
+  SkipIcon,
 } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
@@ -376,8 +378,20 @@ function ListingRow({
           >
             <PlusIcon />
           </button>
-          <KebabMenu menuClassName="board-menu">
-            {isIrrelevant ? (
+          {!isIrrelevant ? (
+            <button
+              className="round-icon hide-role"
+              type="button"
+              aria-label="Skip"
+              data-tooltip="Skip"
+              onClick={() => onSetStatus(listing, 'irrelevant')}
+            >
+              <SkipIcon />
+            </button>
+          ) : null}
+          {isIrrelevant || hasDiagnostics ? (
+            <KebabMenu menuClassName="board-menu">
+              {isIrrelevant ? (
               <button
                 type="button"
                 data-tooltip="Move this role back on my job board"
@@ -385,15 +399,12 @@ function ListingRow({
               >
                 Show again
               </button>
-            ) : (
-              <button type="button" onClick={() => onSetStatus(listing, 'irrelevant')}>
-                Skip
-              </button>
-            )}
-            {hasDiagnostics ? (
-              <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
-            ) : null}
-          </KebabMenu>
+              ) : null}
+              {hasDiagnostics ? (
+                <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
+              ) : null}
+            </KebabMenu>
+          ) : null}
         </>
       ) : hasDiagnostics ? (
         <KebabMenu menuClassName="board-menu">
@@ -470,10 +481,11 @@ export function RemoteJobBoardView({
 }: {
   initialListings?: Listing[] | null
 }) {
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const user = useUser()
   const [listings, setListings] = useState<Listing[] | null>(initialListings)
   const [notApplicableListings, setNotApplicableListings] = useState<Listing[] | null>(null)
-  const [mode, setMode] = useState<'board' | 'skipped' | 'not-applicable'>('board')
   const [failed, setFailed] = useState(false)
   const [olderOpen, setOlderOpen] = useState(false)
   const [search, setSearch] = useState('')
@@ -484,6 +496,20 @@ export function RemoteJobBoardView({
     6,
   )
   const { message: snack, showSnack } = useSnackbar()
+  const view = searchParams.get('view')
+  const mode =
+    view === 'skipped' || (user.isAdmin && view === 'not-applicable') ? view : 'board'
+
+  function showMode(nextMode: 'board' | 'skipped' | 'not-applicable') {
+    const params = new URLSearchParams(searchParams)
+    if (nextMode === 'board') {
+      params.delete('view')
+    } else {
+      params.set('view', nextMode)
+    }
+    const query = params.toString()
+    router.push(query ? `/remote-job-board?${query}` : '/remote-job-board', { scroll: false })
+  }
 
   useEffect(() => {
     try {
@@ -688,17 +714,17 @@ export function RemoteJobBoardView({
           {user.isAdmin ? (
             <KebabMenu menuClassName="board-menu">
               {mode !== 'board' ? (
-                <button type="button" onClick={() => setMode('board')}>
+                <button type="button" onClick={() => showMode('board')}>
                   Job board
                 </button>
               ) : null}
               {mode !== 'skipped' ? (
-                <button type="button" onClick={() => setMode('skipped')}>
+                <button type="button" onClick={() => showMode('skipped')}>
                   Skipped roles
                 </button>
               ) : null}
               {mode !== 'not-applicable' ? (
-                <button type="button" onClick={() => setMode('not-applicable')}>
+                <button type="button" onClick={() => showMode('not-applicable')}>
                   Not applicable jobs
                 </button>
               ) : null}
@@ -706,12 +732,12 @@ export function RemoteJobBoardView({
           ) : (
             <KebabMenu menuClassName="board-menu">
               {mode !== 'board' ? (
-                <button type="button" onClick={() => setMode('board')}>
+                <button type="button" onClick={() => showMode('board')}>
                   Job board
                 </button>
               ) : null}
               {mode !== 'skipped' ? (
-                <button type="button" onClick={() => setMode('skipped')}>
+                <button type="button" onClick={() => showMode('skipped')}>
                   Skipped roles
                 </button>
               ) : null}
@@ -769,7 +795,7 @@ export function RemoteJobBoardView({
           )
         ) : reviewMode ? (
           sortedNotApplicable.length === 0 ? (
-            <p className="watch-invite">No hidden roles to review right now.</p>
+            <p className="watch-invite">No not-applicable roles to review right now.</p>
           ) : (
             <article className="watch-group board-feed">
               {sortedNotApplicable.map((listing) => (

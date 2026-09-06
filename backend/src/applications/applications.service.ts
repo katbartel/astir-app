@@ -65,7 +65,8 @@ function normalizeStageId(stageId?: string | null, status?: string | null): stri
     raw === 'offer' ||
     raw === 'hired' ||
     raw === 'closed' ||
-    raw.startsWith('progress-')
+    raw.startsWith('progress-') ||
+    raw.startsWith('closed-')
   ) {
     return raw
   }

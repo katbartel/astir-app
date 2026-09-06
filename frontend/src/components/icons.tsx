@@ -66,6 +66,34 @@ export function PlusIcon() {
   )
 }
 
+export function SkipIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M5 12h11" />
+      <path d="M12 8l4 4-4 4" />
+      <path d="M19 7v10" />
+    </svg>
+  )
+}
+
+export function ConnectionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" />
+      <circle cx="12" cy="9" r="2.4" />
+      <path d="M6.7 17.4c1.3-2.5 3.1-3.7 5.3-3.7s4 1.2 5.3 3.7" />
+    </svg>
+  )
+}
+
+export function WarningIcon() {
+  return (
+    <svg viewBox="0 -960 960 960" aria-hidden="true">
+      <path d="M109-120q-11 0-20-5.5T75-140q-5-9-5.5-19.5T75-180l370-640q6-10 15.5-15t19.5-5q10 0 19.5 5t15.5 15l370 640q6 10 5.5 20.5T885-140q-5 9-14 14.5t-20 5.5H109Zm399.5-131.5Q520-263 520-280t-11.5-28.5Q497-320 480-320t-28.5 11.5Q440-297 440-280t11.5 28.5Q463-240 480-240t28.5-11.5Zm0-120Q520-383 520-400v-120q0-17-11.5-28.5T480-560q-17 0-28.5 11.5T440-520v120q0 17 11.5 28.5T480-360q17 0 28.5-11.5Z" />
+    </svg>
+  )
+}
+
 export function MinusIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">

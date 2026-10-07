@@ -27,7 +27,7 @@ const LOCATION_CONTEXT_TERMS = [
   'time zone',
   'choose where you live',
   'work from',
-]
+].map(normalizeForIdentity)
 
 const REVIEW_CONTEXT_TERMS = [
   'contractor',
@@ -51,7 +51,7 @@ const REVIEW_CONTEXT_TERMS = [
   'european time zone',
   'europe hours',
   'emea hours',
-]
+].map(normalizeForIdentity)
 
 const FULLY_REMOTE_TERMS = [
   'fully remote',
@@ -62,7 +62,7 @@ const FULLY_REMOTE_TERMS = [
   'distributed team',
   'distributed company',
   'location independent',
-]
+].map(normalizeForIdentity)
 
 const OCCASIONAL_PRESENCE_TERMS = [
   'annual offsite',
@@ -74,7 +74,7 @@ const OCCASIONAL_PRESENCE_TERMS = [
   'team retreat',
   'team gathering',
   'company gathering',
-]
+].map(normalizeForIdentity)
 
 const PRESENCE_ACTION_TERMS = [
   'attend',
@@ -87,7 +87,7 @@ const PRESENCE_ACTION_TERMS = [
   'on-site',
   'presence',
   'travel',
-]
+].map(normalizeForIdentity)
 
 const HARD_PRESENCE_PATTERNS = [
   /\bhybrid\b/,
@@ -100,7 +100,7 @@ const HARD_PRESENCE_PATTERNS = [
 ]
 
 function hasAny(haystack: string, terms: string[]): boolean {
-  return terms.some((term) => haystack.includes(normalizeForIdentity(term)))
+  return terms.some((term) => haystack.includes(term))
 }
 
 function sentences(text: string): string[] {
@@ -140,23 +140,24 @@ export function analyzeRemoteDescription(descriptionText: string | null | undefi
   }
 
   const normalized = normalizeForIdentity(descriptionText)
+  const parts = sentences(descriptionText).map((text) => ({
+    text,
+    normalized: normalizeForIdentity(text),
+  }))
+  const lowercase = descriptionText.toLowerCase()
   const hardPresenceRequired = HARD_PRESENCE_PATTERNS.some((pattern) =>
-    pattern.test(descriptionText.toLowerCase()),
+    pattern.test(lowercase),
   )
-  const occasionalPresence = sentences(descriptionText)
-    .map((sentence) => normalizeForIdentity(sentence))
-    .some(isOccasionalPresenceSentence)
+  const occasionalPresence = parts.some((part) => isOccasionalPresenceSentence(part.normalized))
   const fullyRemote = hasAny(normalized, FULLY_REMOTE_TERMS)
-  const locationClues = sentences(descriptionText)
-    .filter((sentence) => {
-      const normalizedSentence = normalizeForIdentity(sentence)
+  const locationClues = parts
+    .filter(({ normalized: normalizedSentence }) => {
       return (
         hasAny(normalizedSentence, LOCATION_CONTEXT_TERMS) &&
         !isPerkTravelSentence(normalizedSentence)
       )
     })
-    .map((sentence) => {
-      const normalizedSentence = normalizeForIdentity(sentence)
+    .map(({ text: sentence, normalized: normalizedSentence }) => {
       if (normalizedSentence.includes('anywhere in europe')) return 'Europe'
       if (
         normalizedSentence.includes('work from anywhere') ||
@@ -167,9 +168,9 @@ export function analyzeRemoteDescription(descriptionText: string | null | undefi
       }
       return sentence
     })
-  const reviewClues = sentences(descriptionText).filter((sentence) =>
-    hasAny(normalizeForIdentity(sentence), REVIEW_CONTEXT_TERMS),
-  )
+  const reviewClues = parts
+    .filter((part) => hasAny(part.normalized, REVIEW_CONTEXT_TERMS))
+    .map((part) => part.text)
 
   return {
     locationClues,

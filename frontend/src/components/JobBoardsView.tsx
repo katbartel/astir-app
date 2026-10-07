@@ -8,7 +8,7 @@ import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
-import { OpenIcon, PlusIcon, SkipIcon } from './icons'
+import { OpenIcon, PlusIcon, MinusIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
 
@@ -137,7 +137,7 @@ function ListingRow({
           data-tooltip="Skip"
           onClick={() => onSetStatus(listing, 'irrelevant')}
         >
-          <SkipIcon />
+          <MinusIcon />
         </button>
       ) : (
         <KebabMenu menuClassName="board-menu">

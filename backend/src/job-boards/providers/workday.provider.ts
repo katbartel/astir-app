@@ -67,7 +67,20 @@ function locationFromWorkday(text: string | undefined): string | null {
 }
 
 function workModeFromWorkday(text: string | null): WorkMode | null {
-  return text?.toLowerCase().includes('remote') ? 'Remote' : null
+  const normalized = text?.toLowerCase()
+  if (!normalized) {
+    return null
+  }
+  if (normalized.includes('remote')) {
+    return 'Remote'
+  }
+  if (normalized.includes('hybrid')) {
+    return 'Hybrid'
+  }
+  if (normalized.includes('on-site') || normalized.includes('onsite') || normalized.includes('on site')) {
+    return 'On-Site'
+  }
+  return null
 }
 
 function detailLocations(detail: WorkdayPostingDetail | null): string[] {
@@ -76,10 +89,6 @@ function detailLocations(detail: WorkdayPostingDetail | null): string[] {
     info?.location,
     ...(info?.additionalLocations ?? []),
   ].map((location) => location?.trim()).filter((location): location is string => Boolean(location))
-}
-
-function shouldFetchDetail(posting: WorkdayPosting): boolean {
-  return !locationFromWorkday(posting.locationsText)
 }
 
 function startOfUtcDay(date: Date): Date {
@@ -208,10 +217,13 @@ export class WorkdayProvider implements AtsProvider {
       if (total === null && typeof payload.total === 'number' && payload.total > 0) {
         total = payload.total
       }
-      for (const posting of payload.jobPostings) {
-        const detail = posting.externalPath && shouldFetchDetail(posting)
-          ? await this.queryJobDetail(parsed, posting.externalPath)
-          : null
+      const details = await Promise.all(
+        payload.jobPostings.map((posting) =>
+          posting.externalPath ? this.queryJobDetail(parsed, posting.externalPath) : Promise.resolve(null),
+        ),
+      )
+      for (const [index, posting] of payload.jobPostings.entries()) {
+        const detail = details[index] ?? null
         const normalized = this.normalize(posting, source, detail)
         if (normalized) {
           jobs.push(normalized)

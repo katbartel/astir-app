@@ -18,7 +18,7 @@ import {
   OpenIcon,
   PlusIcon,
   SearchIcon,
-  SkipIcon,
+  MinusIcon,
 } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
@@ -199,7 +199,6 @@ function ListingSection({
   emptyCopy,
   onLog,
   onSetStatus,
-  showDiagnostics,
   showHeader = true,
 }: {
   title: string
@@ -208,7 +207,6 @@ function ListingSection({
   emptyCopy?: string
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
-  showDiagnostics: boolean
   showHeader?: boolean
 }) {
   return (
@@ -229,7 +227,6 @@ function ListingSection({
               key={listing.id}
               onLog={onLog}
               onSetStatus={onSetStatus}
-              showDiagnostics={showDiagnostics}
             />
           ))}
         </article>
@@ -244,12 +241,10 @@ function SearchResults({
   listings,
   onLog,
   onSetStatus,
-  showDiagnostics,
 }: {
   listings: Listing[]
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
-  showDiagnostics: boolean
 }) {
   if (listings.length === 0) {
     return <p className="board-empty">No matching roles right now.</p>
@@ -262,59 +257,9 @@ function SearchResults({
           key={listing.id}
           onLog={onLog}
           onSetStatus={onSetStatus}
-          showDiagnostics={showDiagnostics}
         />
       ))}
     </article>
-  )
-}
-
-function readableReason(reason: string): string {
-  if (reason.startsWith('country:')) return reason.replace('country:', 'Country:')
-  if (reason.startsWith('cluster:')) return reason.replace('cluster:', 'Region cluster:')
-  if (reason.startsWith('no location stated')) return 'No location stated, assuming Europe'
-  if (reason.startsWith('also names non-European location')) {
-    return reason.replace('also names non-European location(s):', 'Also names non-European:')
-  }
-  const labels: Record<string, string> = {
-    'worldwide/global': 'Worldwide or global wording',
-    'Europe/EMEA': 'Europe or EMEA wording',
-    'EU': 'EU wording',
-    'EEA/Schengen': 'EEA or Schengen wording',
-    'location present but not recognized': 'Location not recognized',
-    'description missing': 'Description missing',
-    'description mentions regular presence': 'Description mentions regular presence',
-    'description mentions occasional presence': 'Description mentions occasional presence',
-    'description mentions fully remote': 'Description mentions fully remote',
-    'description location clues': 'Description has location clues',
-    'description review clues': 'Description has review clues',
-    'regular presence required': 'Regular presence required',
-    'restricted outside Europe': 'Restricted outside Europe',
-    'outside selected countries': 'Outside selected countries',
-    'non-European tag with review clue': 'Non-European tag with review clue',
-    'company remote policy marked uncertain': 'Company remote policy marked uncertain',
-  }
-  return labels[reason] ?? reason
-}
-
-function AdminDiagnosticsMenuSection({
-  listing,
-  reviewOnly,
-}: {
-  listing: Listing
-  reviewOnly: boolean
-}) {
-  if (!listing.reasonCodes.length) return null
-  const uniqueReasons = [...new Set(listing.reasonCodes.map(readableReason))]
-  return (
-    <div className="role-qa-note" role="note" aria-label="QA notes">
-      <span className="role-qa-title">{reviewOnly ? 'Not applicable QA' : 'QA notes'}</span>
-      {uniqueReasons.map((reason) => (
-        <span className="role-qa-reason" key={reason}>
-          {reason}
-        </span>
-      ))}
-    </div>
   )
 }
 
@@ -323,17 +268,14 @@ function ListingRow({
   onLog,
   onSetStatus,
   reviewOnly = false,
-  showDiagnostics = false,
 }: {
   listing: Listing
   onLog: (listing: Listing) => void
   onSetStatus: (listing: Listing, status: ListingStatus) => void
   reviewOnly?: boolean
-  showDiagnostics?: boolean
 }) {
   const isIrrelevant = listing.status === 'irrelevant'
   const opensFoldedPosting = (listing.locationFit.details?.length ?? 0) > 1
-  const hasDiagnostics = showDiagnostics && listing.reasonCodes.length > 0
   return (
     <div className="watch-role">
       <div className="role-main">
@@ -386,10 +328,10 @@ function ListingRow({
               data-tooltip="Skip"
               onClick={() => onSetStatus(listing, 'irrelevant')}
             >
-              <SkipIcon />
+              <MinusIcon />
             </button>
           ) : null}
-          {isIrrelevant || hasDiagnostics ? (
+          {isIrrelevant ? (
             <KebabMenu menuClassName="board-menu">
               {isIrrelevant ? (
               <button
@@ -400,16 +342,9 @@ function ListingRow({
                 Show again
               </button>
               ) : null}
-              {hasDiagnostics ? (
-                <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
-              ) : null}
             </KebabMenu>
           ) : null}
         </>
-      ) : hasDiagnostics ? (
-        <KebabMenu menuClassName="board-menu">
-          <AdminDiagnosticsMenuSection listing={listing} reviewOnly={reviewOnly} />
-        </KebabMenu>
       ) : null}
     </div>
   )
@@ -599,7 +534,6 @@ export function RemoteJobBoardView({
     () => sortListings(notApplicableListings ?? []),
     [notApplicableListings],
   )
-  const showQaNotes = user.email === 'bartel.katarzyna@gmail.com'
   const relevant = useMemo(() => sorted.filter((listing) => listing.status !== 'irrelevant'), [sorted])
   const irrelevant = useMemo(() => sorted.filter((listing) => listing.status === 'irrelevant'), [sorted])
   const searchQuery = normalizeSearch(search.trim())
@@ -788,7 +722,6 @@ export function RemoteJobBoardView({
                   key={listing.id}
                   onLog={openLog}
                   onSetStatus={setListingStatus}
-                  showDiagnostics={showQaNotes}
                 />
               ))}
             </article>
@@ -805,7 +738,6 @@ export function RemoteJobBoardView({
                   onLog={openLog}
                   onSetStatus={setListingStatus}
                   reviewOnly
-                  showDiagnostics={showQaNotes}
                 />
               ))}
             </article>
@@ -822,7 +754,6 @@ export function RemoteJobBoardView({
                 listings={searchResults}
                 onLog={openLog}
                 onSetStatus={setListingStatus}
-                showDiagnostics={showQaNotes}
               />
             ) : (
               <>
@@ -833,7 +764,6 @@ export function RemoteJobBoardView({
                     listings={mostRecent}
                     onLog={openLog}
                     onSetStatus={setListingStatus}
-                    showDiagnostics={showQaNotes}
                     showHeader={false}
                   />
                 ) : null}
@@ -861,7 +791,6 @@ export function RemoteJobBoardView({
                             key={listing.id}
                             onLog={openLog}
                             onSetStatus={setListingStatus}
-                            showDiagnostics={showQaNotes}
                           />
                         ))}
                       </article>

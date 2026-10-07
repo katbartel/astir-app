@@ -25,6 +25,65 @@ type MatchingPreferences = Pick<
   'keywords' | 'excludedKeywords' | 'workModes' | 'hiringRegions'
 >
 
+const EXACT_ROLE_PREFIXES = [
+  'head of',
+  'director of',
+  'vp of',
+  'vice president of',
+]
+
+const ROLE_SUFFIX_CONTEXT = new Set([
+  'remote',
+  'hybrid',
+  'onsite',
+  'on',
+  'site',
+  'office',
+  'emea',
+  'europe',
+  'eu',
+  'uk',
+  'global',
+  'worldwide',
+])
+
+function titleTokens(value: string): string[] {
+  return normalizeForIdentity(value).split(' ').filter(Boolean)
+}
+
+function titleContainsPhrase(title: string, phrase: string): boolean {
+  return ` ${title} `.includes(` ${phrase} `)
+}
+
+function isExactRoleKeyword(normalizedKeyword: string): boolean {
+  return EXACT_ROLE_PREFIXES.some(
+    (prefix) => normalizedKeyword === prefix || normalizedKeyword.startsWith(`${prefix} `),
+  )
+}
+
+function matchesKeywordTitle(normalizedTitle: string, normalizedKeyword: string): boolean {
+  if (!titleContainsPhrase(normalizedTitle, normalizedKeyword)) {
+    return false
+  }
+  if (!isExactRoleKeyword(normalizedKeyword)) {
+    return true
+  }
+
+  const title = titleTokens(normalizedTitle)
+  const keyword = titleTokens(normalizedKeyword)
+  for (let index = 0; index <= title.length - keyword.length; index += 1) {
+    const sliceMatches = keyword.every((token, offset) => title[index + offset] === token)
+    if (!sliceMatches) {
+      continue
+    }
+    const nextToken = title[index + keyword.length]
+    if (!nextToken || ROLE_SUFFIX_CONTEXT.has(nextToken)) {
+      return true
+    }
+  }
+  return false
+}
+
 // Ingestion stores every job from every source — the superset across all
 // users. This service owns the user-specific half: which listings belong to
 // whom. Relations are recomputed from preferences at any time, so preference
@@ -57,7 +116,7 @@ export class JobMatchingService {
         continue
       }
       const matchedKeywords = keywords
-        .filter((entry) => title.includes(` ${entry.normalized} `))
+        .filter((entry) => matchesKeywordTitle(title, entry.normalized))
         .map((entry) => entry.keyword)
       if (!matchedKeywords.length) {
         continue

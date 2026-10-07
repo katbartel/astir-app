@@ -148,10 +148,36 @@ export class RemoteJobBoardService {
       remoteCompanies.map((company) => [company.jobSourceId, company.remotePolicyStatus]),
     )
 
-    const [listings, preferences, appliedListingIds, irrelevantIds] =
+    // Match lightweight fields first so unrelated descriptions and source
+    // relations never need to leave the database.
+    const [matchableListings, preferences, appliedListingIds, irrelevantIds] =
       await Promise.all([
         this.prisma.jobListing.findMany({
+          where: { sources: { some: { jobSourceId: { in: sourceIds } } } },
+          select: { id: true, title: true, location: true, locations: true, workMode: true },
+        }),
+        this.matchingPreferences(userId),
+        this.appliedListingIds(userId),
+        this.irrelevantListingIds(userId),
+      ])
+    const queryLoadedAt = Date.now()
+
+    // Keyword + region matching, but pin work mode to remote so the board is
+    // genuinely remote even for a user who normally filters to onsite/hybrid.
+    const matches = new Map(
+      this.matching
+        .computeMatches(
+          { ...preferences, hiringRegions: [] },
+          matchableListings.map(toRemoteBoardMatchableListing),
+        )
+        .map((match) => [match.listingId, match.matchedKeywords]),
+    )
+    const matchedAt = Date.now()
+
+    const listings = matches.size
+      ? await this.prisma.jobListing.findMany({
           where: {
+            id: { in: [...matches.keys()] },
             sources: { some: { jobSourceId: { in: sourceIds } } },
           },
           select: {
@@ -176,24 +202,10 @@ export class RemoteJobBoardService {
               },
             },
           },
-        }),
-        this.matchingPreferences(userId),
-        this.appliedListingIds(userId),
-        this.irrelevantListingIds(userId),
-      ])
-    const queryLoadedAt = Date.now()
-
-    // Keyword + region matching, but pin work mode to remote so the board is
-    // genuinely remote even for a user who normally filters to onsite/hybrid.
-    const matches = new Map(
-      this.matching
-        .computeMatches(
-          { ...preferences, hiringRegions: [] },
-          listings.map(toRemoteBoardMatchableListing),
-        )
-        .map((match) => [match.listingId, match.matchedKeywords]),
-    )
-    const matchedAt = Date.now()
+        })
+      : []
+    const detailsLoadedAt = Date.now()
+    const remoteSourceIds = new Set(sourceIds)
 
     // Candidate postings, before folding: matched and classified as plausible
     // for the board. Watched companies still stay visible here. Applied ones
@@ -216,10 +228,10 @@ export class RemoteJobBoardService {
         id: listing.id,
         title: listing.title,
         companyName: listing.companyName,
-        url: preferredRemoteBoardUrl(listing.url, listing.sources, new Set(sourceIds)),
+        url: preferredRemoteBoardUrl(listing.url, listing.sources, remoteSourceIds),
         location: listing.location,
         locations: listing.locations,
-        workMode: listing.workMode ?? 'Remote',
+        workMode: listing.workMode,
         contentLanguage: listing.contentLanguage,
         descriptionText: listing.descriptionText,
         remotePolicyStatus:
@@ -229,7 +241,7 @@ export class RemoteJobBoardService {
         postedAt: listing.postedAt,
         firstSeenAt: listing.firstSeenAt,
         matchedKeywords: matches.get(listing.id) ?? [],
-          providers: [...new Set(listing.sources.map((source) => source.provider))],
+        providers: [...new Set(listing.sources.map((source) => source.provider))],
       }))
     const classifiedAt = Date.now()
 
@@ -267,8 +279,10 @@ export class RemoteJobBoardService {
     this.logger.log(
       `Remote board ${visible ? 'visible' : 'hidden'} list finished in ${finishedAt - startedAt}ms ` +
         `(sources ${sourcesLoadedAt - startedAt}ms, query ${queryLoadedAt - sourcesLoadedAt}ms, ` +
-        `matching ${matchedAt - queryLoadedAt}ms, classification ${classifiedAt - matchedAt}ms, ` +
-        `folding ${finishedAt - classifiedAt}ms, listings ${listings.length}, candidates ${candidates.length}, ` +
+        `matching ${matchedAt - queryLoadedAt}ms, details ${detailsLoadedAt - matchedAt}ms, ` +
+        `classification ${classifiedAt - detailsLoadedAt}ms, ` +
+        `folding ${finishedAt - classifiedAt}ms, listings ${matchableListings.length}, ` +
+        `details ${listings.length}, candidates ${candidates.length}, ` +
         `returned ${result.length})`,
     )
     return result

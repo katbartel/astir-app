@@ -118,6 +118,16 @@ describe('JobMatchingService.computeMatches', () => {
     ).toEqual([])
   })
 
+  it('treats Head of role keywords as exact roles, not specialization prefixes', () => {
+    const headPreferences = { ...preferences, keywords: ['Head of Product'] }
+    expect(
+      service.computeMatches(headPreferences, [{ ...listing, title: 'Head of Product Analytics' }]),
+    ).toEqual([])
+    expect(
+      service.computeMatches(headPreferences, [{ ...listing, title: 'Head of Product - Remote' }]),
+    ).toEqual([{ listingId: 'l1', matchedKeywords: ['Head of Product'] }])
+  })
+
   it('drops a keyword hit that also matches an excluded phrase (exclusion wins)', () => {
     const excluding = { ...preferences, excludedKeywords: ['Principal Product Manager'] }
     // Plain "Senior Product Manager, Growth" still matches...

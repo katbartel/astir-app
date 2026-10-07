@@ -838,10 +838,66 @@ describe('WorkdayProvider.normalize', () => {
     })
   })
 
+  it('uses Workday detail remote type when the list row has a location', () => {
+    expect(
+      provider.normalize(
+        {
+          title: 'Principal Product Manager',
+          externalPath: '/job/Pleasanton/Principal-Product-Manager_001658',
+          locationsText: 'Pleasanton',
+          postedOn: 'Posted 2 Days Ago',
+          bulletFields: ['001658'],
+        },
+        { externalId: 'blackline:wd108:BlackLineCareers', companyName: 'BlackLine' },
+        {
+          jobPostingInfo: {
+            location: 'Pleasanton',
+            postedOn: 'Posted 2 Days Ago',
+            jobReqId: '001658',
+            remoteType: 'Hybrid',
+          },
+        },
+      ),
+    ).toMatchObject({
+      externalId: '001658',
+      location: 'Pleasanton',
+      locations: ['Pleasanton'],
+      workMode: 'Hybrid',
+    })
+  })
+
   it('keeps paginating when Workday only reports total on the first page', async () => {
-    const fetchMock = jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValueOnce({
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (!url.endsWith('/jobs')) {
+        return {
+          ok: true,
+          json: async () => ({
+            jobPostingInfo: {
+              location: 'London',
+              remoteType: 'Remote',
+            },
+          }),
+        } as Response
+      }
+      const body = JSON.parse(String(init?.body ?? '{}')) as { offset?: number }
+      if (body.offset === 20) {
+        return {
+          ok: true,
+          json: async () => ({
+            total: 0,
+            jobPostings: [
+              {
+                title: 'Role 20',
+                externalPath: '/job/London/Role-20_JR20',
+                locationsText: 'London',
+                bulletFields: ['JR20'],
+              },
+            ],
+          }),
+        } as Response
+      }
+      return {
         ok: true,
         json: async () => ({
           total: 21,
@@ -852,21 +908,8 @@ describe('WorkdayProvider.normalize', () => {
             bulletFields: [`JR${index}`],
           })),
         }),
-      } as Response)
-      .mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          total: 0,
-          jobPostings: [
-            {
-              title: 'Role 20',
-              externalPath: '/job/London/Role-20_JR20',
-              locationsText: 'London',
-              bulletFields: ['JR20'],
-            },
-          ],
-        }),
-      } as Response)
+      } as Response
+    })
 
     await expect(
       provider.fetchListings({
@@ -874,7 +917,7 @@ describe('WorkdayProvider.normalize', () => {
         companyName: 'BlackLine',
       }),
     ).resolves.toHaveLength(21)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock).toHaveBeenCalledTimes(23)
     fetchMock.mockRestore()
   })
 })

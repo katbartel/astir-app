@@ -1,4 +1,7 @@
+import { PrismaService } from '../database/prisma.service'
+import { JobMatchingService } from '../job-boards/job-matching.service'
 import {
+  RemoteJobBoardService,
   applyRemotePolicyStatus,
   preferredRemoteBoardUrl,
   toRemoteBoardMatchableListing,
@@ -369,5 +372,121 @@ describe('classifyRemoteBoardListing', () => {
       visible: true,
       type: { label: 'Remote, occasional presence', uncertain: false },
     })
+  })
+})
+
+describe('RemoteJobBoardService detail loading', () => {
+  const now = new Date('2026-09-14T12:00:00Z')
+  type TestListing = {
+    id: string
+    title: string
+    descriptionText: string
+    companyName: string
+    location: string | null
+    locations: string[]
+    workMode: string | null
+    contentLanguage: string | null
+    url: string
+    postedAt: Date
+    firstSeenAt: Date
+    sources: Array<{
+      provider: string
+      jobSourceId: string
+      url: string
+      lastSeenAt: Date
+      jobSource: { lastSyncedAt: Date }
+    }>
+  }
+
+  function listing(id: string, title = 'Product Manager', descriptionText = 'Fully remote.'): TestListing {
+    return {
+      id, title, descriptionText, companyName: id, location: 'Europe', locations: ['Europe'],
+      workMode: 'Remote', contentLanguage: null, url: `https://example.com/${id}`,
+      postedAt: now, firstSeenAt: now,
+      sources: [{ provider: 'ashby', jobSourceId: 'curated', url: `https://example.com/${id}`,
+        lastSeenAt: now, jobSource: { lastSyncedAt: now } }],
+    }
+  }
+
+  function setup(
+    rows: ReturnType<typeof listing>[],
+    keywords = ['product manager'],
+    hiringRegions = ['Poland'],
+  ) {
+    const findMany = jest.fn(async (query) => {
+      const ids: string[] | undefined = query.where.id?.in
+      const selected = ids ? rows.filter((row) => ids.includes(row.id)) : rows
+      return selected.map((row) => Object.fromEntries(
+        Object.entries(row).filter(([key]) => query.select[key]),
+      ))
+    })
+    const prisma = {
+      jobListing: { findMany },
+      remoteCompany: { findMany: jest.fn().mockResolvedValue([
+        { jobSourceId: 'curated', remotePolicyStatus: 'verified' },
+      ]) },
+      watchlistPreferences: { findUnique: jest.fn().mockResolvedValue({
+        keywords, excludedKeywords: ['principal'], hiringRegions,
+      }) },
+      application: { findMany: jest.fn().mockResolvedValue([]) },
+      userJobListing: { findMany: jest.fn().mockResolvedValue([{ listingId: 'skipped' }]) },
+    } as unknown as PrismaService
+    return { service: new RemoteJobBoardService(prisma, new JobMatchingService(prisma)), findMany }
+  }
+
+  it('loads descriptions only after exact keyword matching, preserving exclusions and skipped status', async () => {
+    const { service, findMany } = setup([
+      listing('skipped', 'Próduct-Manager'),
+      listing('excluded', 'Principal Product Manager'),
+      listing('unrelated', 'Engineer'),
+    ])
+    const result = await service.listForUser('user')
+    expect(result).toEqual([expect.objectContaining({ id: 'skipped', status: 'irrelevant' })])
+    expect(findMany.mock.calls[0][0].select.descriptionText).toBeUndefined()
+    expect(findMany.mock.calls[0][0].select.sources).toBeUndefined()
+    expect(findMany.mock.calls[1][0].where.id.in).toEqual(['skipped'])
+  })
+
+  it('still uses descriptions to separate visible and admin review roles', async () => {
+    const { service } = setup([
+      listing('remote'),
+      listing('office', 'Product Manager', 'This role requires 2 days per week in the office.'),
+    ])
+    expect((await service.listForUser('user')).map((row) => row.id)).toEqual(['remote'])
+    expect((await service.listNotApplicableForUser('user')).map((row) => row.id)).toEqual(['office'])
+  })
+
+  it('keeps missing work mode uncertain instead of defaulting to fully remote', async () => {
+    const { service } = setup([
+      { ...listing('unknown'), workMode: null, descriptionText: '' },
+    ])
+
+    expect(await service.listForUser('user')).toEqual([
+      expect.objectContaining({
+        id: 'unknown',
+        workMode: null,
+        typeFit: { label: 'Uncertain', uncertain: true },
+      }),
+    ])
+  })
+
+  it('keeps hybrid Workday rows off the visible board', async () => {
+    const { service } = setup([
+      {
+        ...listing('blackline'),
+        location: 'Pleasanton',
+        locations: ['Pleasanton'],
+        workMode: 'Hybrid',
+        descriptionText: '',
+      },
+    ], ['product manager'], [])
+
+    expect(await service.listForUser('user')).toEqual([])
+  })
+
+  it('does not load details when no titles match', async () => {
+    const { service, findMany } = setup([listing('unrelated', 'Engineer')])
+    expect(await service.listForUser('user')).toEqual([])
+    expect(findMany).toHaveBeenCalledTimes(1)
   })
 })

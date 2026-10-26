@@ -5,13 +5,14 @@ import {
   HttpCode,
   Param,
   Patch,
+  Query,
   UseGuards,
 } from '@nestjs/common'
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator'
 import { AdminGuard } from '../auth/admin.guard'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
 import { UpdateListingStatusDto } from '../job-boards/dto/update-listing.dto'
-import { RemoteJobBoardListing, RemoteJobBoardService } from './remote-job-board.service'
+import { RemoteJobBoardListing, RemoteJobBoardPage, RemoteJobBoardService } from './remote-job-board.service'
 
 // Visible to every authenticated user (unlike the admin-only curation
 // endpoints): the Remote Job Board is a normal feed, just sourced from the
@@ -22,8 +23,11 @@ export class RemoteJobBoardController {
   constructor(private readonly remoteJobBoard: RemoteJobBoardService) {}
 
   @Get('listings')
-  getListings(@CurrentUser() authUser: AuthenticatedUser): Promise<RemoteJobBoardListing[]> {
-    return this.remoteJobBoard.listForUser(authUser.userId)
+  getListings(
+    @CurrentUser() authUser: AuthenticatedUser,
+    @Query('cursor') cursor?: string,
+  ): Promise<RemoteJobBoardPage> {
+    return this.remoteJobBoard.listPageForUser(authUser.userId, cursor)
   }
 
   @UseGuards(JwtAuthGuard, AdminGuard)

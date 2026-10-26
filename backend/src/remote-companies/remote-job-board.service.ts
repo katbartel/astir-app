@@ -8,6 +8,9 @@ import { DEFAULT_WATCHLIST_PREFERENCES } from '../users/watchlist-defaults'
 import { classifyRemoteBoardListing } from './remote-board-classification'
 
 const UNDATED_AGE_FLOOR_MS = 48 * 60 * 60 * 1000
+const MAX_LISTING_AGE_DAYS = 90
+const REMOTE_BOARD_PAGE_SIZE = 20
+const FEED_CACHE_TTL_MS = 30 * 1000
 
 // Like a JobBoardListing, but carries every location the folded opening is
 // available in (the same role posted across regions is bundled into one row).
@@ -37,6 +40,16 @@ export type RemoteJobBoardListing = {
     uncertain: boolean
   }
   reasonCodes: string[]
+}
+
+export type RemoteJobBoardPage = {
+  listings: RemoteJobBoardListing[]
+  nextCursor: string | null
+}
+
+type CachedFeed = {
+  expiresAt: number
+  listings: RemoteJobBoardListing[]
 }
 
 type ListingSourceFreshness = {
@@ -116,6 +129,8 @@ export function toRemoteBoardMatchableListing(
 @Injectable()
 export class RemoteJobBoardService {
   private readonly logger = new Logger(RemoteJobBoardService.name)
+  private readonly feedCache = new Map<string, CachedFeed>()
+  private readonly pendingFeeds = new Map<string, Promise<RemoteJobBoardListing[]>>()
 
   constructor(
     private readonly prisma: PrismaService,
@@ -123,11 +138,22 @@ export class RemoteJobBoardService {
   ) {}
 
   async listForUser(userId: string): Promise<RemoteJobBoardListing[]> {
-    return this.listForUserByClassification(userId, true)
+    return this.cachedFeedForUser(userId, true)
   }
 
   async listNotApplicableForUser(userId: string): Promise<RemoteJobBoardListing[]> {
-    return this.listForUserByClassification(userId, false)
+    return this.cachedFeedForUser(userId, false)
+  }
+
+  async listPageForUser(userId: string, cursor?: string): Promise<RemoteJobBoardPage> {
+    const offset = this.pageOffset(cursor)
+    const listings = await this.cachedFeedForUser(userId, true)
+    const page = listings.slice(offset, offset + REMOTE_BOARD_PAGE_SIZE)
+    const nextOffset = offset + page.length
+    return {
+      listings: page,
+      nextCursor: nextOffset < listings.length ? String(nextOffset) : null,
+    }
   }
 
   private async listForUserByClassification(
@@ -153,7 +179,10 @@ export class RemoteJobBoardService {
     const [matchableListings, preferences, appliedListingIds, irrelevantIds] =
       await Promise.all([
         this.prisma.jobListing.findMany({
-          where: { sources: { some: { jobSourceId: { in: sourceIds } } } },
+          where: {
+            sources: { some: { jobSourceId: { in: sourceIds } } },
+            OR: [{ postedAt: null }, { postedAt: { gte: this.listingAgeCutoff() } }],
+          },
           select: { id: true, title: true, location: true, locations: true, workMode: true },
         }),
         this.matchingPreferences(userId),
@@ -179,6 +208,7 @@ export class RemoteJobBoardService {
           where: {
             id: { in: [...matches.keys()] },
             sources: { some: { jobSourceId: { in: sourceIds } } },
+            OR: [{ postedAt: null }, { postedAt: { gte: this.listingAgeCutoff() } }],
           },
           select: {
             id: true,
@@ -311,6 +341,52 @@ export class RemoteJobBoardService {
       create: { userId, listingId, status },
       update: { status },
     })
+    this.clearCachedFeeds(userId)
+  }
+
+  private async cachedFeedForUser(
+    userId: string,
+    visible: boolean,
+  ): Promise<RemoteJobBoardListing[]> {
+    const key = `${userId}:${visible ? 'visible' : 'hidden'}`
+    const now = Date.now()
+    const cached = this.feedCache.get(key)
+    if (cached && cached.expiresAt > now) {
+      return cached.listings
+    }
+
+    const pending = this.pendingFeeds.get(key)
+    if (pending) {
+      return pending
+    }
+
+    const request = this.listForUserByClassification(userId, visible)
+      .then((listings) => {
+        this.feedCache.set(key, { listings, expiresAt: Date.now() + FEED_CACHE_TTL_MS })
+        return listings
+      })
+      .finally(() => {
+        this.pendingFeeds.delete(key)
+      })
+    this.pendingFeeds.set(key, request)
+    return request
+  }
+
+  private clearCachedFeeds(userId: string): void {
+    this.feedCache.delete(`${userId}:visible`)
+    this.feedCache.delete(`${userId}:hidden`)
+  }
+
+  private listingAgeCutoff(): Date {
+    return new Date(Date.now() - MAX_LISTING_AGE_DAYS * 24 * 60 * 60 * 1000)
+  }
+
+  private pageOffset(cursor: string | undefined): number {
+    if (!cursor || !/^\d+$/.test(cursor)) {
+      return 0
+    }
+    const offset = Number(cursor)
+    return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0
   }
 
   private effectiveAgeMs(listing: RemoteJobBoardListing): number {

@@ -160,6 +160,7 @@ function isGenericGlobalClue(clue: string): boolean {
   const normalized = normalizeForIdentity(clue)
   return (
     normalized === 'anywhere' ||
+    normalized.includes('global') ||
     normalized.includes('work from anywhere') ||
     normalized.includes('work from wherever') ||
     normalized.includes('choose where you live') ||

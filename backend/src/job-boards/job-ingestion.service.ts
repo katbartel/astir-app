@@ -205,6 +205,7 @@ export class JobIngestionService implements OnApplicationBootstrap {
             workMode: existing.workMode ?? normalizedJob.workMode,
             postedAt: existing.postedAt ?? normalizedJob.postedAt,
             contentLanguage: existing.contentLanguage ?? normalizedJob.contentLanguage ?? null,
+            url: refreshingOnlyKnownSource ? normalizedJob.url : existing.url,
             descriptionText: description.text ?? existing.descriptionText,
             descriptionHash: description.hash ?? existing.descriptionHash,
           },

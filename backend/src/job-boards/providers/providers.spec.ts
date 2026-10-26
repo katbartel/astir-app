@@ -105,6 +105,23 @@ describe('GreenhouseProvider.normalize', () => {
     })
   })
 
+  it('uses Customer.io hosted URLs for Customer.io Greenhouse listings', () => {
+    expect(
+      provider.normalize(
+        {
+          id: 8259617,
+          title: 'Product Manager, Agent',
+          absolute_url: 'https://job-boards.greenhouse.io/customerio/jobs/8259617',
+          location: { name: 'Americas Remote' },
+        },
+        { externalId: 'customerio', companyName: 'Customer.io' },
+      ),
+    ).toMatchObject({
+      externalId: '8259617',
+      url: 'https://customer.io/careers?gh_jid=8259617',
+    })
+  })
+
   it('drops Greenhouse jobs whose public posting redirects to the board error page', async () => {
     const fetchMock = jest
       .spyOn(global, 'fetch')
@@ -138,6 +155,34 @@ describe('GreenhouseProvider.normalize', () => {
       { externalId: '1', title: 'Live Product Manager' },
     ])
     expect(fetchMock).toHaveBeenCalledTimes(3)
+    fetchMock.mockRestore()
+  })
+
+  it('keeps Greenhouse jobs when the public posting rejects HEAD checks', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          jobs: [
+            {
+              id: 1,
+              title: 'Product Manager',
+              absolute_url: 'https://job-boards.greenhouse.io/acme/jobs/1',
+              location: { name: 'Remote - Europe' },
+            },
+          ],
+        }),
+      } as Response)
+      .mockResolvedValueOnce({
+        status: 403,
+        headers: { get: () => null },
+      } as unknown as Response)
+
+    await expect(provider.fetchListings(source)).resolves.toMatchObject([
+      { externalId: '1', title: 'Product Manager' },
+    ])
+    expect(fetchMock).toHaveBeenCalledTimes(2)
     fetchMock.mockRestore()
   })
 

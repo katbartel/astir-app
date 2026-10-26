@@ -31,6 +31,10 @@ type GreenhouseEuJob = {
   updated_at?: string
 }
 
+const CUSTOM_BOARD_JOB_URLS: Record<string, (jobId: string) => string> = {
+  customerio: (jobId) => `https://customer.io/careers?gh_jid=${encodeURIComponent(jobId)}`,
+}
+
 function workModeFromLocation(location: string | null): WorkMode | null {
   if (!location) {
     return null
@@ -76,9 +80,10 @@ function normalizeJob(
     locations: location ? [location] : [],
     workMode: workModeFromLocation(location),
     url:
-      source.externalId === 'remotecom'
+      CUSTOM_BOARD_JOB_URLS[source.externalId]?.(externalId) ??
+      (source.externalId === 'remotecom'
         ? `https://remote.com/openings/${encodeURIComponent(externalId)}`
-        : job.absolute_url,
+        : job.absolute_url),
     postedAt: parseDate(job.first_published) ?? parseDate(job.published_at) ?? parseDate(job.updated_at),
     ...(job.content ? { descriptionText: textFromHtml(job.content) } : {}),
   }
@@ -125,6 +130,9 @@ async function isLiveGreenhouseJobUrl(url: string): Promise<boolean> {
       redirect: 'manual',
       signal: AbortSignal.timeout(PROBE_TIMEOUT_MS),
     })
+    if (response.status === 403) {
+      return true
+    }
     const location = response.headers.get('location') ?? ''
     return (response.status || 200) < 400 && !location.includes('error=true')
   } catch {

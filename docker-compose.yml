@@ -48,6 +48,7 @@ services:
     working_dir: /app
     environment:
       API_TARGET: http://backend:3000
+      NEXT_PUBLIC_LOGO_DEV_TOKEN: ${NEXT_PUBLIC_LOGO_DEV_TOKEN:-}
     ports:
       - "5173:5173"
     volumes:

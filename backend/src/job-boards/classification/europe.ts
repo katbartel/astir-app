@@ -134,7 +134,7 @@ export const GLOBAL_TERMS = [
 export const NON_EUROPE_TERMS: Record<string, string[]> = {
   US: ['us', 'usa', 'united states', 'u s', 'us based', 'stateside', 'new york', 'nyc', 'san francisco', 'sf bay', 'los angeles', 'chicago', 'austin', 'seattle', 'boston', 'denver', 'atlanta'],
   CA: ['canada', 'canadian', 'toronto', 'vancouver', 'montreal', 'ottawa', 'calgary'],
-  'North America': ['north america', 'north american', 'us canada', 'us and canada'],
+  'North America': ['americas', 'north america', 'north american', 'us canada', 'us and canada'],
   LATAM: ['latam', 'latin america', 'mexico', 'brazil', 'brasil', 'argentina', 'colombia', 'chile', 'peru', 'sao paulo', 'buenos aires'],
   APAC: ['apac', 'asia pacific', 'asia', 'india', 'bangalore', 'bengaluru', 'hyderabad', 'mumbai', 'delhi', 'singapore', 'australia', 'anz', 'sydney', 'melbourne', 'new zealand', 'japan', 'tokyo', 'philippines', 'manila', 'indonesia', 'jakarta', 'vietnam', 'malaysia', 'kuala lumpur', 'china', 'shanghai', 'hong kong', 'korea', 'seoul'],
 }

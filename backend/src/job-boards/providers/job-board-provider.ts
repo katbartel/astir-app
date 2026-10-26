@@ -39,6 +39,10 @@ export interface AtsProvider extends JobBoardProvider {
   candidateHandles(companyName: string): string[]
   // True when the handle resolves to a real, non-empty board on this ATS.
   verifyHandle(handle: string): Promise<boolean>
+  // Some ATS offer custom careers domains that cannot be identified from the
+  // URL alone. A provider may inspect the public page and return a verified
+  // handle before the schema.org fallback is tried.
+  detectHandleFromCareersPage?(url: string): Promise<string | null>
 }
 
 export function isAtsProvider(provider: JobBoardProvider): provider is AtsProvider {

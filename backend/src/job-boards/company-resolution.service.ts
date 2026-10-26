@@ -20,8 +20,9 @@ export type ResolvedHandle = {
 //   1. The careers URL, if it points at a known ATS host (deterministic).
 //   2. An existing source for the same company (someone already resolved it).
 //   3. Probing candidate slugs against each ATS provider (best guess).
-//   4. Reading the careers page itself for embedded schema.org JobPosting data
-//      (the generic last resort, only when 1-3 found nothing).
+//   4. Inspecting the careers page for a verified custom-domain ATS board.
+//   5. Reading the careers page itself for embedded schema.org JobPosting data
+//      (the generic last resort, only when 1-4 found nothing).
 // Aggregator providers are never involved here — they are not company-scoped.
 //
 // Step 3 is a guess, so it demands evidence: the board must actually return a
@@ -141,9 +142,22 @@ export class CompanyResolutionService {
     }
   }
 
-  // Last resort: hand the careers URL to the generic schema.org reader, which
-  // uses the URL itself as its handle. Only reached when no real ATS matched.
+  // Custom careers domains do not disclose their ATS from the URL alone. Let
+  // providers that support page inspection prove their own marker and feed
+  // before handing the page to the generic schema.org reader.
   private async resolveByCareersPage(careersUrl: string): Promise<ResolvedHandle | null> {
+    for (const provider of this.atsProviders) {
+      if (!provider.detectHandleFromCareersPage) {
+        continue
+      }
+      const handle = await provider.detectHandleFromCareersPage(careersUrl)
+      if (handle) {
+        return { provider: provider.provider, externalId: handle }
+      }
+    }
+
+    // Last resort: hand the careers URL to the generic schema.org reader,
+    // which uses the URL itself as its handle.
     const generic = this.atsProviders.find((p) => p.provider === GENERIC_JOBPOSTING_PROVIDER)
     if (!generic || !(await generic.verifyHandle(careersUrl))) {
       return null

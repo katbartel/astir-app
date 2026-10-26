@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import type { Application } from '@/lib/applications'
@@ -11,6 +11,7 @@ import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
 import { useRememberedCount } from './applications/usePlaceholder'
+import { CompanyLogo } from './CompanyLogo'
 import {
   ChevronDownIcon,
   FlameIcon,
@@ -58,6 +59,11 @@ export type Listing = {
     uncertain: boolean
   }
   reasonCodes: string[]
+}
+
+type ListingPage = {
+  listings: Listing[]
+  nextCursor: string | null
 }
 
 const NEW_WINDOW_MS = 48 * 60 * 60 * 1000
@@ -278,6 +284,7 @@ function ListingRow({
   const opensFoldedPosting = (listing.locationFit.details?.length ?? 0) > 1
   return (
     <div className="watch-role">
+      <CompanyLogo companyName={listing.companyName} />
       <div className="role-main">
         <div className="role-title-line">
           <span className="role-name" title={listing.title}>
@@ -361,6 +368,7 @@ function ListingRowPlaceholder({ index }: { index: number }) {
   const [title, company, location, type] = PLACEHOLDER_WIDTHS[index % PLACEHOLDER_WIDTHS.length]
   return (
     <div className="watch-role board-placeholder-row" aria-hidden="true">
+      <span className="company-logo board-placeholder-logo" />
       <div className="role-main">
         <div className="role-title-line">
           <span className="role-name">
@@ -420,6 +428,9 @@ export function RemoteJobBoardView({
   const searchParams = useSearchParams()
   const user = useUser()
   const [listings, setListings] = useState<Listing[] | null>(initialListings)
+  const [nextCursor, setNextCursor] = useState<string | null>(null)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const loadMoreRef = useRef<HTMLDivElement>(null)
   const [notApplicableListings, setNotApplicableListings] = useState<Listing[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [olderOpen, setOlderOpen] = useState(false)
@@ -465,11 +476,12 @@ export function RemoteJobBoardView({
         if (!response.ok) {
           throw new Error(`Listings request failed: ${response.status}`)
         }
-        return (await response.json()) as Listing[]
+        return (await response.json()) as ListingPage
       })
       .then((data) => {
         if (!cancelled) {
-          setListings(data)
+          setListings(data.listings)
+          setNextCursor(data.nextCursor)
         }
       })
       .catch(() => {
@@ -481,6 +493,39 @@ export function RemoteJobBoardView({
       cancelled = true
     }
   }, [initialListings])
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const response = await fetch(`/api/remote-job-board/listings?cursor=${encodeURIComponent(nextCursor)}`)
+      if (!response.ok) {
+        throw new Error(`Listings request failed: ${response.status}`)
+      }
+      const page = (await response.json()) as ListingPage
+      setListings((current) => (current ? [...current, ...page.listings] : page.listings))
+      setNextCursor(page.nextCursor)
+    } catch {
+      showSnack({ text: 'Could not load more roles. Try again.' }, 4000)
+    } finally {
+      setLoadingMore(false)
+    }
+  }, [loadingMore, nextCursor, showSnack])
+
+  useEffect(() => {
+    if (!nextCursor || mode !== 'board' || search.trim() || !loadMoreRef.current) return
+    const target = loadMoreRef.current
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          void loadMore()
+        }
+      },
+      { rootMargin: '0px 0px 64px' },
+    )
+    observer.observe(target)
+    return () => observer.disconnect()
+  }, [loadMore, mode, nextCursor, search])
 
   useEffect(() => {
     if (!user.isAdmin || mode !== 'not-applicable' || notApplicableListings !== null) return
@@ -706,6 +751,13 @@ export function RemoteJobBoardView({
           </p>
         ) : null}
       </div>
+      <p className="board-logo-attribution">
+        Company logos by{' '}
+        <a href="https://www.logo.dev/" target="_blank" rel="noreferrer">
+          Logo.dev
+        </a>
+        .
+      </p>
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">The remote board is paused for a moment. Try again soon.</p>
@@ -801,6 +853,11 @@ export function RemoteJobBoardView({
             )}
           </>
         )}
+        {!skippedMode && !reviewMode && !searching && nextCursor ? (
+          <div className="board-load-more" ref={loadMoreRef} aria-live="polite">
+            {loadingMore ? 'Loading more roles…' : null}
+          </div>
+        ) : null}
       </div>
       {logging ? (
         <LogApplicationModal

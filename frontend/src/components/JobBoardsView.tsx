@@ -8,6 +8,7 @@ import { STAGE_IDS } from '@/lib/stages'
 import { KebabMenu } from './applications/KebabMenu'
 import { LogApplicationModal, type LogApplicationInitial } from './applications/LogApplicationModal'
 import { Snackbar, useSnackbar } from './applications/useSnackbar'
+import { CompanyLogo } from './CompanyLogo'
 import { OpenIcon, PlusIcon, MinusIcon } from './icons'
 
 type ListingStatus = 'new' | 'irrelevant'
@@ -92,6 +93,7 @@ function ListingRow({
   const isIrrelevant = listing.status === 'irrelevant'
   return (
     <div className="watch-role">
+      <CompanyLogo companyName={listing.companyName} />
       <div className="role-main">
         <div className="role-title-line">
           <span className="role-name" title={listing.title}>
@@ -259,6 +261,13 @@ export function JobBoardsView({
       <div className="page-head">
         <h1>Admin - Job board</h1>
       </div>
+      <p className="board-logo-attribution">
+        Company logos by{' '}
+        <a href="https://www.logo.dev/" target="_blank" rel="noreferrer">
+          Logo.dev
+        </a>
+        .
+      </p>
       <div className="watchlist">
         {failed ? (
           <p className="watch-invite">Job boards are resting for a moment. Try again soon.</p>

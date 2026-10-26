@@ -2,10 +2,8 @@
 
 import Link from 'next/link'
 import { useEffect, useState, type ReactNode } from 'react'
-import { useUser } from './UserProvider'
 import {
   BookmarkIcon,
-  BriefcaseIcon,
   GlobeIcon,
   HomeIcon,
   PipelineIcon,
@@ -24,7 +22,6 @@ type NavItem = {
   href: string
   label: string
   Icon: () => ReactNode
-  adminOnly?: boolean
 }
 
 type WatchlistRole = {
@@ -38,6 +35,10 @@ type WatchlistCompany = {
 type RemoteJobBoardListing = {
   firstSeenAt: string
 }
+
+type RemoteJobBoardResponse =
+  | RemoteJobBoardListing[]
+  | { listings: RemoteJobBoardListing[]; nextCursor: string | null }
 
 type FreshNavKey = 'watchlist' | 'remote-job-board'
 
@@ -88,13 +89,9 @@ const navItems: NavItem[] = [
   { key: 'pipeline', href: '/pipeline', label: 'Pipeline', Icon: PipelineIcon },
   { key: 'watchlist', href: '/watchlist', label: 'Watchlist', Icon: BookmarkIcon },
   { key: 'remote-job-board', href: '/remote-job-board', label: 'Job board', Icon: GlobeIcon },
-  // Admin-only: the Job board is curated tooling, hidden from non-admin users.
-  { key: 'job-boards', href: '/job-boards', label: 'Admin, job board', Icon: BriefcaseIcon, adminOnly: true },
 ]
 
 export function AppNav({ active }: { active: ActiveRoute }) {
-  const user = useUser()
-  const items = navItems.filter((item) => !item.adminOnly || user.isAdmin)
   const [freshNavItems, setFreshNavItems] = useState<Record<FreshNavKey, boolean>>({
     watchlist: false,
     'remote-job-board': false,
@@ -111,9 +108,10 @@ export function AppNav({ active }: { active: ActiveRoute }) {
         })
         .catch(() => null),
       fetch('/api/remote-job-board/listings')
-        .then((response) => {
+        .then(async (response) => {
           if (!response.ok) return null
-          return response.json() as Promise<RemoteJobBoardListing[]>
+          const data = (await response.json()) as RemoteJobBoardResponse
+          return Array.isArray(data) ? data : data.listings
         })
         .catch(() => null),
     ]).then(([companies, listings]) => {
@@ -150,7 +148,7 @@ export function AppNav({ active }: { active: ActiveRoute }) {
 
   return (
     <nav className="nav">
-      {items.map((item) => (
+      {navItems.map((item) => (
         <Link
           key={item.key}
           className={active === item.key ? 'active' : undefined}

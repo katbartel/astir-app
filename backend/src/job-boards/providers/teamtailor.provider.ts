@@ -8,6 +8,7 @@ import {
 } from './job-board-provider'
 
 const PROBE_TIMEOUT_MS = 6_000
+const CAREERS_PAGE_TIMEOUT_MS = 10_000
 const VANITY_HOSTS = new Set([
   'careers.akeneo.com',
   'careers.cafeyn.co',
@@ -115,6 +116,30 @@ export class TeamtailorProvider implements AtsProvider {
 
   candidateHandles(companyName: string): string[] {
     return companyHandleCandidates(companyName)
+  }
+
+  // Teamtailor also powers custom careers domains, where its identity is only
+  // visible in the page markup. Confirm both the Teamtailor marker and the
+  // public JSON Feed before accepting the hostname as a board handle.
+  async detectHandleFromCareersPage(url: string): Promise<string | null> {
+    let hostname: string
+    try {
+      hostname = new URL(url).hostname.toLowerCase()
+    } catch {
+      return null
+    }
+    try {
+      const response = await fetch(url, {
+        headers: { accept: 'text/html', 'user-agent': 'Mozilla/5.0 (compatible; AstirJobBoard/1.0)' },
+        signal: AbortSignal.timeout(CAREERS_PAGE_TIMEOUT_MS),
+      })
+      if (!response.ok || !/teamtailor(?:-cdn)?\.com/i.test(await response.text())) {
+        return null
+      }
+    } catch {
+      return null
+    }
+    return (await this.verifyHandle(hostname)) ? hostname : null
   }
 
   async verifyHandle(handle: string): Promise<boolean> {

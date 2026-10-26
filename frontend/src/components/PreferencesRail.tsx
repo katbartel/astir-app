@@ -12,7 +12,10 @@ const navItems = [
 ]
 
 // Admin-only entries, appended when the signed-in user is an admin.
-const adminNavItems = [{ href: '/preferences/admin', label: 'Admin Panel' }]
+const adminNavItems = [
+  { href: '/preferences/admin', label: 'Admin Panel' },
+  { href: '/job-boards', label: 'Job board' },
+]
 
 export function PreferencesRail() {
   const pathname = usePathname()

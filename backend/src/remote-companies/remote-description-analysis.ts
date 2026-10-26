@@ -100,7 +100,8 @@ const HARD_PRESENCE_PATTERNS = [
 ]
 
 function hasAny(haystack: string, terms: string[]): boolean {
-  return terms.some((term) => haystack.includes(term))
+  const padded = ` ${haystack} `
+  return terms.some((term) => padded.includes(` ${term} `))
 }
 
 function sentences(text: string): string[] {

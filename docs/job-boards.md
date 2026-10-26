@@ -72,7 +72,10 @@ path first:
 3. Probing candidate slugs (`companyHandleCandidates`: collapsed lowercase name
    first, then hyphenated and first-word forms) against each ATS, first board with
    ≥1 job wins. Requiring a non-empty board avoids false-positive handle matches.
-4. Reading the careers page itself: if a URL was given and steps 2–3 found
+4. Inspecting a custom careers domain: a provider may verify its own page
+   marker and public feed when the URL itself does not name the ATS. Teamtailor
+   uses this for branded careers domains.
+5. Reading the careers page itself: if a URL was given and steps 2–4 found
    nothing, the generic `JobPosting` reader fetches it and looks for embedded
    schema.org JobPosting JSON-LD. Only when that yields ≥1 posting does it become
    the source (handle = the careers URL). This is deliberately last — it never

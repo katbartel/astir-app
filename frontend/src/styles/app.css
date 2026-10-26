@@ -1285,6 +1285,38 @@ h1 {
   border-top: var(--border-thin) solid var(--line);
 }
 
+/* Company mark recipe: a 48px square with the row border and a quiet fallback. */
+.company-logo {
+  --company-mark-size: var(--space-12);
+  display: grid;
+  width: var(--company-mark-size);
+  height: var(--company-mark-size);
+  flex: 0 0 var(--company-mark-size);
+  place-items: center;
+  overflow: hidden;
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+}
+
+.company-logo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.company-logo-fallback {
+  background: var(--avatar);
+  color: var(--ink2);
+  font-size: var(--type-control);
+  font-weight: var(--weight-medium);
+}
+
+.board-placeholder-logo {
+  background: var(--skeleton-base);
+}
+
 /* Job Boards feed: a flat list of roles with no company header row. */
 .board-feed .watch-role:first-child {
   border-top: 0;
@@ -1378,6 +1410,20 @@ h1 {
   color: var(--ink2);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--ink2) 40%, transparent);
+  text-underline-offset: var(--space-1);
+}
+
+.board-logo-attribution {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--type-control);
+  line-height: 1.35;
+}
+
+.board-logo-attribution a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--muted) 40%, transparent);
   text-underline-offset: var(--space-1);
 }
 
@@ -1476,6 +1522,15 @@ h1 {
   color: var(--muted);
   font-size: var(--type-control);
   line-height: 1.5;
+}
+
+.board-load-more {
+  min-height: var(--space-6);
+  padding-top: var(--space-3);
+  color: var(--muted);
+  font-size: var(--type-control);
+  line-height: 1.35;
+  text-align: center;
 }
 
 .role-attribution {

@@ -153,6 +153,21 @@ describe('classifyRemoteBoardListing', () => {
     ).toBe(false)
   })
 
+  it('filters a US remote tag when the description has no Europe-compatible review clue', () => {
+    expect(
+      classifyRemoteBoardListing(
+        {
+          location: 'San Francisco, Seattle, New York, US',
+          locations: ['San Francisco, Seattle, New York, US', 'Remote'],
+          workMode: 'Remote',
+          descriptionText:
+            'This product team designs controls that protect businesses from fraud and abuse.',
+        },
+        ['Germany'],
+      ).visible,
+    ).toBe(false)
+  })
+
   it('does not let generic global remote wording rescue a non-European tag', () => {
     expect(
       classifyRemoteBoardListing(
@@ -162,6 +177,21 @@ describe('classifyRemoteBoardListing', () => {
           workMode: 'Remote',
           descriptionText:
             'We are a globally distributed company. This is a global remote role on our product team.',
+        },
+        ['Germany'],
+      ).visible,
+    ).toBe(false)
+  })
+
+  it('does not let generic global remote wording rescue an Americas tag', () => {
+    expect(
+      classifyRemoteBoardListing(
+        {
+          location: 'Americas Remote',
+          locations: ['Americas Remote'],
+          workMode: 'Remote',
+          descriptionText:
+            'Global brands use our platform. We are a globally distributed team building products for customers around the world.',
         },
         ['Germany'],
       ).visible,
@@ -445,6 +475,20 @@ describe('RemoteJobBoardService detail loading', () => {
     expect(findMany.mock.calls[0][0].select.descriptionText).toBeUndefined()
     expect(findMany.mock.calls[0][0].select.sources).toBeUndefined()
     expect(findMany.mock.calls[1][0].where.id.in).toEqual(['skipped'])
+  })
+
+  it('returns the feed in twenty-role pages and reuses the computed feed for the next cursor', async () => {
+    const rows = Array.from({ length: 21 }, (_, index) => listing(`role-${index}`))
+    const { service, findMany } = setup(rows)
+
+    const first = await service.listPageForUser('user')
+    const second = await service.listPageForUser('user', first.nextCursor ?? undefined)
+
+    expect(first.listings).toHaveLength(20)
+    expect(first.nextCursor).toBe('20')
+    expect(second.listings).toHaveLength(1)
+    expect(second.nextCursor).toBeNull()
+    expect(findMany).toHaveBeenCalledTimes(2)
   })
 
   it('still uses descriptions to separate visible and admin review roles', async () => {

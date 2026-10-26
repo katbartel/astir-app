@@ -51,6 +51,12 @@ class FakeAts implements AtsProvider {
   }
 }
 
+class CustomDomainAts extends FakeAts {
+  async detectHandleFromCareersPage(url: string): Promise<string | null> {
+    return url === 'https://careers.finom.example/jobs' ? 'careers.finom.example' : null
+  }
+}
+
 function fakePrisma(existing: JobSource | null) {
   const upserts: { provider: string; externalId: string }[] = []
   const prisma = {
@@ -107,6 +113,19 @@ describe('CompanyResolutionService', () => {
     expect(upserts).toEqual([{ provider: 'lever', externalId: 'pnlfin' }])
     // No evidence fetch: the URL already settled it.
     expect(lever.fetched).toEqual([])
+  })
+
+  it('detects and verifies an ATS behind a custom careers domain', async () => {
+    const teamtailor = new CustomDomainAts('teamtailor', { 'careers.finom.example': 2 })
+    const { prisma, upserts } = fakePrisma(null)
+
+    const source = await new CompanyResolutionService(prisma, [teamtailor]).resolveToSource(
+      'Finom',
+      'https://careers.finom.example/jobs',
+    )
+
+    expect(source).not.toBeNull()
+    expect(upserts).toEqual([{ provider: 'teamtailor', externalId: 'careers.finom.example' }])
   })
 
   it('reuses the source already linked to the company key by default', async () => {

@@ -1,6 +1,6 @@
 # Google OAuth setup
 
-How to create Google OAuth credentials for Astir's "Sign in with Google" and wire them into local development. This takes about 10–15 minutes, requires no Google Workspace org, no billing account, and — because Astir only requests the basic sign-in scopes (`openid`, `email`, `profile`) — no Google verification review.
+How to create Google OAuth credentials for Astir's "Sign in with Google" and Calendar connection, then wire them into local development. This takes about 10–15 minutes, requires no Google Workspace org, and no billing account.
 
 ## What you get at the end
 
@@ -48,13 +48,14 @@ For a personal instance either works. Testing mode's 7-day refresh-token expiry 
 
    ```text
    http://localhost:5173/api/auth/google/callback
+   http://localhost:5173/api/calendar/callback
    ```
 
    This must match `GOOGLE_CALLBACK_URL` character for character. Note that it points at the **frontend** origin: the browser only ever talks to `http://localhost:5173`, and the Next.js `/api` rewrite forwards the callback to the NestJS backend.
 
 6. Click **Create** and copy the **Client ID** and **Client secret** from the confirmation dialog. (You can re-download them later from the credentials list.)
 
-No APIs need to be enabled for basic sign-in — the OAuth endpoints and userinfo profile come with the consent screen.
+No APIs need to be enabled for basic sign-in — the OAuth endpoints and userinfo profile come with the consent screen. To use the Calendar connection, enable **Google Calendar API** under **APIs & Services → Library** in the same project.
 
 ## Part 2: Wire it into Astir
 
@@ -66,12 +67,20 @@ Copy `.env.example` to `.env` at the repo root if you have not already, then fil
 GOOGLE_CLIENT_ID=1234567890-abc123.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=GOCSPX-your-secret-here
 GOOGLE_CALLBACK_URL=http://localhost:5173/api/auth/google/callback
+GOOGLE_CALENDAR_CALLBACK_URL=http://localhost:5173/api/calendar/callback
+CALENDAR_TOKEN_ENCRYPTION_KEY=$(openssl rand -base64 32)
 JWT_SECRET=$(openssl rand -hex 32)
 ```
 
 `JWT_SECRET` signs the session cookie. Anything long and random works; keep it stable or existing sessions are invalidated.
 
 Docker Compose reads `.env` from the repo root automatically and passes these into the backend container. For a non-Docker backend (`npm run dev:backend`), export them in your shell or use a tool like `direnv`.
+
+## Calendar connection
+
+Astir requests `calendar.events.readonly` only after someone chooses **Connect calendar**. It never broadens normal sign-in. The backend exchanges that one-time authorization code, encrypts the refresh and access tokens before database storage, and reads only regular calendar events beginning within the next 30 days. It does not cache event titles, attendees, or descriptions.
+
+For local testing, add the same Google account as a test user on the consent screen. Calendar read access is a sensitive scope, so a public production app may require Google verification. Google may also expire refresh tokens issued while the consent screen is in Testing mode, which means the user will need to reconnect.
 
 ### 2. Run the migration
 

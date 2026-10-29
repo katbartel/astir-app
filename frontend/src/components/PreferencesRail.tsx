@@ -14,6 +14,7 @@ const navItems = [
 // Admin-only entries, appended when the signed-in user is an admin.
 const adminNavItems = [
   { href: '/preferences/admin', label: 'Admin Panel' },
+  { href: '/preferences/data-quality', label: 'Data quality' },
   { href: '/job-boards', label: 'Job board' },
 ]
 

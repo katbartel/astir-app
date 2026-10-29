@@ -299,7 +299,8 @@ h1 {
 }
 
 .home-card,
-.goals-card {
+.goals-card,
+.meetings-card {
   padding: var(--pad-card) var(--space-6);
   margin-bottom: var(--pad-card);
   border: var(--border-thin) solid var(--line2);
@@ -310,6 +311,240 @@ h1 {
 
 .home-card[hidden] {
   display: none;
+}
+
+.meetings-card {
+  position: relative;
+  --meeting-icon-size: 20px;
+  min-height: calc(var(--space-16) + var(--space-16) + var(--space-16));
+}
+
+.meetings-loading {
+  min-height: calc(var(--space-16) + var(--space-16));
+  border-radius: var(--r-md);
+  background: var(--skeleton-base);
+}
+
+.meetings-empty {
+  display: flex;
+  min-height: calc(var(--space-16) + var(--space-16));
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--muted);
+}
+
+.meetings-empty svg {
+  width: var(--watch-action-icon-size);
+  height: var(--watch-action-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.meetings-empty p {
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+.meeting-groups {
+  display: grid;
+}
+
+.meeting-day {
+  padding: var(--space-6) 0;
+}
+
+.meeting-day:first-child {
+  padding-top: var(--space-1);
+}
+
+.meeting-day + .meeting-day {
+  border-top: var(--border-thin) solid var(--line2);
+}
+
+.meeting-day h2 {
+  margin-bottom: var(--space-2);
+  color: var(--ink2);
+  font-size: var(--type-body);
+  font-weight: var(--weight-medium);
+}
+
+.meeting-row {
+  position: relative;
+  display: flex;
+  min-height: calc(var(--space-12) + var(--space-6));
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-2);
+  border-radius: var(--r-sm);
+  transition: background .2s ease;
+}
+
+.meeting-row:hover {
+  background: var(--hover-soft);
+}
+
+.meeting-main {
+  display: flex;
+  min-width: 0;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+
+.meeting-rule {
+  width: var(--space-0-5);
+  flex: 0 0 var(--space-0-5);
+  align-self: stretch;
+  border-radius: var(--r-pill);
+  background: var(--docs-deep);
+}
+
+.meeting-title,
+.meeting-time {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meeting-title {
+  color: var(--ink2);
+  line-height: 1.5;
+}
+
+.meeting-time {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.meeting-action {
+  min-width: max-content;
+  margin-left: auto;
+}
+
+.meeting-categorize {
+  gap: var(--space-1);
+  opacity: 0;
+  transition: opacity .2s ease, background .2s ease;
+}
+
+.meeting-row:hover .meeting-categorize,
+.meeting-menu.open .meeting-categorize,
+.meeting-categorize.categorized,
+.meeting-categorize:focus-visible {
+  opacity: 1;
+}
+
+.meeting-categorize.categorized {
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+}
+
+.meeting-categorize.categorized .meeting-tag {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.meeting-categorize svg {
+  width: var(--icon-size);
+  height: var(--icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.meeting-menu {
+  position: relative;
+  z-index: 30;
+}
+
+.meeting-menu-popover {
+  position: absolute;
+  z-index: 31;
+  right: 0;
+  bottom: calc(100% + var(--space-2));
+  width: max-content;
+  min-width: calc(var(--space-16) * 4);
+  padding: var(--space-2) 0;
+  border: var(--border-thin) solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--card);
+  box-shadow: var(--shadow-menu);
+}
+
+.meeting-menu-label {
+  padding: var(--space-1) var(--space-3);
+  color: var(--muted);
+  font-size: var(--type-body);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.meeting-menu-popover button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  background: transparent;
+  color: var(--ink2);
+  font: inherit;
+  text-align: left;
+}
+
+.meeting-menu-popover button:hover,
+.meeting-menu-popover button:focus-visible {
+  background: var(--hover-soft);
+  outline: none;
+}
+
+.meeting-menu-popover svg,
+.meeting-tag svg {
+  width: var(--meeting-icon-size);
+  height: var(--meeting-icon-size);
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+}
+
+.meeting-menu-popover svg.material-icon,
+.meeting-tag svg.material-icon {
+  fill: currentColor;
+  stroke: none;
+}
+
+.meeting-menu-divider {
+  height: var(--border-thin);
+  margin: var(--space-2) 0;
+  background: var(--line);
+}
+
+.meeting-menu-empty {
+  max-width: calc(var(--space-16) * 4);
+  padding: var(--space-2) var(--space-3);
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.meeting-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--input-height);
+  padding: 0 var(--space-3);
+  border: var(--border-thin) solid var(--line2);
+  border-radius: var(--r-pill);
+  color: var(--ink2);
 }
 
 .home-card-copy {
@@ -3361,6 +3596,14 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .meeting-row {
+    align-items: flex-start;
+  }
+
+  .meeting-categorize {
+    opacity: 1;
+  }
+
   .field-row {
     grid-template-columns: 1fr;
   }
@@ -4335,6 +4578,90 @@ textarea {
   border-radius: var(--r-sm);
   background: var(--paper);
   font-size: 0.92em;
+}
+
+/* Data quality is an admin-only operational view. It uses the shared card
+   surface and type scale, with a compact responsive grid for its snapshot. */
+.quality-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-6);
+}
+
+.quality-card,
+.quality-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.quality-card {
+  padding: var(--space-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.quality-label,
+.quality-value,
+.quality-note,
+.quality-measured {
+  margin: 0;
+}
+
+.quality-label,
+.quality-note,
+.quality-measured {
+  color: var(--muted);
+}
+
+.quality-label {
+  font-size: var(--type-body);
+  font-weight: var(--weight-medium);
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+.quality-value {
+  color: var(--ink);
+  font-size: var(--type-modal-title);
+  font-family: var(--font-display);
+  font-weight: var(--weight-semibold);
+}
+
+.quality-note,
+.quality-measured {
+  line-height: 1.5;
+}
+
+.quality-table-wrap {
+  overflow-x: auto;
+}
+
+.quality-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--ink2);
+  font-size: var(--type-body);
+}
+
+.quality-table th,
+.quality-table td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.quality-table th {
+  color: var(--muted);
+  font-weight: var(--weight-medium);
+}
+
+.quality-measured {
+  margin-top: var(--space-6);
 }
 
 .prefs-card form {

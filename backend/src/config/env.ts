@@ -6,6 +6,8 @@ export type Env = {
   GOOGLE_CLIENT_ID: string
   GOOGLE_CLIENT_SECRET: string
   GOOGLE_CALLBACK_URL: string
+  GOOGLE_CALENDAR_CALLBACK_URL: string
+  CALENDAR_TOKEN_ENCRYPTION_KEY: string
   JWT_SECRET: string
   JOB_INGESTION_ENABLED: string
   ADZUNA_APP_ID: string
@@ -28,6 +30,12 @@ export function validateEnv(config: Record<string, unknown>): Env {
     GOOGLE_CALLBACK_URL: String(
       config.GOOGLE_CALLBACK_URL ?? 'http://localhost:5173/api/auth/google/callback',
     ),
+    GOOGLE_CALENDAR_CALLBACK_URL: String(
+      config.GOOGLE_CALENDAR_CALLBACK_URL ?? 'http://localhost:5173/api/calendar/callback',
+    ),
+    // Required in production by CalendarTokenCipher. Development may derive a
+    // local key from JWT_SECRET, so the existing local stack remains bootable.
+    CALENDAR_TOKEN_ENCRYPTION_KEY: String(config.CALENDAR_TOKEN_ENCRYPTION_KEY ?? ''),
     JWT_SECRET: String(config.JWT_SECRET ?? 'dev-only-jwt-secret'),
     JOB_INGESTION_ENABLED: String(config.JOB_INGESTION_ENABLED ?? 'true'),
     ADZUNA_APP_ID: String(config.ADZUNA_APP_ID ?? ''),

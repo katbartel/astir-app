@@ -6,6 +6,7 @@ import { JobMatchingService } from './job-matching.service'
 import { NormalizedJob, jobFingerprint } from './normalized-job'
 import { normalizeListingLocations } from './location-normalization'
 import { descriptionHash, fetchDescriptionText } from './description-fetching'
+import { JobQualityService } from './job-quality.service'
 import {
   AggregatorProvider,
   JOB_BOARD_PROVIDERS,
@@ -26,6 +27,8 @@ const POLLABLE_SOURCES: Prisma.JobSourceWhereInput = {
   ],
 }
 
+const TRANSIENT_RETRY_DELAY_MS = 2_000
+
 export type SyncSummary = {
   sources: number
   failedSources: number
@@ -44,6 +47,7 @@ export class JobIngestionService implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jobMatching: JobMatchingService,
+    private readonly jobQuality: JobQualityService,
     @Inject(JOB_BOARD_PROVIDERS) providers: JobBoardProvider[],
   ) {
     this.providersByName = new Map(providers.map((provider) => [provider.provider, provider]))
@@ -51,6 +55,11 @@ export class JobIngestionService implements OnApplicationBootstrap {
   }
 
   onApplicationBootstrap(): void {
+    // Give the internal quality page a baseline immediately. The full sync
+    // refreshes the same daily snapshot once current polling is complete.
+    void this.jobQuality.captureDailySnapshot().catch((error) =>
+      this.logger.error(`Initial quality snapshot failed: ${String(error)}`),
+    )
     if (process.env.JOB_INGESTION_ENABLED === 'false') {
       this.logger.log('Job ingestion disabled via JOB_INGESTION_ENABLED=false')
       return
@@ -103,6 +112,7 @@ export class JobIngestionService implements OnApplicationBootstrap {
         }
       }
       summary.matchesCreated = await this.jobMatching.rematchAllUsers()
+      await this.jobQuality.captureDailySnapshot()
       this.logger.log(
         `Job sync done: ${summary.listingsSeen} listings from ${summary.sources} sources ` +
           `(${summary.listingsCreated} new, ${summary.matchesCreated} new user matches, ` +
@@ -152,20 +162,83 @@ export class JobIngestionService implements OnApplicationBootstrap {
     if (!provider) {
       throw new Error(`No provider registered for "${source.provider}"`)
     }
-    const jobs = await provider.fetchListings({
-      externalId: source.externalId,
-      companyName: source.companyName,
-    })
-    const now = new Date()
-    let created = 0
-    for (const job of jobs) {
-      created += await this.upsertListing(job, source.id, now)
+    const startedAt = new Date()
+    let fetchAttempts = 1
+    try {
+      let jobs: NormalizedJob[]
+      try {
+        jobs = await provider.fetchListings({
+          externalId: source.externalId,
+          companyName: source.companyName,
+        })
+      } catch (error) {
+        if (!this.isTransientFetchError(error)) throw error
+        fetchAttempts = 2
+        this.logger.warn(`Transient fetch failure for ${source.provider}/${source.externalId}, retrying once`)
+        await this.delay(TRANSIENT_RETRY_DELAY_MS)
+        jobs = await provider.fetchListings({
+          externalId: source.externalId,
+          companyName: source.companyName,
+        })
+      }
+      const now = new Date()
+      let created = 0
+      for (const job of jobs) {
+        created += await this.upsertListing(job, source.id, now)
+      }
+      await this.prisma.jobSource.update({
+        where: { id: source.id },
+        data: { lastSyncedAt: now, lastSyncError: null },
+      })
+      // A source's prior observations stop being current after a successful
+      // complete poll when they are absent from that poll. The product already
+      // suppresses them through sourceStillCurrent; this count makes that
+      // removal observable without deleting the provenance record.
+      const staleObservationsSuppressed = await this.prisma.jobListingSource.count({
+        where: { jobSourceId: source.id, lastSeenAt: { lt: now } },
+      })
+      await this.prisma.jobIngestionRun.create({
+        data: {
+          jobSourceId: source.id,
+          provider: source.provider,
+          startedAt,
+          completedAt: new Date(),
+          succeeded: true,
+          fetchAttempts,
+          normalizedListingsSeen: jobs.length,
+          listingsCreated: created,
+          existingListingsObserved: jobs.length - created,
+          staleObservationsSuppressed,
+        },
+      })
+      return { seen: jobs.length, created }
+    } catch (error) {
+      await this.prisma.jobIngestionRun.create({
+        data: {
+          jobSourceId: source.id,
+          provider: source.provider,
+          startedAt,
+          completedAt: new Date(),
+          succeeded: false,
+          fetchAttempts,
+          errorMessage: String(error),
+        },
+      })
+      throw error
     }
-    await this.prisma.jobSource.update({
-      where: { id: source.id },
-      data: { lastSyncedAt: now, lastSyncError: null },
-    })
-    return { seen: jobs.length, created }
+  }
+
+  private isTransientFetchError(error: unknown): boolean {
+    const message = String(error)
+    return (
+      error instanceof TypeError ||
+      /TimeoutError|AbortError|fetch failed/i.test(message) ||
+      /responded (429|5\d\d)\b/i.test(message)
+    )
+  }
+
+  private delay(milliseconds: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, milliseconds))
   }
 
   // Consolidation: the listing is keyed by fingerprint, so the same opening

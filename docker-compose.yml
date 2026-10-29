@@ -30,6 +30,8 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL:-http://localhost:5173/api/auth/google/callback}
+      GOOGLE_CALENDAR_CALLBACK_URL: ${GOOGLE_CALENDAR_CALLBACK_URL:-http://localhost:5173/api/calendar/callback}
+      CALENDAR_TOKEN_ENCRYPTION_KEY: ${CALENDAR_TOKEN_ENCRYPTION_KEY:-}
       JWT_SECRET: ${JWT_SECRET:-dev-only-jwt-secret}
     ports:
       - "3000:3000"

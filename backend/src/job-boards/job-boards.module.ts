@@ -4,6 +4,7 @@ import { JobBoardsController } from './job-boards.controller'
 import { JobBoardsService } from './job-boards.service'
 import { JobIngestionService } from './job-ingestion.service'
 import { JobMatchingService } from './job-matching.service'
+import { JobQualityService } from './job-quality.service'
 import { AdzunaProvider } from './providers/adzuna.provider'
 import { ArbeitnowProvider } from './providers/arbeitnow.provider'
 import { AshbyProvider } from './providers/ashby.provider'
@@ -155,6 +156,7 @@ import { ScrapingFallbackService } from './scraping-fallback.service'
     CompanyResolutionService,
     JobIngestionService,
     JobMatchingService,
+    JobQualityService,
     JobBoardsService,
     ScrapingFallbackService,
   ],

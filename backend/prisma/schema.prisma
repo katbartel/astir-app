@@ -20,8 +20,46 @@ model User {
   watchlistCompanies   WatchlistCompany[]
   jobListings          UserJobListing[]
   applications         Application[]
+  calendarConnection   CalendarConnection?
+  calendarEventCategories CalendarEventCategory[]
 
   @@map("users")
+}
+
+// Tokens are encrypted by CalendarTokenCipher before reaching this table. Event
+// data deliberately is not cached: Astir asks Google for only the next 30 days
+// when the Home screen needs it, then returns the short-lived response.
+model CalendarConnection {
+  id                    String   @id @default(cuid())
+  userId                String   @unique @map("user_id")
+  refreshTokenEncrypted String   @map("refresh_token_encrypted")
+  accessTokenEncrypted  String?  @map("access_token_encrypted")
+  accessTokenExpiresAt  DateTime? @map("access_token_expires_at")
+  createdAt             DateTime @default(now()) @map("created_at")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("calendar_connections")
+}
+
+// A category is the small amount of user-authored state Astir keeps about an
+// otherwise on-demand Calendar event. Google event details remain uncached.
+model CalendarEventCategory {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  calendarEventId String   @map("calendar_event_id")
+  kind            String
+  applicationId   String?  @map("application_id")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, calendarEventId])
+  @@index([applicationId])
+  @@map("calendar_event_categories")
 }
 
 model WatchlistPreferences {
@@ -67,12 +105,58 @@ model JobSource {
   updatedAt     DateTime  @updatedAt @map("updated_at")
 
   listingSources     JobListingSource[]
+  ingestionRuns     JobIngestionRun[]
   watchlistCompanies WatchlistCompany[]
   remoteCompanies    RemoteCompany[]
 
   @@unique([provider, externalId])
   @@index([companyKey])
   @@map("job_sources")
+}
+
+// One attempted pull of a source. These rows are append-only operational
+// evidence: they make source reliability measurable over time without
+// conflating a temporarily empty board with a failed request.
+model JobIngestionRun {
+  id                       String    @id @default(cuid())
+  jobSourceId              String    @map("job_source_id")
+  provider                 String
+  startedAt                DateTime  @map("started_at")
+  completedAt              DateTime  @map("completed_at")
+  succeeded                Boolean
+  fetchAttempts            Int       @default(1) @map("fetch_attempts")
+  normalizedListingsSeen   Int       @default(0) @map("normalized_listings_seen")
+  listingsCreated          Int       @default(0) @map("listings_created")
+  existingListingsObserved Int       @default(0) @map("existing_listings_observed")
+  staleObservationsSuppressed Int    @default(0) @map("stale_observations_suppressed")
+  errorMessage             String?   @map("error_message")
+
+  jobSource JobSource @relation(fields: [jobSourceId], references: [id], onDelete: Cascade)
+
+  @@index([jobSourceId, completedAt])
+  @@index([provider, completedAt])
+  @@map("job_ingestion_runs")
+}
+
+// A once-per-calendar-day view of corpus quality. The date, rather than a
+// rolling timestamp, gives the internal quality page an honest daily trend.
+model JobQualitySnapshot {
+  id                            String   @id @default(cuid())
+  observedOn                    DateTime @unique @map("observed_on")
+  measuredAt                    DateTime @map("measured_at")
+  canonicalListings             Int      @map("canonical_listings")
+  sourceObservations            Int      @map("source_observations")
+  listingsSeenWithin24Hours     Int      @map("listings_seen_within_24_hours")
+  listingsWithPostedAt          Int      @map("listings_with_posted_at")
+  medianListingAgeHours         Float?   @map("median_listing_age_hours")
+  crossProviderCollisions       Int      @map("cross_provider_collisions")
+  crossProviderExtraObservations Int     @map("cross_provider_extra_observations")
+  listingsWithLocation          Int      @map("listings_with_location")
+  listingsWithWorkMode          Int      @map("listings_with_work_mode")
+  listingsWithDescription       Int      @map("listings_with_description")
+  listingsWithContentLanguage   Int      @map("listings_with_content_language")
+
+  @@map("job_quality_snapshots")
 }
 
 // A company on the global, admin-curated Remote Job Board list. Unlike a
@@ -221,6 +305,7 @@ model Application {
 
   user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   listing JobListing? @relation(fields: [listingId], references: [id], onDelete: SetNull)
+  calendarEventCategories CalendarEventCategory[]
 
   @@index([userId])
   @@map("applications")

@@ -189,6 +189,30 @@ add it to the `JOB_BOARD_PROVIDERS` factory.
 - `DELETE /api/watchlist/companies/:id` — remove from the watchlist (listings and the
   feed are untouched; the source simply stops being polled once nobody watches it).
 
+## Internal data quality
+
+`/preferences/data-quality` is an admin-only operational view. It is not part of
+the job-seeker experience and therefore does not relax Astir's product-wide rule
+against outcome counts.
+
+The view uses the standard card recipe: `--card`, `--line`, `--r-lg`,
+`--shadow-card`, 24px padding, 14px UI text, and the existing 28px page title.
+It contains no interactive controls. It shows a current corpus snapshot, up to
+14 daily snapshots, and per-provider reliability over the preceding 14 days.
+
+`job_ingestion_runs` is append-only. It records whether a provider response was
+successfully fetched and normalized, its normalized listing count, new listings,
+and source observations suppressed after they disappeared from a later successful
+poll. `job_quality_snapshots` stores one refreshed snapshot per UTC day.
+
+Freshness means a canonical listing has been seen by any source in the previous
+24 hours. Exact cross-provider deduplication means two or more distinct provider
+names resolve to the same canonical fingerprint. Completeness is reported per
+optional enrichment field, not as one all-fields score, because providers do not
+all expose the same information. The reliability view measures completed source
+runs. Raw-payload parser yield remains unavailable until each provider reports its
+raw record count, so it must not be presented as a parse-success percentage.
+
 The hourly cron does the same sync in the background; `JOB_INGESTION_ENABLED=false`
 turns polling off.
 

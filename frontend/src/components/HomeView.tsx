@@ -22,13 +22,13 @@ import {
 } from '@/lib/goals'
 import { noteHasContent } from '@/lib/noteMigration'
 import { Greeting } from './Greeting'
-import { HeardBackModal } from './applications/HeardBackModal'
 import { LogApplicationModal } from './applications/LogApplicationModal'
 import { NoteEditor } from './applications/NoteEditor'
 import { NOTE_TOOLS_COMPACT } from './applications/NoteToolbar'
 import { useNoteAutosave } from './applications/useNoteAutosave'
 import { useApplications } from './applications/useApplications'
 import { GoalsSetupModal } from './home/GoalsSetupModal'
+import { UpcomingMeetings } from './home/UpcomingMeetings'
 import { useWeekGoals } from './home/useWeekGoals'
 import { CheckIcon, InfoIcon, MinusIcon, PencilIcon, PlusIcon } from './icons'
 
@@ -484,17 +484,14 @@ function GoalPanel({
 }
 
 export function HomeView() {
-  const { applications, reload, changeStage, showSnack, overlay } = useApplications()
+  const { applications, reload, showSnack, overlay } = useApplications()
   const { week, ready: goalsReady, setGoals, stepRest, tasks } = useWeekGoals()
 
   const [logging, setLogging] = useState(false)
-  const [heardOpen, setHeardOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [selected, setSelected] = useState<ActivityId | ''>('')
 
   const apps = applications ?? []
-  const hasApplications = apps.length > 0
-
   const goals = week.goals
   const hasGoals = goals.length > 0
   const progressById = new Map<ActivityId, number>(
@@ -512,34 +509,6 @@ export function HomeView() {
       <div className="today-head">
         <Greeting />
       </div>
-
-      <section className="home-card" aria-labelledby="applicationsLabel">
-        <div className="label" id="applicationsLabel">
-          Applications
-        </div>
-        <p className="home-card-copy">
-          After you apply, record it here. Out of sight until the screening stage.
-        </p>
-        <div className="home-card-actions">
-          <button className="btn ghost" type="button" onClick={() => setLogging(true)}>
-            Log application
-          </button>
-        </div>
-      </section>
-
-      <section className="home-card" aria-labelledby="heardBackLabel" hidden={!hasApplications}>
-        <div className="label" id="heardBackLabel">
-          Screenings
-        </div>
-        <p className="home-card-copy">
-          A company moved you forward. Bring the application into your pipeline.
-        </p>
-        <div className="home-card-actions">
-          <button className="btn ghost" type="button" onClick={() => setHeardOpen(true)}>
-            Move to pipeline
-          </button>
-        </div>
-      </section>
 
       <section className="goals-card" aria-labelledby="goalsLabel">
         <div className="card-head">
@@ -603,6 +572,8 @@ export function HomeView() {
         </div>
       </section>
 
+      <UpcomingMeetings applications={apps} />
+
       {logging ? (
         <LogApplicationModal
           initial={{ status: STAGE_IDS.applied }}
@@ -612,17 +583,6 @@ export function HomeView() {
             if (isNew && application.status !== STAGE_IDS.hired) {
               showSnack({ text: 'Application logged.' })
             }
-          }}
-        />
-      ) : null}
-
-      {heardOpen ? (
-        <HeardBackModal
-          applications={apps}
-          onClose={() => setHeardOpen(false)}
-          onChoose={(application, status) => {
-            setHeardOpen(false)
-            void changeStage(application, status, 'heard')
           }}
         />
       ) : null}

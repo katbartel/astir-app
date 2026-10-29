@@ -10,9 +10,11 @@ import {
 } from '@nestjs/common'
 import { AuthenticatedUser, CurrentUser } from '../auth/current-user.decorator'
 import { JwtAuthGuard } from '../auth/jwt-auth.guard'
+import { AdminGuard } from '../auth/admin.guard'
 import { UpdateListingStatusDto } from './dto/update-listing.dto'
 import { JobIngestionService, SyncSummary } from './job-ingestion.service'
 import { JobBoardsService, JobBoardListing } from './job-boards.service'
+import { JobQualityOverview, JobQualityService } from './job-quality.service'
 
 @UseGuards(JwtAuthGuard)
 @Controller('job-boards')
@@ -20,6 +22,7 @@ export class JobBoardsController {
   constructor(
     private readonly jobBoardsService: JobBoardsService,
     private readonly jobIngestionService: JobIngestionService,
+    private readonly jobQuality: JobQualityService,
   ) {}
 
   @Get('listings')
@@ -44,5 +47,11 @@ export class JobBoardsController {
   @Post('sync')
   triggerSync(): Promise<SyncSummary> {
     return this.jobIngestionService.syncAll()
+  }
+
+  @UseGuards(AdminGuard)
+  @Get('quality')
+  quality(): Promise<JobQualityOverview> {
+    return this.jobQuality.overview()
   }
 }

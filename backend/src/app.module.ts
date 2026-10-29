@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common'
 import { ScheduleModule } from '@nestjs/schedule'
 import { ApplicationsModule } from './applications/applications.module'
+import { CalendarModule } from './calendar/calendar.module'
 import { AuthModule } from './auth/auth.module'
 import { ConfigModule } from './config/config.module'
 import { DatabaseModule } from './database/database.module'
@@ -22,6 +23,7 @@ import { WatchlistModule } from './watchlist/watchlist.module'
     WatchlistModule,
     RemoteCompaniesModule,
     ApplicationsModule,
+    CalendarModule,
   ],
 })
 export class AppModule {}
